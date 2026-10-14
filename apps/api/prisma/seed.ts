@@ -1,5 +1,5 @@
 import { loadEnvFile } from '../src/config/load-env-file.js';
-import { PERMISSIONS, ROLE_DEFINITIONS } from '../src/auth/permissions.js';
+import { syncCatalog } from './catalog.js';
 import { hashPassword } from '../src/common/utils/password.js';
 import { normalizeEmail } from '../src/common/utils/email.js';
 import { createPrismaClient } from '../src/prisma/client.js';
@@ -11,33 +11,6 @@ const databaseUrl = process.env['DATABASE_URL'];
 if (!databaseUrl) throw new Error('DATABASE_URL no está definida');
 const isProduction = process.env['NODE_ENV'] === 'production';
 const db = createPrismaClient(databaseUrl, 2);
-
-/** Sincroniza el catálogo de permisos y roles con el código (idempotente; seguro en producción). */
-async function seedCatalog() {
-  for (const [code, description] of Object.entries(PERMISSIONS)) {
-    await db.permission.upsert({ where: { code }, update: { description }, create: { code, description } });
-  }
-  const permissions = await db.permission.findMany();
-  const idByCode = new Map(permissions.map((p) => [p.code, p.id]));
-
-  for (const def of ROLE_DEFINITIONS) {
-    const role = await db.role.upsert({
-      where: { code: def.code },
-      update: { name: def.name, scope: def.scope, description: def.description },
-      create: { code: def.code, name: def.name, scope: def.scope, description: def.description },
-    });
-    const wanted = def.permissions.map((c) => idByCode.get(c)!);
-    await db.rolePermission.deleteMany({ where: { roleId: role.id, permissionId: { notIn: wanted } } });
-    for (const permissionId of wanted) {
-      await db.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: role.id, permissionId } },
-        update: {},
-        create: { roleId: role.id, permissionId },
-      });
-    }
-  }
-  console.log(`Catálogo sincronizado: ${permissions.length} permisos, ${ROLE_DEFINITIONS.length} roles.`);
-}
 
 /** Datos de desarrollo: Clínica Demo + Sede Demo + administrador desde variables de entorno. */
 async function seedDemo() {
@@ -86,7 +59,8 @@ async function seedDemo() {
 }
 
 try {
-  await seedCatalog();
+  const { permissions, roles } = await syncCatalog(db);
+  console.log(`Catálogo sincronizado: ${permissions} permisos, ${roles} roles.`);
   if (isProduction) {
     console.log('NODE_ENV=production: se omiten datos demo y el administrador de desarrollo.');
     console.log('Cree el primer administrador con: npm run db:create-admin -w apps/api');

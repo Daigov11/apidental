@@ -52,6 +52,16 @@ export class AccessService {
     const { clinicId, branchId } = context;
     if (clinicId === null && branchId !== null) return null;
 
+    // La sede pedida debe existir, estar activa y pertenecer a ESA clínica; si no, un
+    // contexto {clinicA, sedeDeClinicaB} pasaría gracias a una asignación de toda la clínica.
+    if (clinicId !== null && branchId !== null) {
+      const branch = await this.db.branch.findFirst({
+        where: { id: branchId, clinicId, status: 'ACTIVE' },
+        select: { id: true },
+      });
+      if (!branch) return null;
+    }
+
     // Sede concreta: aplican sus asignaciones y las de toda la clínica (branchId null).
     const all = await this.db.userAssignment.findMany({
       where: {

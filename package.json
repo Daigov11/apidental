@@ -26,6 +26,8 @@
     "prettier": "^3.4.2"
   },
   "overrides": {
-    "mariadb": "3.5.4"
+    "mariadb": "3.5.4",
+    "mysql2": "^3.24.0",
+    "deepmerge-ts": "^8.0.0"
   }
 }
