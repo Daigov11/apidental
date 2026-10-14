@@ -1,0 +1,42 @@
+# dependencias
+node_modules/
+
+# builds
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# entorno y secretos
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Prisma: cliente generado
+apps/api/src/generated/
+
+# logs y temporales
+*.log
+npm-debug.log*
+coverage/
+.vite/
+.turbo/
+.cache/
+
+# sistema y editores
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# archivos de agentes/herramientas generados localmente
+.agents/
+.windsurf/
+skills-lock.json
+
+# datos locales (adjuntos, respaldos, exportaciones)
+/storage/
+/backups/

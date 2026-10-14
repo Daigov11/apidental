@@ -1,0 +1,31 @@
+{
+  "name": "apidental",
+  "version": "0.1.0",
+  "private": true,
+  "description": "ApiDental: gestión odontológica (monorepo)",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "apps/api"
+  ],
+  "scripts": {
+    "api:dev": "npm run start:dev -w apps/api",
+    "build": "npm run build -w apps/api",
+    "lint": "npm run lint -w apps/api",
+    "typecheck": "npm run typecheck -w apps/api",
+    "test": "npm run test -w apps/api",
+    "test:e2e": "npm run test:e2e -w apps/api",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
+    "db:migrate": "npm run db:migrate -w apps/api",
+    "db:seed": "npm run db:seed -w apps/api",
+    "format": "prettier --write ."
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2"
+  },
+  "overrides": {
+    "mariadb": "3.5.4"
+  }
+}

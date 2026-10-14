@@ -1,0 +1,31 @@
+# Solo para desarrollo y pruebas locales. Producción: MySQL en el VPS, sin Docker.
+services:
+  mysql:
+    image: mysql:8.4.6
+    container_name: apidental-mysql-dev
+    restart: unless-stopped
+    ports:
+      # Solo loopback; el puerto del host es configurable para no chocar con otros MySQL/MariaDB.
+      - '127.0.0.1:${MYSQL_HOST_PORT:-3310}:3306'
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?defina MYSQL_ROOT_PASSWORD en .env}
+      MYSQL_DATABASE: apidental_dev
+      MYSQL_USER: apidental
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?defina MYSQL_APP_PASSWORD en .env}
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # Necesario para crear triggers (auditoría inmutable) con binlog activo sin SUPER.
+      - --log-bin-trust-function-creators=1
+    volumes:
+      - apidental_mysql_data:/var/lib/mysql
+      - ./docker/mysql-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'mysqladmin ping -h 127.0.0.1 -uroot -p"$$MYSQL_ROOT_PASSWORD" --silent']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  apidental_mysql_data:
