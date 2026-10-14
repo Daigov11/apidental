@@ -1,0 +1,190 @@
+// Fundación multiclínica y acceso (incremento 1).
+// Convención: tablas y columnas en snake_case (@@map/@map), ids UUID (CHAR(36)).
+// Sin tablas clínicas, de agenda, pagos ni integraciones todavía.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+enum ClinicStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum BranchStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum AssignmentStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Alcance del rol: PLATFORM = operación de la plataforma (sin clínica);
+/// CLINIC = rol que siempre se ejerce dentro de una clínica concreta.
+enum RoleScope {
+  PLATFORM
+  CLINIC
+}
+
+model Clinic {
+  id                  String       @id @default(uuid()) @db.Char(36)
+  name                String       @db.VarChar(160)
+  legalName           String?      @map("legal_name") @db.VarChar(200)
+  /// RUC opcional; único cuando existe (MySQL admite varios NULL en un índice único).
+  ruc                 String?      @unique @db.VarChar(11)
+  /// Branding básico configurable por clínica.
+  brandDisplayName    String?      @map("brand_display_name") @db.VarChar(120)
+  brandLogoUrl        String?      @map("brand_logo_url") @db.VarChar(500)
+  brandPrimaryColor   String?      @map("brand_primary_color") @db.VarChar(9)
+  brandSecondaryColor String?      @map("brand_secondary_color") @db.VarChar(9)
+  status              ClinicStatus @default(ACTIVE)
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  branches    Branch[]
+  assignments UserAssignment[]
+
+  @@map("clinics")
+}
+
+model Branch {
+  id        String       @id @default(uuid()) @db.Char(36)
+  clinicId  String       @map("clinic_id") @db.Char(36)
+  name      String       @db.VarChar(160)
+  address   String?      @db.VarChar(300)
+  status    BranchStatus @default(ACTIVE)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  clinic      Clinic           @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  assignments UserAssignment[]
+
+  @@unique([clinicId, name])
+  // Permite la clave foránea compuesta (branch_id, clinic_id) desde user_assignments,
+  // que garantiza en BD que una sede pertenece a la clínica de la asignación.
+  @@unique([id, clinicId])
+  @@map("branches")
+}
+
+model User {
+  id                  String     @id @default(uuid()) @db.Char(36)
+  /// Siempre en minúsculas (se normaliza en la aplicación).
+  email               String     @unique @db.VarChar(254)
+  passwordHash        String     @map("password_hash") @db.VarChar(255)
+  firstName           String     @map("first_name") @db.VarChar(100)
+  lastName            String     @map("last_name") @db.VarChar(100)
+  status              UserStatus @default(ACTIVE)
+  lastLoginAt         DateTime?  @map("last_login_at")
+  failedLoginAttempts Int        @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime?  @map("locked_until")
+  createdAt           DateTime   @default(now()) @map("created_at")
+  updatedAt           DateTime   @updatedAt @map("updated_at")
+
+  assignments UserAssignment[]
+
+  @@map("users")
+}
+
+model Role {
+  id          String    @id @default(uuid()) @db.Char(36)
+  /// Código estable usado por el código de la aplicación (p. ej. CLINIC_ADMIN).
+  code        String    @unique @db.VarChar(50)
+  name        String    @db.VarChar(100)
+  scope       RoleScope
+  description String?   @db.VarChar(300)
+
+  permissions RolePermission[]
+  assignments UserAssignment[]
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String  @id @default(uuid()) @db.Char(36)
+  /// Formato modulo:accion, p. ej. branch:read.
+  code        String  @unique @db.VarChar(80)
+  description String? @db.VarChar(300)
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String @map("role_id") @db.Char(36)
+  permissionId String @map("permission_id") @db.Char(36)
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+/// Única fuente de permisos de un usuario: sin asignación activa no hay acceso.
+/// - rol PLATFORM  => clinic_id y branch_id nulos.
+/// - rol CLINIC    => clinic_id obligatorio; branch_id nulo = toda la clínica,
+///                    branch_id informado = solo esa sede.
+/// Esas reglas dependen del rol y se validan en la aplicación (AssignmentsService);
+/// la BD garantiza que branch_id requiera clinic_id y que la sede pertenezca a la clínica.
+model UserAssignment {
+  id            String           @id @default(uuid()) @db.Char(36)
+  userId        String           @map("user_id") @db.Char(36)
+  roleId        String           @map("role_id") @db.Char(36)
+  clinicId      String?          @map("clinic_id") @db.Char(36)
+  branchId      String?          @map("branch_id") @db.Char(36)
+  /// Evita duplicados con columnas NULL: "userId|roleId|clinicId-o-*|branchId-o-*".
+  assignmentKey String           @unique @map("assignment_key") @db.VarChar(160)
+  status        AssignmentStatus @default(ACTIVE)
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   Role    @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  clinic Clinic? @relation(fields: [clinicId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  branch Branch? @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([userId, status])
+  @@index([clinicId, status])
+  @@index([branchId])
+  @@index([roleId])
+  @@map("user_assignments")
+}
+
+/// Registro de auditoría inmutable (los triggers de la migración bloquean UPDATE y DELETE).
+/// Sin claves foráneas a propósito: el registro debe sobrevivir a cambios en otras tablas.
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String?  @map("user_id") @db.Char(36)
+  clinicId  String?  @map("clinic_id") @db.Char(36)
+  branchId  String?  @map("branch_id") @db.Char(36)
+  action    String   @db.VarChar(64)
+  entity    String   @db.VarChar(64)
+  entityId  String?  @map("entity_id") @db.VarChar(64)
+  ip        String?  @db.VarChar(64)
+  userAgent String?  @map("user_agent") @db.VarChar(255)
+  /// Resumen seguro de cambios: nunca contraseñas, tokens ni datos clínicos.
+  summary   Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([clinicId, createdAt])
+  @@index([userId, createdAt])
+  @@index([entity, entityId])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
