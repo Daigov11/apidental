@@ -1,0 +1,67 @@
+# PLANTILLA — no se aplica automáticamente. Copiar a /etc/nginx/sites-available/, revisar y habilitar.
+# Certificados: emitidos con certbot (rutas por defecto de Let's Encrypt).
+
+limit_req_zone $binary_remote_addr zone=apidental_login:10m rate=10r/m;
+
+# --- Sitio comercial (Next.js, futuro) y panel (React/Vite, futuro) ---
+server {
+    listen 443 ssl http2;
+    server_name dental.apiworking.com.pe;
+
+    ssl_certificate     /etc/letsencrypt/live/dental.apiworking.com.pe/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dental.apiworking.com.pe/privkey.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Content-Type-Options "nosniff" always;
+
+    # Panel: build estático de apps/admin (base '/admin/'). Aún no existe en este incremento.
+    location /admin/ {
+        alias /var/www/apidental/admin/;
+        try_files $uri $uri/ /admin/index.html;
+    }
+
+    # Sitio público: Next.js escuchando solo en loopback (puerto a definir). Aún no existe.
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+# --- API NestJS ---
+server {
+    listen 443 ssl http2;
+    server_name api.dental.apiworking.com.pe;
+
+    ssl_certificate     /etc/letsencrypt/live/api.dental.apiworking.com.pe/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.dental.apiworking.com.pe/privkey.pem;
+
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+
+    client_max_body_size 1m;   # los adjuntos clínicos tendrán su propio límite cuando existan
+
+    location = /v1/auth/login {
+        limit_req zone=apidental_login burst=5 nodelay;
+        include /etc/nginx/snippets/apidental-api-proxy.conf;
+    }
+
+    location / {
+        include /etc/nginx/snippets/apidental-api-proxy.conf;
+    }
+}
+
+server {
+    listen 80;
+    server_name dental.apiworking.com.pe api.dental.apiworking.com.pe;
+    return 301 https://$host$request_uri;
+}
+
+# /etc/nginx/snippets/apidental-api-proxy.conf:
+#   proxy_pass http://127.0.0.1:3000;
+#   proxy_set_header Host $host;
+#   proxy_set_header X-Real-IP $remote_addr;
+#   proxy_set_header X-Forwarded-For $remote_addr;   # no reenviar cabeceras del cliente
+#   proxy_set_header X-Forwarded-Proto $scheme;
+#   proxy_read_timeout 30s;
+# Con este proxy delante, defina TRUST_PROXY=1 en el entorno de la API.

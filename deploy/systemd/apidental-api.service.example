@@ -1,0 +1,30 @@
+# PLANTILLA — copiar a /etc/systemd/system/apidental-api.service y ajustar rutas.
+[Unit]
+Description=ApiDental API (NestJS)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=apidental
+Group=apidental
+WorkingDirectory=/opt/apidental/apps/api
+# Variables de entorno (NODE_ENV=production, DATABASE_URL, JWT_ACCESS_SECRET, ...).
+# Archivo con permisos 600 y propietario root:apidental; NUNCA dentro del repositorio.
+EnvironmentFile=/etc/apidental/api.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+
+# Endurecimiento
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# Cuando existan adjuntos: ReadWritePaths=/var/lib/apidental/files
+
+[Install]
+WantedBy=multi-user.target
