@@ -98,26 +98,31 @@ export class AgendaAvailabilityService {
   async availability(actor: AuthPrincipal, q: AvailabilityQuery) {
     const scope = agendaScope(actor);
     assertBranchAllowed(scope, q.branchId);
+    return this.availabilityOfClinic(scope.clinicId, q);
+  }
+
+  /** Horarios libres de una clínica (sin actor): lo usan el panel, con su alcance ya verificado, y la web pública. */
+  async availabilityOfClinic(clinicId: string, q: AvailabilityQuery, opts: { minLeadMs?: number } = {}) {
     const days = checkRange(q.from, q.to);
-    const branch = await this.db.branch.findFirst({ where: { id: q.branchId, clinicId: scope.clinicId, status: 'ACTIVE' }, select: { id: true } });
+    const branch = await this.db.branch.findFirst({ where: { id: q.branchId, clinicId, status: 'ACTIVE' }, select: { id: true } });
     if (!branch) throw new NotFoundException('Sede no encontrada');
     let duration = q.durationMinutes;
     if (q.serviceId) {
-      const svc = await this.db.agendaService.findFirst({ where: { id: q.serviceId, clinicId: scope.clinicId, status: 'ACTIVE' } });
+      const svc = await this.db.agendaService.findFirst({ where: { id: q.serviceId, clinicId, status: 'ACTIVE' } });
       if (!svc) throw new NotFoundException('Servicio no encontrado');
       duration ??= svc.durationMinutes;
     }
     if (!duration) throw new BadRequestException('Indique el servicio o la duración');
-    const windows = await this.windows(this.db, scope.clinicId, q.branchId, days, q.dentistUserId);
+    const windows = await this.windows(this.db, clinicId, q.branchId, days, q.dentistUserId);
     const from = limaToUtc(days[0]!, 0);
     const to = limaToUtc(days[days.length - 1]!, 24 * 60);
-    const busy = await this.busy(this.db, scope.clinicId, from, to, q.ignoreAppointmentId);
-    const rooms = await this.db.room.findMany({ where: { clinicId: scope.clinicId, branchId: q.branchId, status: 'ACTIVE', ...(q.roomId ? { id: q.roomId } : {}) }, select: { id: true }, orderBy: { name: 'asc' } });
-    const now = Date.now();
+    const busy = await this.busy(this.db, clinicId, from, to, q.ignoreAppointmentId);
+    const rooms = await this.db.room.findMany({ where: { clinicId, branchId: q.branchId, status: 'ACTIVE', ...(q.roomId ? { id: q.roomId } : {}) }, select: { id: true }, orderBy: { name: 'asc' } });
+    const earliest = Date.now() + (opts.minLeadMs ?? 0);
     const slots: { date: string; time: string; startsAt: string; dentistUserId: string; roomIds: string[] }[] = [];
     for (const w of windows) {
       for (let t = w.start.getTime(); t + duration * 60_000 <= w.end.getTime(); t += OFFER_STEP_MINUTES * 60_000) {
-        if (t < now) continue;
+        if (t < earliest) continue;
         const start = new Date(t);
         const end = addMinutes(start, duration);
         if (!this.isFree(busy, 'DENTIST', w.dentistUserId, start, end)) continue;

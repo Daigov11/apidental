@@ -84,6 +84,7 @@ model Branch {
   visits            ClinicalVisit[]
   rooms             Room[]
   appointments      Appointment[]
+  bookingRequests   BookingRequest[]
 
   @@unique([clinicId, name])
   // Permite la clave foránea compuesta (branch_id, clinic_id) desde user_assignments,
@@ -1393,9 +1394,10 @@ model AgendaService {
   status          CatalogStatus @default(ACTIVE)
   createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(3)
 
-  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Restrict)
-  specialty    Specialty?    @relation(fields: [specialtyId, clinicId], references: [id, clinicId], onDelete: Restrict)
-  appointments Appointment[]
+  clinic          Clinic           @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  specialty       Specialty?       @relation(fields: [specialtyId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  appointments    Appointment[]
+  bookingRequests BookingRequest[]
 
   @@unique([clinicId, name])
   @@unique([id, clinicId])
@@ -1487,12 +1489,13 @@ model Appointment {
   createdAt        DateTime          @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt        DateTime          @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
 
-  patient Patient        @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
-  branch  Branch         @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict)
-  room    Room           @relation(fields: [roomId, branchId], references: [id, branchId], onDelete: Restrict)
-  service AgendaService  @relation(fields: [serviceId, clinicId], references: [id, clinicId], onDelete: Restrict)
-  dentist User           @relation(fields: [dentistUserId], references: [id], onDelete: Restrict)
-  visit   ClinicalVisit? @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  patient        Patient         @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  branch         Branch          @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  room           Room            @relation(fields: [roomId, branchId], references: [id, branchId], onDelete: Restrict)
+  service        AgendaService   @relation(fields: [serviceId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  dentist        User            @relation(fields: [dentistUserId], references: [id], onDelete: Restrict)
+  visit          ClinicalVisit?  @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  bookingRequest BookingRequest?
 
   @@index([clinicId, branchId, startsAt])
   @@index([dentistUserId, startsAt])
@@ -1699,4 +1702,51 @@ model MockReviewRequest {
 
   @@index([clinicId, createdAt])
   @@map("mock_review_requests")
+}
+
+// ------------------------------------------------------------------ 5: solicitudes de cita desde la web pública
+
+enum BookingRequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+/// Solicitud de cita enviada desde la web pública. No es una cita ni una ficha de paciente: recepción la atiende
+/// (elige o crea al paciente, asigna odontólogo y horario) y solo entonces nace la cita. Datos administrativos mínimos.
+model BookingRequest {
+  id                String               @id @default(uuid()) @db.Char(36)
+  /// Código corto que ve el solicitante («SOL-7K3M9Q»). No revela datos.
+  reference         String               @unique @db.VarChar(16)
+  clinicId          String               @map("clinic_id") @db.Char(36)
+  branchId          String               @map("branch_id") @db.Char(36)
+  serviceId         String               @map("service_id") @db.Char(36)
+  /// Horario que pidió (no se reserva: dos personas pueden pedir el mismo).
+  desiredStartsAt   DateTime             @map("desired_starts_at") @db.DateTime(3)
+  firstName         String               @map("first_name") @db.VarChar(100)
+  lastName          String               @map("last_name") @db.VarChar(100)
+  secondLastName    String?              @map("second_last_name") @db.VarChar(100)
+  documentType      String?              @map("document_type") @db.VarChar(12)
+  documentNumber    String?              @map("document_number") @db.VarChar(40)
+  /// 9 dígitos, sin prefijo.
+  mobile            String               @db.VarChar(20)
+  email             String?              @db.VarChar(254)
+  /// Nota ADMINISTRATIVA; sin datos clínicos.
+  notes             String?              @db.VarChar(300)
+  privacyAcceptedAt DateTime             @map("privacy_accepted_at") @db.DateTime(3)
+  status            BookingRequestStatus @default(PENDING)
+  appointmentId     String?              @unique @map("appointment_id") @db.Char(36)
+  patientId         String?              @map("patient_id") @db.Char(36)
+  decidedById       String?              @map("decided_by_id") @db.Char(36)
+  decidedAt         DateTime?            @map("decided_at") @db.DateTime(3)
+  rejectReason      String?              @map("reject_reason") @db.VarChar(300)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+
+  branch      Branch        @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  service     AgendaService @relation(fields: [serviceId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  appointment Appointment?  @relation(fields: [appointmentId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId, status, createdAt])
+  @@index([mobile, status])
+  @@map("booking_requests")
 }

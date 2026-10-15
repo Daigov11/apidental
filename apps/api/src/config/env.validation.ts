@@ -7,6 +7,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   Min,
   MinLength,
@@ -221,6 +222,10 @@ export class EnvironmentVariables {
    */
   @IsOptional() @IsIn(['off', 'mock'])
   INTEGRATIONS_MODE: string = 'off';
+
+  /** Clínica a la que pertenece la web pública (landing y solicitudes de cita). Sin valor, las rutas públicas responden 404. */
+  @IsOptional() @IsUUID()
+  PUBLIC_BOOKING_CLINIC_ID?: string;
 
   /** Los simuladores no arrancan con NODE_ENV=production salvo que se confirme aquí (demostraciones en un servidor). */
   @IsOptional() @IsIn(['true', 'false'])

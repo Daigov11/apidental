@@ -27,12 +27,13 @@ server {
         include /etc/nginx/snippets/apidental-api-proxy.conf;
     }
 
-    # Sitio público: Next.js escuchando solo en loopback (puerto a definir). Aún no existe.
+    # Sitio público (landing y solicitud de citas): archivos estáticos de apps/site, copiados a /var/www/apidental/site.
+    # La API ya está en este mismo host (/v1/), así que no hay CORS. Requiere PUBLIC_BOOKING_CLINIC_ID en el entorno de la API.
     location / {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $remote_addr;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        root /var/www/apidental/site;
+        index index.html;
+        try_files $uri $uri/ =404;
+        add_header Cache-Control "no-cache";
     }
 }
 

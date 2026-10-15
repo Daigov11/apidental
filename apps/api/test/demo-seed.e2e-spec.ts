@@ -93,6 +93,7 @@ describe('Datos de demostración de Clínica Demo (ficticios) y flujo completo',
     const w = await demoWorld();
     expect(Object.keys(w.first.users).sort()).toEqual([
       'assistant',
+      'cashier',
       'dentist',
       'director',
       'reception',
