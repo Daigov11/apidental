@@ -3,6 +3,8 @@ import { syncCatalog } from './catalog.js';
 import { hashPassword } from '../src/common/utils/password.js';
 import { normalizeEmail } from '../src/common/utils/email.js';
 import { createPrismaClient } from '../src/prisma/client.js';
+import { contactRow, identifierRow, prepareContacts, prepareIdentifier } from '../src/patients/patient-data.js';
+import { toDateOnly } from '../src/patients/util/lima-date.js';
 import { assignmentKey } from '../src/users/assignment-key.js';
 
 loadEnvFile();
@@ -56,6 +58,88 @@ async function seedDemo() {
     });
   }
   console.log(`Administrador de desarrollo listo: ${normalized} (PLATFORM_ADMIN + CLINIC_ADMIN de Clínica Demo)`);
+  await seedDemoPatients(clinic.id, user.id);
+}
+
+/**
+ * Pacientes FICTICIOS de desarrollo (nombres "Demo", documentos 9000000x): cubren adulto,
+ * menor con representante, un posible duplicado y consentimientos. Idempotente. Nunca en producción.
+ */
+async function seedDemoPatients(clinicId: string, authorId: string) {
+  const author = authorId;
+  const ensure = async (spec: {
+    dni: string;
+    firstName: string;
+    lastName: string;
+    secondLastName?: string;
+    birthDate: string;
+    sex: 'FEMALE' | 'MALE';
+    mobile?: string;
+    email?: string;
+  }) => {
+    const id = prepareIdentifier({ type: 'DNI' as never, number: spec.dni });
+    const existing = await db.patientIdentifier.findFirst({
+      where: { clinicId, type: id.type, number: id.number, status: 'ACTIVE' },
+      select: { patientId: true },
+    });
+    if (existing) return existing.patientId;
+    const contacts = prepareContacts([
+      ...(spec.mobile ? [{ type: 'MOBILE' as never, value: spec.mobile }] : []),
+      ...(spec.email ? [{ type: 'EMAIL' as never, value: spec.email }] : []),
+    ]);
+    return db.$transaction(async (tx) => {
+      const p = await tx.patient.create({
+        data: {
+          clinicId,
+          firstName: spec.firstName,
+          lastName: spec.lastName,
+          secondLastName: spec.secondLastName ?? null,
+          birthDate: toDateOnly(spec.birthDate),
+          sex: spec.sex,
+          createdById: author,
+        },
+      });
+      await tx.patientIdentifier.create({ data: identifierRow(clinicId, p.id, id, author) });
+      for (const c of contacts) await tx.patientContact.create({ data: contactRow(clinicId, p.id, c, author) });
+      return p.id;
+    });
+  };
+  const consent = async (patientId: string, type: 'CLINICAL' | 'LOYALTY' | 'MARKETING', grantedBy: 'PATIENT' | 'GUARDIAN', guardianId?: string) => {
+    const activeKey = `${patientId}|${type}`;
+    if (await db.patientConsent.findUnique({ where: { activeKey } })) return;
+    await db.patientConsent.create({
+      data: {
+        clinicId, patientId, type, activeKey, grantedBy, guardianId: guardianId ?? null,
+        documentTitle: type === 'CLINICAL' ? 'Consentimiento informado (demo)' : `Autorización ${type} (demo)`,
+        documentVersion: 'demo-1.0',
+        grantedAt: new Date(),
+        createdById: author,
+      },
+    });
+  };
+
+  const adult = await ensure({ dni: '90000001', firstName: 'Lucía', lastName: 'Demo', secondLastName: 'Adulta', birthDate: '1988-04-12', sex: 'FEMALE', mobile: '900000001', email: 'lucia.demo@example.test' });
+  await consent(adult, 'CLINICAL', 'PATIENT');
+  await consent(adult, 'LOYALTY', 'PATIENT');
+
+  const child = await ensure({ dni: '90000002', firstName: 'Mateo', lastName: 'Demo', secondLastName: 'Menor', birthDate: '2017-09-30', sex: 'MALE' });
+  const guardianExists = await db.guardian.findFirst({ where: { clinicId, identifierType: 'DNI', identifierNumber: '90000003' } });
+  const guardian =
+    guardianExists ??
+    (await db.guardian.create({
+      data: { clinicId, firstName: 'Carmen', lastName: 'Demo', secondLastName: 'Madre', identifierType: 'DNI', identifierNumber: '90000003', mobile: '900000003', createdById: author },
+    }));
+  if (!(await db.patientGuardian.findFirst({ where: { patientId: child, guardianId: guardian.id, status: 'ACTIVE' } }))) {
+    await db.patientGuardian.create({
+      data: { clinicId, patientId: child, guardianId: guardian.id, relationship: 'MOTHER', isPrimary: true, activeKey: `${child}|${guardian.id}`, createdById: author },
+    });
+  }
+  await consent(child, 'CLINICAL', 'GUARDIAN', guardian.id);
+
+  // Par de posibles duplicados (mismo nombre y nacimiento, distinto documento) para probar la advertencia.
+  await ensure({ dni: '90000004', firstName: 'Jorge', lastName: 'Demo', secondLastName: 'Repetido', birthDate: '1975-01-20', sex: 'MALE', mobile: '900000004' });
+  await ensure({ dni: '90000005', firstName: 'JORGE', lastName: 'DEMO', secondLastName: 'Repetido', birthDate: '1975-01-20', sex: 'MALE', mobile: '900000004' });
+  console.log('Pacientes demo (ficticios) listos: adulto, menor con representante y un par de posibles duplicados.');
 }
 
 try {

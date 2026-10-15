@@ -11,6 +11,7 @@ import { RequestLoggingInterceptor } from './common/interceptors/request-logging
 import { AppConfig } from './config/app-config.js';
 import { ConfigModule } from './config/config.module.js';
 import { HealthModule } from './health/health.module.js';
+import { PatientsModule } from './patients/patients.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { TenancyModule } from './tenancy/tenancy.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -46,6 +47,7 @@ const isLoginRoute = (req: Request): boolean => req.path.endsWith('/auth/login')
     HealthModule,
     TenancyModule,
     UsersModule,
+    PatientsModule,
   ],
   providers: [
     // Orden de ejecución: límite de tasa → autenticación → permisos.
