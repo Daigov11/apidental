@@ -131,11 +131,11 @@ Acciones nuevas: `PATIENT_CREATED/VIEWED/SEARCHED/UPDATED/DEACTIVATED/REACTIVATE
 - **Sin antivirus** sobre los adjuntos. Se mitiga limitando a 4 tipos, validando por contenido y sirviendo como descarga con `nosniff`. Un PDF puede contener contenido activo para quien lo abra.
 - **Sin cifrado en reposo** a nivel de aplicación; se recomienda cifrar el volumen/directorio del VPS y asegurar que `ATTACHMENTS_DIR` esté en los respaldos diarios externos (si no, un respaldo solo de MySQL deja registros sin archivos).
 - **Archivos en memoria durante la carga** (hasta `ATTACHMENT_MAX_BYTES` por solicitud concurrente): conviene acotar la concurrencia en producción (límite de Nginx y del throttler ya presentes).
-- **Auditar accesos denegados** (403/404 a pacientes) para detectar sondeos: pendiente.
+- **Auditar accesos denegados:** desde 3.0 los `403` de usuarios autenticados se auditan como `ACCESS_DENIED` (patrón de ruta, sin ids). Los `404` por paciente ajeno **siguen sin auditarse** (decisión: evitar ruido; revisar en 3.1).
 - **Búsqueda por nombre** con `LIKE '%…%'` (no usa índice). Adecuado para clínicas pequeñas; evaluar `FULLTEXT` o prefijos si crece.
 - **Sin editar datos de un representante** ni consultar el historial de identificadores/contactos por API (los datos se conservan en las tablas).
 - **Sin fusión de pacientes** (por diseño); la resolución de duplicados confirmados queda para un incremento posterior.
-- **Sin recuperación de contraseña ni refresh token**, y la política de administrador de clínica sobre la historia clínica sigue abierta (ver incremento 1). Siguen siendo requisitos previos a usuarios reales.
+- Recuperación de contraseña y refresh token **resueltos en 3.0**; la política de administrador de clínica sobre la historia clínica sigue abierta (ver incremento 1). Siguen siendo requisitos previos a usuarios reales.
 - **El listado sin filtros** devuelve pacientes paginados; si se quiere impedir el volcado masivo, exigir al menos un filtro.
 
 ## Verificación (2026-10-14, MySQL Community 8.4.6)

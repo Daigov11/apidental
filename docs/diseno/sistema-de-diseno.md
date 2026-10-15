@@ -560,7 +560,7 @@ SEO: `<title>` y metadatos por página, `sitemap.xml`, `robots.txt`, datos estru
 ## 14. Decisiones y riesgos abiertos
 
 1. **Marca provisional:** el ícono actual es una propuesta técnica, no una identidad final.
-2. **Recuperación de contraseña** (backend): sigue pendiente; la interfaz no debe ofrecer "¿Olvidó su contraseña?" hasta que exista. Las altas son por **invitación** (pantalla de aceptación en `/admin/aceptar-invitacion`, con el token en el fragmento de la URL).
+2. **Recuperación de contraseña** (backend ya disponible): la pantalla de inicio de sesión ofrece "¿Olvidó su contraseña?" → formulario de correo cuyo mensaje es **siempre el mismo** ("Si el correo está registrado, recibirá un enlace"; nunca confirmar si existe). El enlace abre `/admin/restablecer-contrasena` con el token en el **fragmento** (`#token=…`): la pantalla lo valida, pide la nueva clave dos veces con la política (12–128 caracteres), muestra un mensaje de éxito sin iniciar sesión y envía al inicio de sesión. Las altas son por **invitación** (pantalla de aceptación en `/admin/aceptar-invitacion`, con el token en el fragmento de la URL).
 3. **Política de acceso clínico:** define qué pestañas y datos clínicos aparecen por rol (ver [`politica-acceso-clinico.md`](../arquitectura/politica-acceso-clinico.md)).
 4. **Mapeo de estados Apiworking/SUNAT** y tipos de comprobante: provisional.
 5. **Mensajes comerciales** sobre cumplimiento normativo: prohibidos hasta validar.

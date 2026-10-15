@@ -1,4 +1,4 @@
-# Sub-incremento 3.0: acceso seguro (invitaciones, sesiones y reautenticación)
+# Sub-incremento 3.0: acceso seguro (invitaciones, sesiones, reautenticación, recuperación y mantenimiento)
 
 Cierra las condiciones mínimas para dar acceso **real** a usuarios antes de manejar información clínica. Complementa a [`incremento-1-fundacion.md`](incremento-1-fundacion.md), [`incremento-2-pacientes.md`](incremento-2-pacientes.md), [`politica-acceso-clinico.md`](politica-acceso-clinico.md) y [`incremento-3-historia-clinica.md`](incremento-3-historia-clinica.md).
 
@@ -218,15 +218,42 @@ Una clínica **nunca** queda sin autoridad administrativa ni, una vez designado,
 | `POST /v1/invitations/:id/revoke` · `/resend` | manage | Revocar exige motivo; reenviar rota el token. |
 | `POST /v1/invitations/preview` · `/accept` | **público** (límite estricto por IP) | Cuenta nueva o existente. |
 | `POST /v1/provisioning-records` · `GET` · `POST /:id/revoke` | `provisioning:record` / `provisioning:read` | Solo la clínica; reautenticación. |
+| `POST /v1/auth/password-recovery` · `/validate` · `/confirm` | **público** (límite estricto por IP) | Solicitud con `202` neutral; `confirm` revoca todas las sesiones y no inicia sesión. |
+| `POST /v1/users/:id/disable` · `/reactivate` | `user:manage` | Motivo obligatorio; nunca elimina; regla de última autoridad. |
 | ~~`POST /v1/users`~~ | — | **Eliminado.** |
 | `POST /v1/assignments` | `assignment:manage` | La plataforma ya no otorga roles de clínica; el Director no se otorga por aquí. |
 | `PATCH /v1/assignments/:id/revoke` | `assignment:manage` | Aplica la regla de último administrador. |
 
 ---
 
+## 8 bis. Recuperación, deshabilitación, mantenimiento y accesos denegados
+
+### Recuperación de contraseña
+- **Solicitud neutral:** `POST /v1/auth/password-recovery` responde siempre `202` con el mismo cuerpo, exista o no la cuenta, esté o no deshabilitada; el trabajo real ocurre **en segundo plano**, así que el tiempo de respuesta no distingue los casos (probado). Cuentas inexistentes o deshabilitadas no generan token ni auditoría.
+- **Token:** 256 bits (`pr_…`), solo se guarda su SHA-256, un solo uso, vigencia `PASSWORD_RECOVERY_TTL_MINUTES` (30). Una sola recuperación pendiente por cuenta: una solicitud nueva reemplaza a la anterior. Espera mínima (`…_COOLDOWN_SECONDS`) y tope diario (`…_MAX_PER_DAY`) **silenciosos** (no revelan nada).
+- **Confirmación** (`READ COMMITTED` + `FOR UPDATE`): aplica la política de contraseña (12–128, variedad mínima, ≠ correo; la misma que al aceptar invitaciones), exige que sea **distinta de la actual**, revoca **todas** las sesiones (`PASSWORD_RECOVERY`→ razón `PASSWORD_RESET`), marca como usadas las pruebas de reautenticación, revoca invitaciones pendientes al correo y otras recuperaciones, limpia el bloqueo por intentos y **no inicia sesión**.
+- **Canal:** comparte el de las invitaciones (`dev`/`webhook`/`disabled`); evento `password_recovery.deliver`. Un fallo del canal se audita (`PASSWORD_RECOVERY_DELIVERY_FAILED`) pero la respuesta sigue siendo neutral.
+- **Auditoría:** `PASSWORD_RECOVERY_REQUESTED/SENT/DELIVERY_FAILED/COMPLETED/REJECTED/EXPIRED`, sin token, sin contraseña y sin el correo ajeno.
+
+### Deshabilitar y reactivar
+- Nunca se elimina al usuario ni se tocan sus asignaciones ni su auditoría. Deshabilitar revoca sesiones y refresh tokens, invalida pruebas de reautenticación y recuperaciones; el guard y el login ya rechazan a la cuenta en la solicitud siguiente.
+- **Alcance:** la clínica solo gestiona usuarios con asignación activa en ella (404 uniforme en caso contrario). Como deshabilitar es **global**, una cuenta con accesos fuera de esa clínica responde `409 ACCOUNT_SHARED` (se revoca su asignación en su lugar). El administrador limitado a una sede solo gestiona a quienes trabajan solo allí. Nadie se deshabilita a sí mismo. La plataforma puede con cualquiera y **solo ella reactiva lo que ella deshabilitó** (`disabledByPlatform`).
+- **Regla de última autoridad:** no se puede deshabilitar al último administrador de una clínica ni al último Director (una vez designado). `LastAuthorityService` bloquea primero la fila de la clínica (`FOR UPDATE`) en orden estable, así que dos deshabilitaciones concurrentes se serializan; los deadlocks residuales (también los que MySQL reporta como `P2010`/1213 desde consultas crudas) se **reintentan** (`withTxRetry`).
+- Reactivar **no restaura sesiones**: la persona debe iniciar sesión de nuevo.
+
+### Mantenimiento de seguridad
+`npm run maintenance[:dry-run]` (`dist/maintenance/cli.js`). Pasa a vencidas las invitaciones, recuperaciones, registros de aprovisionamiento y sesiones caducadas, y **depura por lotes** (`MAINTENANCE_BATCH_SIZE` × `MAINTENANCE_MAX_BATCHES`; si queda trabajo, `truncated: true` y continúa la siguiente ejecución): sesiones revocadas (con sus refresh tokens y pruebas) tras `RETENTION_SESSIONS_DAYS`, pruebas de reautenticación tras `RETENTION_REAUTH_DAYS`, e invitaciones/recuperaciones **cerradas** tras `RETENTION_INVITATIONS_DAYS`/`RETENTION_RECOVERIES_DAYS` (mínimo 30; lo imponen también los triggers: una invitación pendiente o con menos de 30 días no se puede borrar ni por SQL). **Nunca** depura auditoría, usuarios, asignaciones ni el registro de aprovisionamiento. Audita `MAINTENANCE_PURGE` solo con contadores. Es idempotente y no tiene bloqueo de ejecución propio: use el timer `oneshot` (`deploy/systemd/apidental-maintenance.*.example`). Los plazos de retención son **[por validar]** con asesoría legal.
+
+### Auditoría de accesos denegados
+- `ACCESS_DENIED` por cada `403` de un usuario **autenticado** con contexto de petición: método, **patrón de ruta** (`/v1/patients/:id/consents`, nunca el id ni la consulta), motivo (`no_context`, `missing_permission`, `forbidden`) y permisos exigidos. Sin cuerpo, cabeceras ni datos personales. Deduplicado 60 s por usuario+ruta+motivo para que un abuso no inunde la auditoría. No se audita el `403` de CSRF (no hay identidad) ni los `401/400/404`.
+- `REAUTH_REJECTED` cuando una prueba de reautenticación se rechaza al consumirla, con la razón (`malformed`, `unknown`, `other_user`, `other_session`, `other_purpose`, `other_target`, `already_used`, `expired`) y sin el token. `REAUTH_FAILED` (contraseña incorrecta) y `REFRESH_REUSE_DETECTED` ya existían.
+- Visibles para cada clínica en `GET /v1/audit-logs?action=ACCESS_DENIED`.
+
+---
+
 ## 9. Modelo de datos nuevo
 
-`auth_sessions`, `refresh_tokens` (solo hash; el hash y la sesión son inmutables), `reauth_proofs` (solo se puede marcar como usada, una vez), `invitations` (destinatario, rol, alcance y emisor inmutables; sin `DELETE`; estados cerrados no se reabren; CHECK de sede con clínica) y `provisioning_records` (contenido inmutable; sin `DELETE`). Migraciones `20261014020000_sessions_invitations_provisioning` y `20261014030000_invitation_issuer`.
+`auth_sessions`, `refresh_tokens` (solo hash; el hash y la sesión son inmutables), `reauth_proofs` (solo se puede marcar como usada, una vez), `invitations` (destinatario, rol, alcance y emisor inmutables; sin `DELETE`; estados cerrados no se reabren; CHECK de sede con clínica) y `provisioning_records` (contenido inmutable; sin `DELETE`). `password_recoveries` (solo hash; núcleo inmutable; solo se purgan cerradas con más de 30 días) y, en `users`, `disabled_at/by/reason` y `disabled_by_platform`. Las invitaciones cerradas con más de 30 días pueden depurarse. Migraciones `20261014020000_sessions_invitations_provisioning`, `20261014030000_invitation_issuer` y `20261014040000_recovery_disable_maintenance`.
 
 ---
 
@@ -236,28 +263,32 @@ Una clínica **nunca** queda sin autoridad administrativa ni, una vez designado,
 2. **El registro de aprovisionamiento es declarativo** (sección 6.3).
 3. **Un administrador de clínica puede invitar una segunda identidad propia** a un rol asistencial (p. ej. odontólogo). Eso contradice la separación de funciones; en 3.1 la relación asistencial la asignan terceros y quedan informes de autoasignación; hasta entonces es un riesgo conocido.
 4. **El token viaja por el canal de entrega**: la confidencialidad del enlace depende de ese canal (correo, SMS, etc.). Por eso el enlace usa fragmento, vence a las 72 h y es de un solo uso.
-5. **Sin recuperación de contraseña**: **sigue pendiente** y es requisito previo a usuarios reales (no formaba parte de este alcance). Podría apoyarse en el mismo mecanismo de token de un solo uso.
-6. **Sin deshabilitación de usuarios por API** todavía (hoy se hace en base de datos); cuando exista deberá invocar la regla de último administrador y cerrar las sesiones del usuario.
+5. **La recuperación depende del canal de entrega**: quien controle el correo (o el receptor del webhook) controla la cuenta. No hay segundo factor. **Falta la notificación de “contraseña cambiada”** a la persona (pendiente, requiere canal).
+6. **Política de contraseña mínima**: longitud, variedad y no igual al correo; sin lista de contraseñas filtradas **[por validar]**.
 7. **El modo estricto ante reutilización** exige que el panel serialice las renovaciones; si no, un usuario con varias pestañas verá cierres de sesión.
 8. **El access token no tiene `jti`**: dos emisiones en el mismo segundo para la misma sesión y contexto producen el mismo JWT (no es una vulnerabilidad: la revocación va por la sesión).
-9. **Las sesiones y tokens rotados se acumulan**: falta una política de depuración (retención) **[por validar]**.
-10. **Auditoría de accesos denegados** y alertas (p. ej., varios `REFRESH_REUSE_DETECTED`) siguen pendientes.
+9. **El mantenimiento no tiene bloqueo de ejecución**: es idempotente, pero dos instancias simultáneas solo competirían por las mismas filas; use el timer `oneshot`. Retenciones **[por validar]**.
+10. **Un administrador de clínica puede deshabilitar al Director** (queda protegido solo por la regla de último Director). En 3.1 conviene exigir reautenticación y/o que lo decida un Director.
+11. **Alertas**: los eventos (`ACCESS_DENIED`, `REAUTH_REJECTED`, `REFRESH_REUSE_DETECTED`) quedan auditados, pero **no hay alertas automáticas** ni panel; debe revisarlos una persona.
+12. **Aceptación y confirmación en `READ COMMITTED`**: se eligió para evitar la instantánea de `REPEATABLE READ` bajo concurrencia; los deadlocks se reintentan.
 
 ---
 
-## 11. Verificación (2026-10-14, MySQL Community 8.4.6)
+## 11. Verificación (2026-10-14, MySQL Community 8.4.6, base creada desde cero)
 
 | Comprobación | Resultado |
 |---|---|
-| Migraciones desde cero y sin desvío con el schema | Correcto |
-| Pruebas unitarias | 89 de 89 |
-| Pruebas e2e (20 archivos) | **302 de 302** |
+| 5 migraciones desde cero y sin desvío con el schema; seed dos veces | Correcto |
+| Pruebas unitarias | 96 de 96 |
+| Pruebas e2e (25 archivos), dos corridas completas | **368 de 368** |
+| Concurrencia de deshabilitación/última autoridad/aprovisionamiento, 12 repeticiones | 45 de 45 cada vez |
 | `tsc --noEmit`, `oxlint --type-aware`, `nest build` | Sin errores ni avisos |
 | `npm audit` | 0 vulnerabilidades |
+| `npm run maintenance:dry-run` sobre la base nueva | Resumen JSON correcto |
 
 Cobertura pedida: invitación válida, expirada, revocada, reutilizada y manipulada; aceptación sin filtración de correo; rotación y **reutilización** de refresh token; logout de una sesión y global; reautenticación correcta, incorrecta, expirada y usada para otro propósito/objeto/sesión; aislamiento entre clínicas; auditoría de todas las acciones sensibles; y que **ningún token, hash ni contraseña aparezca** en respuestas no autorizadas, logs ni auditoría (prueba transversal con un logger que captura todo; comprobada con mutaciones que inyectan una fuga).
 
-Defectos reales hallados por las pruebas y corregidos: (1) CORS anunciaba `Allow-Credentials` a orígenes no permitidos; (2) la aceptación concurrente podía superar la regla "clínica sin administrador" por la instantánea de `REPEATABLE READ` (ahora `READ COMMITTED` + bloqueo); (3) la prueba de fugas no detectaba hashes expuestos (ahora sí).
+Defectos reales hallados por las pruebas y corregidos: (1) CORS anunciaba `Allow-Credentials` a orígenes no permitidos; (2) la aceptación concurrente podía superar la regla "clínica sin administrador" por la instantánea de `REPEATABLE READ` (ahora `READ COMMITTED` + bloqueo); (3) la prueba de fugas no detectaba hashes expuestos (ahora sí); (4) **un deadlock entre dos deshabilitaciones cruzadas devolvía `500`**: MySQL lo reporta desde `SELECT … FOR UPDATE` como `P2010`/1213 y no como `P2034`, así que no se reintentaba (ahora `withTxRetry` lo reconoce; 12 repeticiones sin fallo).
 
 ---
 
@@ -271,4 +302,7 @@ Defectos reales hallados por las pruebas y corregidos: (1) CORS anunciaba `Allow
 2. Crear `clinical:read_all` **junto con** su justificación obligatoria (categoría + motivo), autorización de lectura de 30 min por paciente, auditoría previa a la entrega (falla cerrada) y consumo de la prueba `CLINICAL_READ_ALL`; asignarlo **solo** al rol Director Clínico.
 3. Crear `clinical:read`, `clinical:write`, `clinical:read_limited` y `care:assign`, y la relación asistencial con sus orígenes.
 4. Auditar también los **accesos clínicos denegados**.
-5. Antes de cargar **datos reales**: recuperación de contraseña, deshabilitación de usuarios (con la regla de último administrador y cierre de sesiones), respaldo diario externo con restauración probada y revisión legal de los puntos del documento del incremento 3.
+5. Mitigar que un administrador invite una segunda identidad propia y que deshabilite al Director sin intervención de un Director.
+6. Antes de cargar **datos reales**: canal de entrega probado, mantenimiento programado, notificación de contraseña cambiada, respaldo diario externo con restauración probada y revisión legal de los puntos del documento del incremento 3.
+
+**Cerrado en 3.0:** recuperación de contraseña, deshabilitación/reactivación con la regla de última autoridad, política de depuración y auditoría de accesos denegados.

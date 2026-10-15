@@ -1,0 +1,14 @@
+# PLANTILLA — copiar a /etc/systemd/system/apidental-maintenance.timer y activar con:
+#   systemctl enable --now apidental-maintenance.timer
+# Revise el resultado con: journalctl -u apidental-maintenance.service
+[Unit]
+Description=ApiDental mantenimiento de seguridad (diario)
+
+[Timer]
+# Una vez al día, de madrugada (hora del servidor); si el equipo estuvo apagado, se ejecuta al volver.
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target

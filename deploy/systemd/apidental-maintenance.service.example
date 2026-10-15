@@ -1,0 +1,26 @@
+# PLANTILLA — copiar a /etc/systemd/system/apidental-maintenance.service y ajustar rutas.
+# Tarea de mantenimiento de seguridad (vence y depura registros cerrados). Se ejecuta y termina (oneshot):
+# systemd no la solapa consigo misma. Es idempotente y procesa por lotes.
+[Unit]
+Description=ApiDental mantenimiento de seguridad (depuración de sesiones, invitaciones y recuperaciones)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=oneshot
+User=apidental
+Group=apidental
+WorkingDirectory=/opt/apidental/apps/api
+EnvironmentFile=/etc/apidental/api.env
+# Primero pruébelo a mano con --dry-run. Imprime un JSON con los contadores y sale con código != 0 si falla.
+ExecStart=/usr/bin/node dist/maintenance/cli.js
+TimeoutStartSec=15min
+
+# Endurecimiento (no necesita escribir en disco)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
