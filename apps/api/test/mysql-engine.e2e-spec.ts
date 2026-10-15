@@ -90,9 +90,9 @@ describe('Motor MySQL 8.4 y esquema real', () => {
     );
     expect(tables.map((t) => t.name).sort()).toEqual(
       [
-        'attachments', 'audit_logs', 'auth_sessions', 'branches', 'clinical_access_grants', 'clinical_alerts', 'clinical_allergy_assessments', 'clinical_history_entries', 'clinics', 'guardians', 'invitations',
+        'attachments', 'audit_logs', 'auth_sessions', 'branches', 'clinical_access_grants', 'clinical_alerts', 'clinical_allergy_assessments', 'clinical_diagnoses', 'clinical_history_entries', 'clinical_procedures', 'clinical_visits', 'clinics', 'guardians', 'invitations',
         'password_recoveries', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers', 'patients',
-        'permissions', 'provisioning_records', 'reauth_proofs', 'refresh_tokens', 'role_permissions', 'roles',
+        'permissions', 'procedure_definitions', 'provisioning_records', 'reauth_proofs', 'refresh_tokens', 'role_permissions', 'roles',
         'user_assignments', 'users',
       ],
     );
@@ -115,6 +115,10 @@ describe('Motor MySQL 8.4 y esquema real', () => {
         'reauth_proofs:UPDATE', 'refresh_tokens:UPDATE',
         'patient_care_relationships:INSERT', 'patient_care_relationships:UPDATE', 'patient_care_relationships:DELETE',
         'clinical_allergy_assessments:INSERT', 'clinical_allergy_assessments:UPDATE', 'clinical_allergy_assessments:DELETE',
+        'clinical_diagnoses:INSERT', 'clinical_diagnoses:UPDATE', 'clinical_diagnoses:DELETE',
+        'clinical_procedures:INSERT', 'clinical_procedures:UPDATE', 'clinical_procedures:DELETE',
+        'clinical_visits:INSERT', 'clinical_visits:UPDATE', 'clinical_visits:DELETE',
+        'procedure_definitions:UPDATE', 'procedure_definitions:DELETE',
         'clinical_alerts:INSERT', 'clinical_alerts:UPDATE', 'clinical_alerts:DELETE',
         'clinical_history_entries:INSERT', 'clinical_history_entries:UPDATE', 'clinical_history_entries:DELETE',
         'clinical_access_grants:INSERT', 'clinical_access_grants:UPDATE', 'clinical_access_grants:DELETE',
@@ -131,7 +135,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
         WHERE rc.constraint_schema = DATABASE() AND rc.referenced_table_name = 'patients'`,
     );
     expect(fks.map((f) => f.tableName).sort()).toEqual(
-      ['attachments', 'clinical_access_grants', 'clinical_alerts', 'clinical_allergy_assessments', 'clinical_history_entries', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers'],
+      ['attachments', 'clinical_access_grants', 'clinical_alerts', 'clinical_allergy_assessments', 'clinical_diagnoses', 'clinical_history_entries', 'clinical_procedures', 'clinical_visits', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers'],
     );
     for (const f of fks) expect(Number(f.cols)).toBe(2);
   });
