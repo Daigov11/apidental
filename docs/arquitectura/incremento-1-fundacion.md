@@ -70,6 +70,20 @@ Garantías comprobadas específicamente en MySQL 8.4 (`test/mysql-engine.e2e-spe
 
 Con una asignación de **toda la clínica** era posible seleccionar un contexto `{clínica propia, sede de otra clínica}`. Corregido en `AccessService.resolve` (la sede debe existir, estar activa y pertenecer a la clínica) y cubierto por una prueba e2e.
 
+## Requisitos antes de habilitar usuarios reales
+
+Este incremento es una base técnica, **no está listo para personal real**. Deben quedar resueltos y probados:
+
+1. Refresh token rotativo y logout con revocación.
+2. Recuperación y cambio de contraseña.
+3. Regla de "último administrador" (una clínica no puede quedar sin administradores activos).
+4. Política de acceso del administrador de clínica a la historia clínica (define los permisos clínicos).
+5. Respaldo diario externo con prueba de restauración (documento de arquitectura, 8.6).
+
+## Estructura del monorepo
+
+`apps/api` como único workspace es lo correcto en esta etapa. `apps/admin` (React + Vite, `/admin`) se añadirá cuando se inicie el panel, y `apps/web` y `packages/shared` cuando haya código que los justifique; no se crean frontends ni paquetes vacíos.
+
 ## Siguiente incremento sugerido
 
 Módulo de **pacientes y consentimientos**, manteniendo aislamiento por clínica, auditoría de lectura/escritura y adjuntos privados. Antes de empezar conviene resolver:
