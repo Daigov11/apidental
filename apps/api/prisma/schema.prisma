@@ -310,16 +310,17 @@ model Patient {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  clinic            Clinic                    @relation(fields: [clinicId], references: [id], onDelete: Restrict)
-  identifiers       PatientIdentifier[]
-  contacts          PatientContact[]
-  guardians         PatientGuardian[]
-  consents          PatientConsent[]
-  attachments       Attachment[]
-  careRelationships PatientCareRelationship[]
-  clinicalGrants    ClinicalAccessGrant[]
-  historyEntries    ClinicalHistoryEntry[]
-  clinicalAlerts    ClinicalAlert[]
+  clinic             Clinic                      @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  identifiers        PatientIdentifier[]
+  contacts           PatientContact[]
+  guardians          PatientGuardian[]
+  consents           PatientConsent[]
+  attachments        Attachment[]
+  careRelationships  PatientCareRelationship[]
+  clinicalGrants     ClinicalAccessGrant[]
+  historyEntries     ClinicalHistoryEntry[]
+  allergyAssessments ClinicalAllergyAssessment[]
+  clinicalAlerts     ClinicalAlert[]
 
   @@unique([id, clinicId])
   @@index([clinicId, lastName, firstName])
@@ -904,7 +905,7 @@ model ClinicalHistoryEntry {
   source        ClinicalInfoSource
   observations  String?              @db.VarChar(1000)
   changeKind    ClinicalChangeKind   @map("change_kind")
-  changeReason  String               @map("change_reason") @db.VarChar(300)
+  changeReason  String?              @map("change_reason") @db.VarChar(300)
   /// Solo NOMBRES de campos modificados respecto de la versión anterior (nunca valores).
   changedFields Json?                @map("changed_fields")
   createdById   String               @map("created_by_id") @db.Char(36)
@@ -936,7 +937,7 @@ model ClinicalAlert {
   /// Vigencia: pasada esta fecha la alerta deja de mostrarse (sigue en el historial).
   expiresAt     DateTime?             @map("expires_at") @db.DateTime(3)
   changeKind    ClinicalChangeKind    @map("change_kind")
-  changeReason  String                @map("change_reason") @db.VarChar(300)
+  changeReason  String?               @map("change_reason") @db.VarChar(300)
   changedFields Json?                 @map("changed_fields")
   createdById   String                @map("created_by_id") @db.Char(36)
   createdAt     DateTime              @default(now()) @map("created_at") @db.DateTime(3)
@@ -946,4 +947,42 @@ model ClinicalAlert {
   @@unique([itemId, version])
   @@index([clinicId, patientId, currentKey])
   @@map("clinical_alerts")
+}
+
+enum AllergyAssessmentStatus {
+  NOT_ASKED
+  NO_KNOWN_ALLERGIES
+  ALLERGIES_RECORDED
+}
+
+/// Evaluación de alergias del paciente: estado EXPLÍCITO y versionado (una cadena por paciente; item_id = patient_id).
+/// Distingue "no se preguntó" de "se preguntó y no reporta alergias". Invariante (también en la base de datos):
+/// ALLERGIES_RECORDED <=> existe al menos una alergia activa vigente. Sin filas = NOT_ASKED (o ALLERGIES_RECORDED derivado
+/// si hay alergias anteriores a esta tabla).
+model ClinicalAllergyAssessment {
+  id           String                  @id @default(uuid()) @db.Char(36)
+  clinicId     String                  @map("clinic_id") @db.Char(36)
+  patientId    String                  @map("patient_id") @db.Char(36)
+  version      Int
+  supersedesId String?                 @map("supersedes_id") @db.Char(36)
+  /// = patient_id en la versión vigente; NULL en las reemplazadas (único => una sola vigente por paciente).
+  currentKey   String?                 @unique @map("current_key") @db.Char(36)
+  status       AllergyAssessmentStatus
+  /// Fecha en que se consultó al paciente (no futura).
+  assessedOn   DateTime                @map("assessed_on") @db.Date
+  source       ClinicalInfoSource
+  observations String?                 @db.VarChar(500)
+  changeKind   ClinicalChangeKind      @map("change_kind")
+  /// Obligatorio desde la versión 2; el alta inicial no lo exige.
+  changeReason String?                 @map("change_reason") @db.VarChar(300)
+  /// true = la versión la generó el sistema al registrar o retirar alergias (no una declaración del profesional).
+  automatic    Boolean                 @default(false)
+  createdById  String                  @map("created_by_id") @db.Char(36)
+  createdAt    DateTime                @default(now()) @map("created_at") @db.DateTime(3)
+
+  patient Patient @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@unique([patientId, version])
+  @@index([clinicId, patientId])
+  @@map("clinical_allergy_assessments")
 }
