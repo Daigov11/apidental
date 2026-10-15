@@ -41,6 +41,7 @@ export const PERMISSIONS = {
   'clinical:read': 'Leer información clínica de pacientes con relación asistencial vigente',
   'clinical:write': 'Registrar información clínica de pacientes con relación asistencial vigente',
   'clinical:read_limited': 'Ver la vista de apoyo (alertas y datos de apoyo, sin diagnósticos ni evoluciones)',
+  'clinical:view': 'Ver (solo lectura, sin editar) la información clínica de los pacientes de la clínica',
   'clinical:read_all':
     'Leer (nunca escribir) información clínica de un paciente de la clínica con justificación, reautenticación y auditoría previa (solo Director Clínico)',
   // --- Catálogo de procedimientos de la clínica (3.3). Configuración administrativa, no datos de pacientes ---
@@ -66,6 +67,7 @@ export const CLINICAL_PERMISSIONS = [
   'clinical:read',
   'clinical:write',
   'clinical:read_limited',
+  'clinical:view',
   'clinical:read_all',
 ] as const satisfies readonly PermissionCode[];
 
@@ -78,6 +80,7 @@ export const CARE_ATTENDANCE_PERMISSIONS = [
   'clinical:read',
   'clinical:write',
   'clinical:read_limited',
+  'clinical:view',
   'appointment:attend',
 ] as const satisfies readonly PermissionCode[];
 
@@ -216,8 +219,8 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     code: 'RECEPTIONIST',
     name: 'Recepcionista',
     scope: 'CLINIC',
-    description: 'Recepción y agenda (permisos de módulos futuros).',
-    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS, 'care:assign', 'appointment:read', 'appointment:manage', 'charge:read', 'charge:manage', 'billing:read', 'loyalty:read'],
+    description: 'Recepción y agenda. Ve (solo lectura) la información clínica; no la edita.',
+    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS, 'care:assign', 'clinical:view', 'appointment:read', 'appointment:manage', 'charge:read', 'charge:manage', 'billing:read', 'loyalty:read'],
   },
   {
     code: 'DENTIST',

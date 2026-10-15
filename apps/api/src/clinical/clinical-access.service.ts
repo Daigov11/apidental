@@ -22,11 +22,11 @@ import { ClinicalAccessDeniedException } from './clinical.errors.js';
 import type { RequestClinicalAccessDto } from './dto/clinical.dto.js';
 
 export type ClinicalIntent = 'read' | 'write';
-export type ClinicalAccessLevel = 'FULL' | 'LIMITED' | 'READ_ALL';
+export type ClinicalAccessLevel = 'FULL' | 'LIMITED' | 'READ_ALL' | 'VIEW';
 
 export interface ClinicalAccessDecision {
   level: ClinicalAccessLevel;
-  via: 'care_relationship' | 'support_view' | 'read_all_grant';
+  via: 'care_relationship' | 'support_view' | 'read_all_grant' | 'view_only';
   clinicId: string;
   branchId: string | null;
   patientId: string;
@@ -82,7 +82,8 @@ const DENIALS = {
  * Motor de decisión del acceso clínico (falla cerrada). Un permiso clínico NO basta: hace falta además
  *  - odontólogo (`clinical:read`/`clinical:write`): relación asistencial VIGENTE con el paciente;
  *  - asistente (`clinical:read_limited`): el paciente tiene una relación vigente en su sede (vista de apoyo);
- *  - Director (`clinical:read_all`): una autorización de lectura vigente para ESE paciente, de su sesión.
+ *  - Director (`clinical:read_all`): una autorización de lectura vigente para ESE paciente, de su sesión;
+ *  - Recepción (`clinical:view`): solo lectura (vista visual) de cualquier paciente de la clínica; nunca escribe.
  * El paciente siempre debe ser de la clínica del contexto; uno ajeno responde 404 igual que uno inexistente.
  * Todo acceso, permitido o denegado, se audita; el permitido se audita ANTES de entregar el dato y, si la
  * auditoría falla, no se entrega.
@@ -169,6 +170,16 @@ export class ClinicalAccessService {
     }
 
     if (intent === 'read') {
+      // 1b) Recepción (clinical:view): vista de solo lectura de cualquier paciente de la clínica. Nunca escribe.
+      if (perms.has('clinical:view')) {
+        return this.allow(
+          actor,
+          { level: 'VIEW', via: 'view_only', clinicId, branchId, patientId, relationshipIds: [], grant: null },
+          intent,
+          sections,
+          meta,
+        );
+      }
       // 2) Director: autorización de lectura justificada, de ESTE paciente y de ESTA sesión.
       if (perms.has('clinical:read_all')) {
         const grant = await this.db.clinicalAccessGrant.findFirst({

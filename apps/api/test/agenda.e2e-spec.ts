@@ -225,7 +225,7 @@ describe('Agenda y citas (4.0)', () => {
     await w.book(w.reception.token, { serviceId: other.service.id, startsAt: at(w.date, '16:00') }).expect(404);
   });
 
-  it('cita → relación asistencial → visita, sin dar acceso clínico a recepción', async () => {
+  it('cita → relación asistencial → visita, recepción solo ve (lectura)', async () => {
     const w = await world();
     const startsAt = new Date(Math.ceil((Date.now() + 60_000) / 300_000) * 300_000);
     const mk = (createdById: string, patientId = w.patient) =>
@@ -235,7 +235,7 @@ describe('Agenda y citas (4.0)', () => {
     // recepción no inicia atenciones ni ve datos clínicos
     const row = await mk(w.reception.user.id);
     await w.post(w.reception.token, `/appointments/${row.id}/start-attention`).expect(403);
-    await w.get(w.reception.token, `/patients/${w.patient}/clinical/visits`).expect(403);
+    await w.get(w.reception.token, `/patients/${w.patient}/clinical/visits`).expect(200);
     // otro odontólogo no inicia la atención ajena
     const d2 = await loginInContext(ctx, w.d2User.email, { clinicId: w.clinic.id, branchId: w.branchA.id });
     await w.post(d2, `/appointments/${row.id}/start-attention`).expect(403);
@@ -257,10 +257,10 @@ describe('Agenda y citas (4.0)', () => {
     const again = await w.post(w.dentist.token, `/appointments/${row.id}/start-attention`).expect(200);
     expect(again.body.alreadyStarted).toBe(true);
     expect(again.body.visit.id).toBe(res.body.visit.id);
-    // el odontólogo ve la ficha; recepción sigue sin acceso (ficha, evolución, odontograma)
+    // el odontólogo ve la ficha; recepción solo lectura (ficha, evolución, odontograma)
     await w.get(w.dentist.token, `/patients/${w.patient}/clinical/visits/${res.body.visit.id}/sheet`).expect(200);
     for (const p of ['visits', `visits/${res.body.visit.id}/sheet`, 'odontogram', `visits/${res.body.visit.id}/evolution`, 'diagnoses']) {
-      expect((await w.get(w.reception.token, `/patients/${w.patient}/clinical/${p}`)).status, p).toBe(403);
+      expect((await w.get(w.reception.token, `/patients/${w.patient}/clinical/${p}`)).status, p).toBe(200);
     }
     // recepción ve la cita sin el vínculo con la visita
     const seen = (await w.get(w.reception.token, `/appointments/${row.id}`).expect(200)).body;

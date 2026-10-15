@@ -85,7 +85,7 @@ START = [
 ]
 
 MATRIX = [
-    ('Recepción', 'Gestiona citas y solicitudes web', 'Datos completos; crea pacientes', '—', 'Cobra', 'Ve', 'Ve'),
+    ('Recepción', 'Gestiona citas y solicitudes web', 'Datos completos; crea pacientes', 'Solo lectura', 'Cobra', 'Ve', 'Ve'),
     ('Odontólogo', 'Ve; inicia la atención', 'Lectura', 'Sí (sus pacientes)', '—', '—', '—'),
     ('Asistente', 'Ve', 'Datos básicos', '—', '—', '—', '—'),
     ('Director clínico', 'Ve', 'Lectura', 'Solo por la API', '—', '—', '—'),
@@ -146,11 +146,12 @@ RECEPCION = [
         'Para buscar, escriba el DNI, el nombre o el celular. **Desde 2 caracteres** la lista se filtra mientras escribe.',
         'Con **Estado** puede ver los pacientes **Activos** o **Inactivos**.',
         'Pulse el nombre para abrir la ficha: datos, **citas** y tarjeta de **fidelización** con su saldo de puntos.',
-        'Si no existe, pulse **Nuevo paciente** (arriba a la derecha) o **Crear a «texto»**.'],
+        'Si no existe, pulse **Nuevo paciente** (arriba a la derecha) o **Crear a «texto»**.',
+        'En **Atención clínica** (insignia **Solo lectura**) puede consultar las visitas y el odontograma, sin editarlos.'],
         [fig('recepcion-05-pacientes.jpg', 'Lista de pacientes: aparece al abrir y se filtra al escribir.', top=96, bottom=140),
          fig('recepcion-06-ficha-paciente.jpg', 'Ficha del paciente.', top=100, bottom=0)],
         tip='al reservar una cita, el cuadro **Paciente** también muestra pacientes apenas hace clic en él, sin escribir; desde 2 caracteres filtra.',
-        note='aún no hay pantalla para **editar** los datos de un paciente ya creado, ni para consentimientos y adjuntos (se hacen por la API). La historia clínica no es visible para recepción.'),
+        note='aún no hay pantalla para **editar** los datos de un paciente ya creado, ni para consentimientos y adjuntos (se hacen por la API). La historia clínica y el odontograma se ven **solo en lectura** (ficha del paciente, bloque «Atención clínica»); recepción no puede registrar ni modificar nada ahí.'),
     task('Cobrar una atención', [
         'Cuando el odontólogo atendió la cita, ábrala en **Agenda** y pulse **Registrar cobro**. También puede entrar por **Caja**.',
         'En **Caja** vea todos los cobros; filtre por **Estado** si lo necesita.',

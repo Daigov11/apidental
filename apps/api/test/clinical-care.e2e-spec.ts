@@ -1400,7 +1400,17 @@ describe('Visitas, diagnósticos y procedimientos (3.3)', () => {
       expect(await chain('clinicalProcedure', p.id)).toHaveLength(1);
     });
 
-    it('administración, recepción, caja y plataforma: 403 genérico idéntico exista o no el paciente', async () => {
+    it('recepción solo lee (vista): 200 en lecturas, 404 si no existe, 403 en toda escritura', async () => {
+      const w = await world();
+      const v = await openVisit(w);
+      for (const path of ['/visits', `/visits/${v.id}`, '/diagnoses', '/procedures'])
+        await get(w.reception.token, w.patientId, path).expect(200);
+      for (const path of ['/visits', '/diagnoses', '/procedures']) await get(w.reception.token, GHOST, path).expect(404);
+      await post(w.reception.token, w.patientId, `/visits/${v.id}/diagnoses`, { description: 'xx', certainty: 'PRESUMPTIVE' }).expect(403);
+      await post(w.reception.token, w.patientId, '/visits', { reason: 'Recepción no abre visitas' }).expect(403);
+    });
+
+    it('administración, caja y plataforma: 403 genérico idéntico exista o no el paciente', async () => {
       const w = await world();
       const v = await openVisit(w);
       const { user } = await fx.userWithRole('PLATFORM_ADMIN');
@@ -1408,7 +1418,6 @@ describe('Visitas, diagnósticos y procedimientos (3.3)', () => {
       for (const t of [
         platform,
         w.admin.token,
-        w.reception.token,
         w.cashier.token,
       ]) {
         for (const path of [
@@ -1639,7 +1648,6 @@ describe('Visitas, diagnósticos y procedimientos (3.3)', () => {
           .http()
           .get(`/v1/patients/${w.patientId}/clinical-summary`)
           .set(bearer(w.assistant.token)),
-        await get(w.reception.token, w.patientId, '/diagnoses'),
         await get(w.dentist.token, GHOST, '/diagnoses'),
       ];
       for (const r of admin) expect(r.text).not.toContain(marker);

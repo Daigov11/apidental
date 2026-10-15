@@ -22,7 +22,7 @@ Alcance: datos **clínicos** (historia clínica, antecedentes, alergias, alertas
 | **Administrador de clínica** | **Ninguno** | Administra usuarios, sedes y asignaciones, y ve datos demográficos, consentimientos y adjuntos administrativos (incremento 2). No lee ni escribe información clínica. |
 | **Odontólogo** | **Lectura y escritura** | Solo de pacientes con **relación asistencial** y dentro de **sus sedes asignadas**. Es el único que crea, edita y corrige evoluciones, diagnósticos y procedimientos. |
 | **Asistente** | **Lectura limitada** | Ve la *vista de apoyo* (ver 3.3) de pacientes con relación vigente en su sede. **No crea, edita ni corrige** evoluciones ni ningún dato clínico. |
-| **Recepcionista** | **Ninguno** | Puede asignar un paciente a un odontólogo (acto administrativo) pero no ve contenido clínico. |
+| **Recepcionista** | **Solo lectura (vista)** | Decisión del responsable del producto (2026-10-15): ve la información clínica (ficha, historia, evolución, odontograma) sin necesitar relación asistencial, **nunca escribe** y cada lectura queda auditada (`CLINICAL_RECORD_VIEWED`, nivel `VIEW`, sin contenido clínico). Además asigna pacientes a odontólogos (acto administrativo). |
 | **Cajero** | **Ninguno** | Solo lo necesario para cobrar. |
 | **Director Clínico** | **Lectura excepcional** con `clinical:read_all` | Solo lectura de cualquier paciente de su clínica, con justificación y auditoría reforzada (ver 4). No escribe. |
 
@@ -107,10 +107,13 @@ La auditoría **no copia contenido clínico**: guarda quién, a quién, cuándo,
 | Permiso | Odontólogo | Asistente | Director Clínico | Admin clínica | Recepción | Caja | Plataforma |
 |---|---|---|---|---|---|---|---|
 | `clinical:read` (con relación y sede) | ✔ | — | — | — | — | — | — |
+| `clinical:view` (solo lectura visual, sin relación; auditada) | — | — | — | — | ✔ | — | — |
 | `clinical:write` (crear, editar borradores, cerrar, corregir) | ✔ | — | — | — | — | — | — |
 | `clinical:read_limited` (vista de apoyo, con relación y sede) | — | ✔ | — | — | — | — | — |
 | `clinical:read_all` (solo lectura, con justificación) | — | — | ✔ | solo si además es Director | — | — | — |
 | `care:assign` (asignar paciente a odontólogo; no clínico) | — | — | ✔ | ✔ | ✔ | — | — |
+
+Nota: `clinical:view` se añadió el 2026-10-15; nunca habilita escritura (toda escritura exige `clinical:write`).
 
 Los nombres se confirman en el incremento 3. `clinical:read_all` **ya existe** (3.1), creado **junto con** su justificación, reautenticación y auditoría previa; solo el rol Director Clínico lo posee (un trigger lo impide en cualquier otro).
 

@@ -243,12 +243,17 @@ describe('Odontograma digital versionado y exportable (3.5)', () => {
         ).toBe(true); // nunca solo color
       }
       expect(odontogramSpec().example.teeth).toBeDefined();
-      for (const t of [w.reception.token, w.cashier.token, w.admin.token])
+      for (const t of [w.cashier.token, w.admin.token])
         await ctx
           .http()
           .get('/v1/clinical/odontogram/spec')
           .set(bearer(t))
           .expect(403);
+      await ctx
+        .http()
+        .get('/v1/clinical/odontogram/spec')
+        .set(bearer(w.reception.token))
+        .expect(200);
     });
   });
 
@@ -968,6 +973,10 @@ describe('Odontograma digital versionado y exportable (3.5)', () => {
       expect((await get(w.assistant.token, w).expect(403)).body.code).toBe(
         'CLINICAL_LIMITED_VIEW',
       );
+      for (const p of ['', '/versions', '/export'])
+        await get(w.reception.token, w, p).expect(200);
+      await post(w.reception.token, w, '/draft').expect(403);
+      await put(w.reception.token, w, { data: doc(), expectedEtag: '1.0' }).expect(403);
       for (const p of ['/versions', '/export'])
         expect((await get(w.assistant.token, w, p).expect(403)).body.code).toBe(
           'CLINICAL_LIMITED_VIEW',
@@ -976,7 +985,6 @@ describe('Odontograma digital versionado y exportable (3.5)', () => {
       for (const t of [
         platform,
         w.admin.token,
-        w.reception.token,
         w.cashier.token,
       ]) {
         for (const p of ['', '/versions', '/export']) {
@@ -1307,7 +1315,6 @@ describe('Odontograma digital versionado y exportable (3.5)', () => {
           .get(`/v1/patients/${w.patientId}/clinical/alerts`)
           .set(bearer(w.assistant.token)),
         await get(w.assistant.token, w),
-        await get(w.reception.token, w),
         await get(w.dentist.token, { ...w, patientId: GHOST } as W),
       ];
       for (const r of responses) expect(r.text).not.toContain(marker);

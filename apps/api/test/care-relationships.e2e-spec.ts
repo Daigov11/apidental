@@ -57,7 +57,7 @@ describe('Relación asistencial (care:assign)', () => {
     });
 
   describe('crear', () => {
-    it('recepción asigna el paciente a un odontólogo: queda explícita, auditada y NO da acceso clínico a quien la creó', async () => {
+    it('recepción asigna el paciente a un odontólogo: queda explícita, auditada y no da acceso de escritura a quien la creó (recepción solo ve)', async () => {
       const w = await world();
       const res = await assignCareReq(ctx, w.reception.token, w.patientId, {
         dentistUserId: w.dentist.user.id,
@@ -83,9 +83,12 @@ describe('Relación asistencial (care:assign)', () => {
         source: 'ASSIGNMENT',
         scope: 'clinic',
       });
-      // quien asigna no obtiene lectura clínica por ello
-      await summaryReq(ctx, w.reception.token, w.patientId).expect(403);
+      // asignar no da acceso clínico: administración sigue sin él; recepción solo tiene su vista de lectura (sin escribir)
       await summaryReq(ctx, w.admin.token, w.patientId).expect(403);
+      expect((await summaryReq(ctx, w.reception.token, w.patientId).expect(200)).body.access).toMatchObject({ level: 'VIEW', readOnly: true });
+      expect(
+        (await ctx.db.auditLog.findMany({ where: { patientId: w.patientId, userId: w.reception.user.id, action: 'CLINICAL_RECORD_VIEWED' } }))[0]?.summary,
+      ).toMatchObject({ level: 'VIEW', via: 'view_only', relationshipIds: [] });
     });
 
     it('una sola relación vigente por paciente, odontólogo y sede; alcances distintos pueden coexistir', async () => {

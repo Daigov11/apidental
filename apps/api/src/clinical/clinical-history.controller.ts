@@ -33,6 +33,7 @@ const uuid = () => new ParseUUIDPipe();
 const ANY_CLINICAL = [
   'clinical:read',
   'clinical:read_limited',
+  'clinical:view',
   'clinical:read_all',
 ] as const;
 const WRITE = ['clinical:write'] as const;

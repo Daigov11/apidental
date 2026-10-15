@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach } from 'vitest';
-import { DENTIST_PERMS, mockApi, RECEPTION_PERMS, renderApp, sessionRoutes } from './helpers';
+import { CASHIER_PERMS, DENTIST_PERMS, mockApi, RECEPTION_PERMS, renderApp, sessionRoutes } from './helpers';
 
 const PATIENT = { id: 'p-1', fullName: 'Lucía Demo Adulta', firstName: 'Lucía', lastName: 'Demo', status: 'ACTIVE', age: 38, isMinor: false, birthDate: '1988-04-12', identifiers: [{ type: 'DNI', number: '90000001' }], primaryMobile: '900000001' };
 const DENIED = { status: 403, json: { message: 'Acceso denegado', statusCode: 403 } };
@@ -36,12 +36,31 @@ describe('Pacientes y acceso clínico', () => {
     expect(await screen.findByText('Sin citas registradas')).toBeInTheDocument();
   });
 
-  it('recepción: la ficha del paciente no muestra ni solicita nada clínico', async () => {
-    const { calls } = mockApi({ ...sessionRoutes(RECEPTION_PERMS), 'GET /patients/p-1': { json: PATIENT }, 'GET /appointments': { json: [] } });
+  it('recepción: ve la atención clínica en solo lectura, sin controles de edición', async () => {
+    const VISIT = { id: 'v-1', visitNumber: 1, status: 'CLOSED', reason: 'Control', startedAt: '2026-10-10T15:00:00.000Z', closedAt: '2026-10-10T15:30:00.000Z' };
+    mockApi({
+      ...sessionRoutes(RECEPTION_PERMS), 'GET /patients/p-1': { json: PATIENT }, 'GET /appointments': { json: [] },
+      'GET /patients/p-1/clinical/visits': { json: [VISIT] },
+      'GET /patients/p-1/clinical/odontogram': { json: { official: null, draft: null, versionsCount: 0, formatNotice: 'Formato clínico por validar.' } },
+      'GET /clinical/odontogram/spec': { json: { toothStatuses: [], surfaces: [], surfaceStates: [], marks: [] } },
+    });
+    renderApp('/pacientes/p-1');
+    const heading = await screen.findByRole('heading', { name: /Atención clínica/ });
+    expect(within(heading).getByText('Solo lectura')).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Ver odontograma' })).toBeInTheDocument();
+    expect(screen.queryByText(/Su rol no incluye la historia clínica/)).not.toBeInTheDocument();
+    // En la página del odontograma no hay botones para iniciar, actualizar ni corregir
+    await userEvent.click(screen.getByRole('link', { name: 'Ver odontograma' }));
+    expect(await screen.findByText(/Vista de solo lectura/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Iniciar odontograma|Actualizar odontograma|Corregir la versión guardada/ })).not.toBeInTheDocument();
+  });
+
+  it('un perfil sin permiso clínico (caja) no ve la sección clínica y no la solicita', async () => {
+    const { calls } = mockApi({ ...sessionRoutes(CASHIER_PERMS, ['CASHIER']), 'GET /patients/p-1': { json: PATIENT }, 'GET /appointments': { json: [] } });
     renderApp('/pacientes/p-1');
     expect(await screen.findByText('Información clínica')).toBeInTheDocument();
-    expect(screen.getByText(/solo están disponibles para el odontólogo que atiende al paciente/)).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Atención clínica' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Su rol no incluye la historia clínica/)).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Atención clínica/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /odontograma/i })).not.toBeInTheDocument();
     expect(calls.filter((c) => c.path.includes('/clinical'))).toHaveLength(0);
   });

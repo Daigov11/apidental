@@ -28,7 +28,8 @@ export function PatientDetailPage() {
   if (patient.loading && !p) return <Loading rows={4} />;
   if (patient.error != null) return <ErrorState error={patient.error} onRetry={patient.reload} />;
   if (!p) return null;
-  const clinical = can('clinical:read');
+  const clinical = can('clinical:read') || can('clinical:view');
+  const viewOnly = !can('clinical:write');
   const document = p.identifiers[0] ? `${p.identifiers[0].type} ${p.identifiers[0].number}` : 'Sin documento';
 
   return (
@@ -80,9 +81,9 @@ export function PatientDetailPage() {
 
       {mode === 'mock' && can('loyalty:read') && <LoyaltyCard patientId={id} />}
 
-      {clinical ? <ClinicalCard patientId={id} /> : (
+      {clinical ? <ClinicalCard patientId={id} viewOnly={viewOnly} /> : (
         <Alert tone="info" title="Información clínica">
-          La historia clínica, la evolución y el odontograma solo están disponibles para el odontólogo que atiende al paciente.
+          Su rol no incluye la historia clínica, la evolución ni el odontograma.
         </Alert>
       )}
 
@@ -92,13 +93,13 @@ export function PatientDetailPage() {
   );
 }
 
-function ClinicalCard({ patientId }: { patientId: string }) {
+function ClinicalCard({ patientId, viewOnly }: { patientId: string; viewOnly: boolean }) {
   const visits = useAsync(() => get<VisitRow[]>(`/patients/${patientId}/clinical/visits`), [patientId]);
   const noRelation = visits.error instanceof ApiError && visits.error.status === 403;
   return (
     <section className="card" aria-labelledby="clin-h" style={{ marginTop: 'var(--space-6)' }}>
       <div className="card-head">
-        <h2 id="clin-h" className="h3">Atención clínica</h2>
+        <h2 id="clin-h" className="h3">Atención clínica{viewOnly && <> <Badge tone="neutral">Solo lectura</Badge></>}</h2>
         {!noRelation && <Link className="btn btn-secondary btn-sm" to={`/pacientes/${patientId}/odontograma`}>Ver odontograma</Link>}
       </div>
       {visits.loading && <Loading rows={2} />}

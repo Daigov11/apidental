@@ -755,10 +755,18 @@ describe('Parche 3.2.1: evaluación de alergias y motivo del alta', () => {
   });
 
   describe('acceso y aislamiento', () => {
-    it('perfiles sin permiso clínico, sin relación, con relación revocada o de otra clínica no leen ni escriben la evaluación', async () => {
+    it('administración, sin relación, con relación revocada o de otra clínica no leen ni escriben la evaluación (recepción solo lee)', async () => {
       const w = await world();
       await putA(w.dentist.token, w.patientId, assess()).expect(200);
-      for (const token of [w.admin.token, w.reception.token]) {
+      // Recepción solo tiene vista de lectura: lee (200) pero no escribe (403)
+      await get(w.reception.token, w.patientId, '/allergy-assessment').expect(200);
+      await get(w.reception.token, GHOST, '/allergy-assessment').expect(404);
+      await putA(
+        w.reception.token,
+        w.patientId,
+        assess({ expectedVersion: 1, reason: 'Recepción no escribe' }),
+      ).expect(403);
+      for (const token of [w.admin.token]) {
         const real = await get(
           token,
           w.patientId,

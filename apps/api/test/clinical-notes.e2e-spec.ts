@@ -930,15 +930,16 @@ describe('Evoluciones narrativas (3.4)', () => {
       ).toBe(2);
     });
 
-    it('administración, recepción, caja y plataforma: 403 genérico idéntico exista o no el paciente; otra clínica: 404 uniforme', async () => {
+    it('administración, caja y plataforma: 403 genérico idéntico exista o no el paciente; recepción solo lee; otra clínica: 404 uniforme', async () => {
       const w = await world();
       await closed(w);
+      await getEvo(w.reception.token, w).expect(200);
+      await put(w.reception.token, w, { body: 'x' }).expect(403);
       const { user } = await fx.userWithRole('PLATFORM_ADMIN');
       const platform = await loginInContext(ctx, user.email);
       for (const t of [
         platform,
         w.admin.token,
-        w.reception.token,
         w.cashier.token,
       ]) {
         const real = await getEvo(t, w).expect(403);
@@ -1105,7 +1106,6 @@ describe('Evoluciones narrativas (3.4)', () => {
           .http()
           .get(`/v1/patients/${w.patientId}/clinical/diagnoses`)
           .set(bearer(w.dentist.token)),
-        await getEvo(w.reception.token, w),
         await getEvo(w.dentist.token, { ...w, patientId: GHOST } as W),
       ];
       for (const r of responses) expect(r.text).not.toContain(marker);
@@ -1365,8 +1365,12 @@ describe('Evoluciones narrativas (3.4)', () => {
       expect(
         (await sheet('sheet', w.assistant.token).expect(403)).body.code,
       ).toBe('CLINICAL_LIMITED_VIEW');
-      for (const t of [w.admin.token, w.reception.token, w.cashier.token])
+      for (const t of [w.admin.token, w.cashier.token])
         await sheet('sheet', t).expect(403);
+      const rec = (await sheet('sheet', w.reception.token).expect(200)).body;
+      expect(rec.access).toMatchObject({ level: 'VIEW' });
+      expect(rec.actions.readOnly).toBe(true);
+      expect(Object.entries(rec.actions).filter(([k, v]) => k !== 'readOnly' && v === true)).toHaveLength(0);
       expect(
         (await sheet('sheet', w.director.token).expect(403)).body.code,
       ).toBe('CLINICAL_JUSTIFICATION_REQUIRED');

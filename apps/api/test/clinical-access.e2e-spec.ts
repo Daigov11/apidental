@@ -411,7 +411,7 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
   });
 
   describe('sin acceso clínico por defecto', () => {
-    it('plataforma, administración, recepción y caja: 403 genérico, sea el paciente real o inexistente', async () => {
+    it('plataforma, administración y caja: 403 genérico, sea el paciente real o inexistente (recepción solo lee: ver reception-view)', async () => {
       const w = await world();
       await assignCare(ctx, w.reception.token, w.patientId, w.dentist.user.id);
       const { user } = await fx.userWithRole('PLATFORM_ADMIN');
@@ -421,7 +421,6 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
         platformToken,
         platformInClinic,
         w.admin.token,
-        w.reception.token,
         w.cashier.token,
       ]) {
         const real = await summaryReq(ctx, token, w.patientId).expect(403);
@@ -439,6 +438,12 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
       expect(
         await audits(w.patientId, 'CLINICAL_READ_ALL_GRANTED'),
       ).toHaveLength(0);
+      // Recepción solo tiene vista de lectura: no puede pedir la lectura excepcional del Director
+      await requestReadAllReq(ctx, w.reception.token, w.patientId, {
+        category: 'OTHER',
+        reason: 'Intento sin permiso',
+        reauthToken: 'x'.repeat(20),
+      }).expect(403);
     });
 
     it('el administrador que además es odontólogo (otorgado por otro) tampoco lee sin relación ni se la asigna', async () => {
@@ -534,7 +539,7 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
       }
     });
 
-    it('enumeración: ids inexistentes, de otra clínica y sin permiso se ven igual; solo el paciente propio sin relación cambia (403)', async () => {
+    it('enumeración: ids inexistentes y de otra clínica se ven igual (404); sin permiso clínico, 403 uniforme; recepción lee el paciente propio', async () => {
       const w = await world();
       const other = await fx.clinic();
       const dentistB = await actorIn(ctx, fx, 'DENTIST', {
@@ -559,14 +564,24 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
           ),
         );
       expect(bodies.size).toBe(1);
-      // el recepcionista (sin permiso clínico) ve lo mismo para cualquier id
+      // el recepcionista (solo lectura) ve lo mismo para un id inexistente y uno de otra clínica; el propio sí lo lee
       const msgs = new Set<string>();
-      for (const id of [GHOST, foreignPatient, w.patientId])
+      const otherReception = await actorIn(ctx, fx, 'RECEPTIONIST', { clinicId: other.id });
+      const { id: patientOfOtherClinic } = await createPatient(ctx, otherReception.token);
+      for (const id of [GHOST, patientOfOtherClinic])
         msgs.add(
-          (await summaryReq(ctx, w.reception.token, id).expect(403)).body
+          (await summaryReq(ctx, w.reception.token, id).expect(404)).body
             .message,
         );
       expect(msgs.size).toBe(1);
+      await summaryReq(ctx, w.reception.token, w.patientId).expect(200);
+      // administración y caja (sin permiso clínico): 403 igual para cualquier id
+      const denied = new Set<string>();
+      for (const id of [GHOST, foreignPatient, w.patientId])
+        denied.add(
+          (await summaryReq(ctx, w.admin.token, id).expect(403)).body.message,
+        );
+      expect(denied.size).toBe(1);
       // la búsqueda demográfica sigue limitada a la clínica
       const search = await ctx
         .http()

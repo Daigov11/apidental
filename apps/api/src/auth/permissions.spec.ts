@@ -41,10 +41,19 @@ describe('catálogo RBAC', () => {
       expect(perms('CLINICAL_DIRECTOR')).not.toContain('clinical:read');
     });
 
-    it('plataforma, administración, recepción y caja no tienen NINGÚN permiso clínico', () => {
-      for (const code of ['PLATFORM_ADMIN', 'CLINIC_ADMIN', 'RECEPTIONIST', 'CASHIER']) {
+    it('plataforma, administración y caja no tienen NINGÚN permiso clínico', () => {
+      for (const code of ['PLATFORM_ADMIN', 'CLINIC_ADMIN', 'CASHIER']) {
         for (const p of CLINICAL_PERMISSIONS) expect(perms(code), `${code} ${p}`).not.toContain(p);
       }
+    });
+
+    it('recepción solo tiene clinical:view (vista de solo lectura): ningún otro permiso clínico ni de escritura', () => {
+      expect(holders('clinical:view')).toEqual(['RECEPTIONIST']);
+      for (const p of CLINICAL_PERMISSIONS.filter((x) => x !== 'clinical:view')) expect(perms('RECEPTIONIST'), `RECEPTIONIST ${p}`).not.toContain(p);
+    });
+
+    it('clinical:view no exige que quien asigna el rol la posea (no es una escalada)', () => {
+      expect(CARE_ATTENDANCE_PERMISSIONS as readonly string[]).toContain('clinical:view');
     });
 
     it('care:assign (acto administrativo) lo tienen administración, recepción y Director; la plataforma, no', () => {

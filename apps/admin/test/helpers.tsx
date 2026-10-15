@@ -33,7 +33,7 @@ export function mockApi(routes: Record<string, Handler>) {
 export const USER = { id: 'u-1', email: 'recepcion.demo@apidental.test', firstName: 'Rosa', lastName: 'Demo (recepción)' };
 export const CLINIC = { id: 'c-1', name: 'Clínica Demo' };
 
-export const RECEPTION_PERMS = ['appointment:manage', 'appointment:read', 'branch:read', 'clinic:read', 'patient:read', 'patient:read_basic', 'patient:write'];
+export const RECEPTION_PERMS = ['appointment:manage', 'appointment:read', 'branch:read', 'clinic:read', 'clinical:view', 'patient:read', 'patient:read_basic', 'patient:write'];
 export const DENTIST_PERMS = ['appointment:attend', 'appointment:read', 'branch:read', 'clinic:read', 'clinical:read', 'clinical:write', 'patient:read', 'patient:read_basic'];
 
 export function sessionRoutes(permissions: string[], roles = ['RECEPTIONIST']): Record<string, Handler> {

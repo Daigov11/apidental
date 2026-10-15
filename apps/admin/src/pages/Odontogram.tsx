@@ -7,6 +7,7 @@ import { downloadFile } from '../lib/download';
 import { fmtDateTime } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { Button } from '../ui/Button';
+import { useAuth } from '../auth/AuthProvider';
 import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
 import { ReasonDialog } from '../ui/overlays';
 import { OdontogramEditor } from './odontogram/OdontogramEditor';
@@ -17,6 +18,8 @@ import muela from '../assets/brand/muela.png';
 export function OdontogramPage() {
   const { id = '' } = useParams();
   const toast = useToast();
+  const { can } = useAuth();
+  const canWrite = can('clinical:write');
   const view = useAsync(() => get<OdontogramView>(`/patients/${id}/clinical/odontogram`), [id]);
   const spec = useAsync(() => get<OdontogramSpecLite>('/clinical/odontogram/spec'), []);
   const [pdfBusy, setPdfBusy] = useState(false);
@@ -63,7 +66,8 @@ export function OdontogramPage() {
         <OdontogramEditor key={view.data.draft.version} patientId={id} draft={view.data.draft} spec={spec.data} onFinished={finished} />
       )}
       {view.data?.draft && !view.data.draftIsMine && <Alert tone="warning">Hay un borrador en curso de otro odontólogo.</Alert>}
-      {!view.data?.draft && (
+      {!canWrite && <Alert tone="info">Vista de solo lectura: este perfil puede ver el odontograma, no editarlo.</Alert>}
+      {canWrite && !view.data?.draft && (
         <div className="toolbar" style={{ gap: 'var(--space-4)' }}>
           <Button variant="primary" icon={<Pencil size={18} aria-hidden="true" />} loading={starting} loadingText="Abriendo…" onClick={() => void start('UPDATE')}>
             {official ? 'Actualizar odontograma' : 'Iniciar odontograma'}
@@ -78,7 +82,7 @@ export function OdontogramPage() {
           onConfirm={async (reason) => { await start(undefined, reason, correcting); setCorrecting(null); }}
         />
       )}
-      {!official && !view.data?.draft && <EmptyState icon={<img className="empty-art" src={muela} alt="" aria-hidden="true" />} title="Todavía no hay un odontograma guardado">Use «Iniciar odontograma» para registrarlo durante la atención.</EmptyState>}
+      {!official && !view.data?.draft && <EmptyState icon={<img className="empty-art" src={muela} alt="" aria-hidden="true" />} title="Todavía no hay un odontograma guardado">{canWrite ? 'Use «Iniciar odontograma» para registrarlo durante la atención.' : 'El odontólogo lo registra durante la atención.'}</EmptyState>}
       {official && !view.data?.draft && (
         <>
           <div className="odonto-figure odonto-figure-edit">

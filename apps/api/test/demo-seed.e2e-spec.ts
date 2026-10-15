@@ -451,7 +451,7 @@ describe('Datos de demostración de Clínica Demo (ficticios) y flujo completo',
     expect(sheet.actions.canCloseVisit).toBe(false);
   });
 
-  it('cada perfil ve lo que le corresponde: asistente solo alertas, recepción y administración nada clínico, Director solo lectura excepcional', async () => {
+  it('cada perfil ve lo que le corresponde: asistente solo alertas, recepción solo lectura, administración nada clínico, Director solo lectura excepcional', async () => {
     const w = await demoWorld();
     const v = await visitOf(w.lucia);
     const assistant = await demoLogin(
@@ -487,7 +487,7 @@ describe('Datos de demostración de Clínica Demo (ficticios) y flujo completo',
       .http()
       .get(`/v1/patients/${w.lucia}/clinical/visits/${v.id}/sheet`)
       .set(bearer(reception))
-      .expect(403);
+      .expect(200);
     await ctx
       .http()
       .get(`/v1/patients/${w.lucia}/clinical/visits/${v.id}/sheet`)
@@ -527,7 +527,7 @@ describe('Datos de demostración de Clínica Demo (ficticios) y flujo completo',
       .expect(200);
   });
 
-  it('agenda demo: consultorios, servicios y citas ficticias; idempotente; la cita de hoy lleva a la atención sin dar acceso a recepción', async () => {
+  it('agenda demo: consultorios, servicios y citas ficticias; idempotente; la cita de hoy lleva a la atención; recepción solo lee', async () => {
     const w = await demoWorld();
     await createPatient(ctx, w.reception.token, {
       firstName: 'Camila',
@@ -599,7 +599,7 @@ describe('Datos de demostración de Clínica Demo (ficticios) y flujo completo',
         `/v1/patients/${camila.patientId}/clinical/visits/${started.body.visit.id}/sheet`,
       )
       .set(bearer(w.reception.token))
-      .expect(403);
+      .expect(200);
   });
 
   it('historias demo: 4 odontólogos más, citas sin choques, visitas enlazadas y odontogramas con varias versiones; idempotente', async () => {

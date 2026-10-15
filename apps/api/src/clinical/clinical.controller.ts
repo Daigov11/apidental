@@ -35,6 +35,7 @@ export class ClinicalController {
   @RequireAnyPermission(
     'clinical:read',
     'clinical:read_limited',
+    'clinical:view',
     'clinical:read_all',
   )
   get(

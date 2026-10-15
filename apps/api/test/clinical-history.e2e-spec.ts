@@ -1015,7 +1015,17 @@ describe('Antecedentes, alergias y alertas clínicas (3.2)', () => {
   });
 
   describe('quién ve y quién no (permiso clínico + relación)', () => {
-    it('plataforma, administración, recepción y caja no ven ni escriben nada clínico: 403 genérico idéntico exista o no el paciente', async () => {
+    it('recepción solo ve (vista): lee 200, no escribe', async () => {
+      const w = await world();
+      const e = await createEntry(w);
+      for (const path of ['/history', `/history/${e.id}`, `/history/${e.id}/versions`, '/alerts'])
+        await get(w.reception.token, w.patientId, path).expect(200);
+      await post(w.reception.token, w.patientId, '/history', entryBody()).expect(403);
+      await post(w.reception.token, w.patientId, '/alerts', alertBody()).expect(403);
+      await post(w.reception.token, w.patientId, `/history/${e.id}/deactivate`, changeBody(1)).expect(403);
+    });
+
+    it('plataforma, administración y caja no ven ni escriben nada clínico: 403 genérico idéntico exista o no el paciente', async () => {
       const w = await world();
       const e = await createEntry(w);
       const { user } = await fx.userWithRole('PLATFORM_ADMIN');
@@ -1023,7 +1033,6 @@ describe('Antecedentes, alergias y alertas clínicas (3.2)', () => {
       for (const token of [
         platform,
         w.admin.token,
-        w.reception.token,
         w.cashier.token,
       ]) {
         for (const path of [
@@ -1432,7 +1441,6 @@ describe('Antecedentes, alergias y alertas clínicas (3.2)', () => {
         expect(r.text).not.toContain(marker);
       // errores
       for (const res of [
-        await get(w.reception.token, w.patientId, '/history'),
         await get(w.dentist.token, GHOST, '/history'),
         await get(w.dentist.token, w.patientId, `/history/${GHOST}`),
       ]) {
