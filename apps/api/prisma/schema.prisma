@@ -327,6 +327,7 @@ model Patient {
   diagnoses          ClinicalDiagnosis[]
   procedures         ClinicalProcedure[]
   notes              ClinicalNote[]
+  odontograms        ClinicalOdontogram[]
   clinicalAlerts     ClinicalAlert[]
 
   @@unique([id, clinicId])
@@ -528,6 +529,8 @@ enum ReauthPurpose {
   MARK_CLINICAL_NOTE_ERROR
   CLINICAL_READ_ALL
   AUTHORIZE_DIRECTOR_PROVISIONING
+  CORRECT_ODONTOGRAM
+  MARK_ODONTOGRAM_ERROR
 }
 
 enum PasswordRecoveryStatus {
@@ -1235,4 +1238,65 @@ model ClinicalNote {
   @@index([clinicId, patientId, currentKey])
   @@index([visitId, currentKey])
   @@map("clinical_notes")
+}
+
+// ---------------------------------------------------------------------------
+// Sub-incremento 3.5: odontograma digital versionado y exportable (una cadena por paciente).
+// Representación ESTRUCTURADA por pieza (numeración FDI), superficies y estados. Formato clínico POR VALIDAR: no se
+// afirma cumplimiento de normas del MINSA hasta su validación formal. Registra lo que el profesional declara: no genera
+// tratamientos, presupuestos ni diagnósticos, ni recomienda nada. Sin planes de tratamiento ni presupuestos.
+// ---------------------------------------------------------------------------
+
+enum OdontogramStatus {
+  DRAFT
+  CLOSED
+  DISCARDED
+  ENTERED_IN_ERROR
+}
+
+enum OdontogramChangeKind {
+  CREATED
+  UPDATED
+  CORRECTED
+  RECTIFIED
+  DISCARDED
+  MARKED_IN_ERROR
+}
+
+enum OdontogramDentition {
+  PERMANENT
+  PRIMARY
+  MIXED
+}
+
+model ClinicalOdontogram {
+  id            String               @id @default(uuid()) @db.Char(36)
+  clinicId      String               @map("clinic_id") @db.Char(36)
+  patientId     String               @map("patient_id") @db.Char(36)
+  version       Int
+  supersedesId  String?              @map("supersedes_id") @db.Char(36)
+  /// = patient_id en la versión vigente de la cadena; NULL en las reemplazadas.
+  currentKey    String?              @unique @map("current_key") @db.Char(36)
+  status        OdontogramStatus
+  dentition     OdontogramDentition
+  /// Estructura por pieza/superficie (validada por la aplicación contra la especificación). Texto clínico: jamás a la auditoría.
+  data          Json
+  /// Ediciones del borrador en el sitio.
+  revision      Int                  @default(0)
+  changeKind    OdontogramChangeKind @map("change_kind")
+  /// Obligatorio al corregir, rectificar, descartar o marcar por error.
+  changeReason  String?              @map("change_reason") @db.VarChar(300)
+  /// SHA-256 del contenido al guardar la versión: evidencia de integridad, NO una firma.
+  contentHash   String?              @map("content_hash") @db.Char(64)
+  closedAt      DateTime?            @map("closed_at") @db.DateTime(3)
+  reauthProofId String?              @map("reauth_proof_id") @db.Char(36)
+  createdById   String               @map("created_by_id") @db.Char(36)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime             @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  patient Patient @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@unique([patientId, version])
+  @@index([clinicId, patientId])
+  @@map("clinical_odontograms")
 }
