@@ -57,6 +57,7 @@ model Clinic {
 
   branches    Branch[]
   assignments UserAssignment[]
+  patients    Patient[]
 
   @@map("clinics")
 }
@@ -173,6 +174,8 @@ model AuditLog {
   userId    String?  @map("user_id") @db.Char(36)
   clinicId  String?  @map("clinic_id") @db.Char(36)
   branchId  String?  @map("branch_id") @db.Char(36)
+  /// Paciente involucrado (si aplica): permite responder "quién accedió a este paciente".
+  patientId String?  @map("patient_id") @db.Char(36)
   action    String   @db.VarChar(64)
   entity    String   @db.VarChar(64)
   entityId  String?  @map("entity_id") @db.VarChar(64)
@@ -183,8 +186,284 @@ model AuditLog {
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   @@index([clinicId, createdAt])
+  @@index([patientId, createdAt])
   @@index([userId, createdAt])
   @@index([entity, entityId])
   @@index([action, createdAt])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------
+// Incremento 2: pacientes, contactos, consentimientos y adjuntos privados.
+// Datos demográficos y administrativos únicamente: NO hay datos clínicos aquí.
+// Nada se elimina físicamente (triggers de la migración bloquean DELETE).
+// Todas las tablas hijas llevan clinic_id y una FK compuesta (patient_id, clinic_id)
+// que impide a nivel de BD asociar datos de una clínica a un paciente de otra.
+// ---------------------------------------------------------------------------
+
+enum PatientStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum Sex {
+  FEMALE
+  MALE
+  OTHER
+}
+
+enum IdentifierType {
+  DNI
+  CE
+  PASSPORT
+}
+
+/// Historial de identificadores y contactos: el valor vigente es ACTIVE; los reemplazados quedan SUPERSEDED.
+enum RecordStatus {
+  ACTIVE
+  SUPERSEDED
+}
+
+enum ContactType {
+  MOBILE
+  PHONE
+  EMAIL
+  ADDRESS
+}
+
+enum GuardianRelationship {
+  MOTHER
+  FATHER
+  LEGAL_GUARDIAN
+  GRANDPARENT
+  SIBLING
+  OTHER
+}
+
+enum GuardianLinkStatus {
+  ACTIVE
+  ENDED
+}
+
+enum ConsentType {
+  CLINICAL
+  LOYALTY
+  MARKETING
+}
+
+enum ConsentStatus {
+  GRANTED
+  REVOKED
+}
+
+enum ConsentGrantedBy {
+  PATIENT
+  GUARDIAN
+}
+
+/// Solo categorías administrativas. Radiografías, fotos clínicas y similares llegarán con el
+/// módulo clínico y con permisos propios; no se mezclan aquí.
+enum AttachmentCategory {
+  CONSENT
+  IDENTITY_DOCUMENT
+  OTHER_ADMINISTRATIVE
+}
+
+enum AttachmentStatus {
+  ACTIVE
+  REMOVED
+}
+
+model Patient {
+  id              String        @id @default(uuid()) @db.Char(36)
+  clinicId        String        @map("clinic_id") @db.Char(36)
+  firstName       String        @map("first_name") @db.VarChar(100)
+  lastName        String        @map("last_name") @db.VarChar(100)
+  secondLastName  String?       @map("second_last_name") @db.VarChar(100)
+  birthDate       DateTime?     @map("birth_date") @db.Date
+  sex             Sex?
+  status          PatientStatus @default(ACTIVE)
+  statusReason    String?       @map("status_reason") @db.VarChar(300)
+  /// Sede donde se registró (informativo: el paciente pertenece a la clínica, no a la sede).
+  createdBranchId String?       @map("created_branch_id") @db.Char(36)
+  createdById     String        @map("created_by_id") @db.Char(36)
+  updatedById     String?       @map("updated_by_id") @db.Char(36)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  clinic      Clinic              @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  identifiers PatientIdentifier[]
+  contacts    PatientContact[]
+  guardians   PatientGuardian[]
+  consents    PatientConsent[]
+  attachments Attachment[]
+
+  @@unique([id, clinicId])
+  @@index([clinicId, lastName, firstName])
+  @@index([clinicId, birthDate])
+  @@index([clinicId, status])
+  @@map("patients")
+}
+
+model PatientIdentifier {
+  id             String         @id @default(uuid()) @db.Char(36)
+  clinicId       String         @map("clinic_id") @db.Char(36)
+  patientId      String         @map("patient_id") @db.Char(36)
+  type           IdentifierType
+  /// Normalizado (DNI: 8 dígitos; CE/pasaporte: alfanumérico en mayúsculas).
+  number         String         @db.VarChar(20)
+  status         RecordStatus   @default(ACTIVE)
+  /// "clinica|tipo|numero" mientras esté ACTIVE, NULL al reemplazarse:
+  /// un mismo documento no puede estar vigente en dos pacientes de la clínica.
+  activeKey      String?        @unique @map("active_key") @db.VarChar(80)
+  /// "paciente|tipo" mientras esté ACTIVE: un paciente tiene un solo identificador vigente por tipo.
+  patientTypeKey String?        @unique @map("patient_type_key") @db.VarChar(80)
+  changeReason   String?        @map("change_reason") @db.VarChar(300)
+  supersededAt   DateTime?      @map("superseded_at")
+  createdById    String         @map("created_by_id") @db.Char(36)
+  createdAt      DateTime       @default(now()) @map("created_at")
+
+  patient Patient @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@index([patientId])
+  @@index([clinicId, number])
+  @@map("patient_identifiers")
+}
+
+/// Celular y correo NO son únicos (se comparten entre familiares y cambian): solo alimentan
+/// las advertencias de posible duplicado.
+model PatientContact {
+  id           String       @id @default(uuid()) @db.Char(36)
+  clinicId     String       @map("clinic_id") @db.Char(36)
+  patientId    String       @map("patient_id") @db.Char(36)
+  type         ContactType
+  value        String       @db.VarChar(300)
+  /// Valor normalizado para comparar (dígitos / correo en minúsculas). NULL para direcciones.
+  valueKey     String?      @map("value_key") @db.VarChar(254)
+  label        String?      @db.VarChar(60)
+  isPrimary    Boolean      @default(false) @map("is_primary")
+  status       RecordStatus @default(ACTIVE)
+  /// "paciente|tipo" si es el contacto principal vigente: máximo uno por tipo.
+  primaryKey   String?      @unique @map("primary_key") @db.VarChar(80)
+  /// "paciente|tipo|valor" mientras esté vigente: sin repetir el mismo valor en un paciente.
+  activeKey    String?      @unique @map("active_key") @db.VarChar(300)
+  changeReason String?      @map("change_reason") @db.VarChar(300)
+  supersededAt DateTime?    @map("superseded_at")
+  createdById  String       @map("created_by_id") @db.Char(36)
+  createdAt    DateTime     @default(now()) @map("created_at")
+
+  patient Patient @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@index([patientId, status])
+  @@index([clinicId, type, valueKey])
+  @@map("patient_contacts")
+}
+
+/// Representante o apoderado (persona). Puede serlo de varios pacientes (hermanos).
+model Guardian {
+  id               String          @id @default(uuid()) @db.Char(36)
+  clinicId         String          @map("clinic_id") @db.Char(36)
+  firstName        String          @map("first_name") @db.VarChar(100)
+  lastName         String          @map("last_name") @db.VarChar(100)
+  secondLastName   String?         @map("second_last_name") @db.VarChar(100)
+  identifierType   IdentifierType? @map("identifier_type")
+  identifierNumber String?         @map("identifier_number") @db.VarChar(20)
+  mobile           String?         @db.VarChar(20)
+  email            String?         @db.VarChar(254)
+  createdById      String          @map("created_by_id") @db.Char(36)
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  links PatientGuardian[]
+
+  @@unique([id, clinicId])
+  @@index([clinicId, lastName])
+  @@index([clinicId, identifierNumber])
+  @@map("guardians")
+}
+
+model PatientGuardian {
+  id                    String               @id @default(uuid()) @db.Char(36)
+  clinicId              String               @map("clinic_id") @db.Char(36)
+  patientId             String               @map("patient_id") @db.Char(36)
+  guardianId            String               @map("guardian_id") @db.Char(36)
+  relationship          GuardianRelationship
+  isPrimary             Boolean              @default(false) @map("is_primary")
+  isLegalRepresentative Boolean              @default(false) @map("is_legal_representative")
+  status                GuardianLinkStatus   @default(ACTIVE)
+  /// "paciente|apoderado" mientras esté vigente: sin vínculos duplicados.
+  activeKey             String?              @unique @map("active_key") @db.VarChar(80)
+  endedAt               DateTime?            @map("ended_at")
+  endReason             String?              @map("end_reason") @db.VarChar(300)
+  createdById           String               @map("created_by_id") @db.Char(36)
+  createdAt             DateTime             @default(now()) @map("created_at")
+
+  patient  Patient  @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  guardian Guardian @relation(fields: [guardianId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@index([patientId, status])
+  @@index([guardianId])
+  @@map("patient_guardians")
+}
+
+/// Un consentimiento es un registro independiente; revocar no lo borra ni lo edita.
+/// Tipos separados: clínico, fidelización y marketing. Validez legal y formatos: por validar.
+model PatientConsent {
+  id               String           @id @default(uuid()) @db.Char(36)
+  clinicId         String           @map("clinic_id") @db.Char(36)
+  patientId        String           @map("patient_id") @db.Char(36)
+  type             ConsentType
+  status           ConsentStatus    @default(GRANTED)
+  documentTitle    String           @map("document_title") @db.VarChar(200)
+  documentVersion  String           @map("document_version") @db.VarChar(60)
+  grantedAt        DateTime         @map("granted_at") @db.DateTime(3)
+  grantedBy        ConsentGrantedBy @map("granted_by")
+  guardianId       String?          @map("guardian_id") @db.Char(36)
+  notes            String?          @db.VarChar(500)
+  /// "paciente|tipo" mientras esté GRANTED: un solo consentimiento vigente por tipo.
+  activeKey        String?          @unique @map("active_key") @db.VarChar(80)
+  revokedAt        DateTime?        @map("revoked_at") @db.DateTime(3)
+  revokedById      String?          @map("revoked_by_id") @db.Char(36)
+  revocationReason String?          @map("revocation_reason") @db.VarChar(300)
+  createdById      String           @map("created_by_id") @db.Char(36)
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  patient     Patient      @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  attachments Attachment[]
+
+  @@index([patientId, type])
+  @@index([clinicId, type, status])
+  @@map("patient_consents")
+}
+
+/// Metadatos de un archivo. El contenido vive en disco privado (jamás en MySQL) bajo
+/// storage_key, que nunca se expone por la API; el acceso es solo por endpoints autorizados.
+model Attachment {
+  id            String             @id @default(uuid()) @db.Char(36)
+  clinicId      String             @map("clinic_id") @db.Char(36)
+  patientId     String             @map("patient_id") @db.Char(36)
+  consentId     String?            @map("consent_id") @db.Char(36)
+  category      AttachmentCategory
+  originalName  String             @map("original_name") @db.VarChar(160)
+  /// MIME detectado por contenido (no el declarado por el cliente).
+  mimeType      String             @map("mime_type") @db.VarChar(100)
+  sizeBytes     Int                @map("size_bytes")
+  sha256        String             @db.Char(64)
+  storageKey    String             @unique @map("storage_key") @db.VarChar(120)
+  description   String?            @db.VarChar(300)
+  status        AttachmentStatus   @default(ACTIVE)
+  removedAt     DateTime?          @map("removed_at")
+  removedById   String?            @map("removed_by_id") @db.Char(36)
+  removalReason String?            @map("removal_reason") @db.VarChar(300)
+  uploadedById  String             @map("uploaded_by_id") @db.Char(36)
+  createdAt     DateTime           @default(now()) @map("created_at")
+
+  patient Patient         @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  consent PatientConsent? @relation(fields: [consentId], references: [id], onDelete: Restrict)
+
+  @@index([patientId, status])
+  @@index([consentId])
+  @@index([clinicId, sha256])
+  @@map("attachments")
 }

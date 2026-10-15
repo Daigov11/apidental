@@ -38,5 +38,5 @@ coverage/
 skills-lock.json
 
 # datos locales (adjuntos, respaldos, exportaciones)
-/storage/
+storage/
 /backups/
