@@ -1,14 +1,25 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { CalendarDays, Home, LogOut, Repeat, Users } from 'lucide-react';
+import { CalendarDays, FileText, Home, LogOut, Repeat, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { BranchProvider } from '../lib/branch';
+import { IntegrationsProvider, useIntegrations } from '../lib/integrations';
+import { SimulationBanner } from '../ui/SimulationBanner';
 import { Button } from '../ui/Button';
 
 interface Item { to: string; label: string; icon: ReactNode; show: boolean; end?: boolean }
 
 export function AppShell() {
+  return (
+    <IntegrationsProvider>
+      <Shell />
+    </IntegrationsProvider>
+  );
+}
+
+function Shell() {
   const { me, can, logout, switchContext } = useAuth();
+  const { mode } = useIntegrations();
   const clinicName = me?.context?.clinic?.name ?? 'ApiDental';
   const branchName = me?.context?.branch?.name ?? 'Todas las sedes';
   const hasClinic = Boolean(me?.context?.clinic);
@@ -17,6 +28,8 @@ export function AppShell() {
     { to: '/', label: 'Hoy', icon: <Home size={20} aria-hidden="true" />, show: true, end: true },
     { to: '/agenda', label: 'Agenda', icon: <CalendarDays size={20} aria-hidden="true" />, show: hasClinic && can('appointment:read') },
     { to: '/pacientes', label: 'Pacientes', icon: <Users size={20} aria-hidden="true" />, show: hasClinic && (can('patient:read_basic') || can('patient:read')) },
+    { to: '/caja', label: 'Caja', icon: <Wallet size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('charge:read') },
+    { to: '/comprobantes', label: 'Comprobantes', icon: <FileText size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('billing:read') },
   ];
   return (
     <BranchProvider>
@@ -43,6 +56,7 @@ export function AppShell() {
             <strong>{clinicName} · {branchName}</strong>
             <span className="caption muted">{me?.user.firstName} {me?.user.lastName}</span>
           </header>
+          <SimulationBanner />
           <main id="main" className="content" tabIndex={-1}>
             <Outlet />
           </main>

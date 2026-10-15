@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { Download } from 'lucide-react';
 import { get, getBlob } from '../api/client';
 import type { OdontogramSpecLite, OdontogramView } from '../api/types';
+import { downloadFile } from '../lib/download';
 import { fmtDateTime } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { Button } from '../ui/Button';
@@ -33,12 +34,7 @@ export function OdontogramPage() {
   const downloadPdf = async () => {
     setPdfBusy(true);
     try {
-      const blob = await getBlob(`/patients/${id}/clinical/odontogram/export`, { format: 'pdf', version: official?.version });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = `odontograma-v${official?.version ?? ''}.pdf`;
-      document.body.append(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await downloadFile(`/patients/${id}/clinical/odontogram/export`, { format: 'pdf', version: official?.version }, `odontograma-v${official?.version ?? ''}.pdf`);
     } catch (e) { toast.error(errorText(e)); }
     finally { setPdfBusy(false); }
   };

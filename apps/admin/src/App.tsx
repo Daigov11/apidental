@@ -2,6 +2,9 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
 import { AppShell } from './layout/AppShell';
 import { AgendaPage } from './pages/Agenda';
+import { CashPage } from './pages/Cash';
+import { ChargePage } from './pages/Charge';
+import { DocumentsPage } from './pages/Documents';
 import { DashboardPage } from './pages/Dashboard';
 import { ContextPage, LoginPage } from './pages/Login';
 import { OdontogramPage } from './pages/Odontogram';
@@ -20,6 +23,9 @@ export function App() {
       <Route element={<AppShell />}>
         <Route index element={<DashboardPage />} />
         <Route path="agenda" element={<AgendaPage />} />
+        <Route path="caja" element={<CashPage />} />
+        <Route path="caja/:id" element={<ChargePage />} />
+        <Route path="comprobantes" element={<DocumentsPage />} />
         <Route path="pacientes" element={<PatientsPage />} />
         <Route path="pacientes/:id" element={<PatientDetailPage />} />
         <Route path="pacientes/:id/atencion/:visitId" element={<VisitSheetPage />} />

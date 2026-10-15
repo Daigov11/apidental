@@ -5,11 +5,16 @@ import { useAuth } from '../auth/AuthProvider';
 import { fmtLongDay, limaDate, timeOf } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { Alert, EmptyState, ErrorState, Loading, StatusBadge } from '../ui/feedback';
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, Star } from 'lucide-react';
+import { useIntegrations } from '../lib/integrations';
+import type { ReviewSummary } from '../api/types';
+import { SimulatedTag } from '../ui/feedback';
 
 export function DashboardPage() {
   const { me, can } = useAuth();
   const today = limaDate();
+  const { mode } = useIntegrations();
+  const reviews = useAsync(() => (mode === 'mock' && can('loyalty:read') ? get<ReviewSummary>('/reviews/summary') : Promise.resolve(null)), [mode]);
   const canSee = can('appointment:read');
   const list = useAsync(() => (canSee ? get<Appointment[]>('/appointments', { from: today, to: today, limit: 100 }) : Promise.resolve([] as Appointment[])), [today, canSee]);
   const appts = (list.data ?? []).filter((a) => a.status !== 'CANCELLED');
@@ -61,6 +66,16 @@ export function DashboardPage() {
             )}
           </section>
         </>
+      )}
+      {reviews.data && (
+        <section className="card" aria-labelledby="rev-h" style={{ marginTop: 'var(--space-6)' }}>
+          <div className="card-head"><h2 id="rev-h" className="h3">Reseñas</h2><SimulatedTag /></div>
+          <p className="caption muted">{reviews.data.simulation.label}</p>
+          <p className="money"><Star size={20} aria-hidden="true" /> {reviews.data.average.toFixed(1)} <span className="caption muted">de 5 · {reviews.data.total} reseñas (ficticias) · {reviews.data.requestsSent} solicitud(es) enviada(s)</span></p>
+          <ul className="caption" style={{ paddingLeft: '1.1rem', marginTop: 'var(--space-3)' }}>
+            {reviews.data.recent.map((r, i) => <li key={i}>{'★'.repeat(r.rating)} {r.comment} — {r.label}</li>)}
+          </ul>
+        </section>
       )}
       {!canSee && me?.context?.clinic && <Alert tone="info">Use el menú para ir a los módulos disponibles para su rol.</Alert>}
     </>

@@ -9,11 +9,14 @@ import { fmtDate, fmtLongDay, dayOf, mobileFmt, timeOf } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { Button } from '../ui/Button';
 import { Alert, Badge, EmptyState, ErrorState, Loading, StatusBadge } from '../ui/feedback';
+import { useIntegrations } from '../lib/integrations';
 import { AppointmentDrawer, NewAppointmentDrawer } from './AppointmentPanels';
+import { LoyaltyCard } from './LoyaltyCard';
 
 export function PatientDetailPage() {
   const { id = '' } = useParams();
   const { can } = useAuth();
+  const { mode } = useIntegrations();
   const { branchId } = useBranch();
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -74,6 +77,8 @@ export function PatientDetailPage() {
           )}
         </section>
       </div>
+
+      {mode === 'mock' && can('loyalty:read') && <LoyaltyCard patientId={id} />}
 
       {clinical ? <ClinicalCard patientId={id} /> : (
         <Alert tone="info" title="Información clínica">

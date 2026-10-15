@@ -205,3 +205,11 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .odonto-figure img { display: block; max-width: none; height: auto; }
 .legend { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-6); list-style: none; padding: 0; margin: var(--space-4) 0 0; font-size: var(--text-caption-size); }
 @media print { .sidebar, .topbar, .toasts, .btn { display: none !important; } .shell { display: block; } }
+
+/* ------------------------------------------------------- simulación (demo) */
+.sim-banner { display: flex; gap: var(--space-4); align-items: center; padding: var(--space-3) var(--space-7); background: var(--state-accent-bg); color: var(--state-accent-fg); border-bottom: 2px solid var(--color-accent-500); font-size: var(--text-caption-size); position: sticky; top: 0; z-index: var(--z-sticky); }
+.demo-mark { display: inline-block; padding: var(--space-3) var(--space-5); border: 2px dashed var(--action-danger); color: var(--state-danger-fg); font-weight: 800; letter-spacing: 0.02em; border-radius: var(--radius-sm); background: var(--state-danger-bg); }
+.doc-card { position: relative; overflow: hidden; }
+.doc-card::after { content: 'DEMO — NO VÁLIDO PARA SUNAT'; position: absolute; inset: 0; display: grid; place-items: center; transform: rotate(-18deg); font: 800 1.6rem/1 var(--font-display); color: rgba(204, 59, 50, 0.1); pointer-events: none; text-align: center; padding: var(--space-5); }
+.money { font: 800 1.5rem/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+@media (max-width: 767px) { .sim-banner { padding: var(--space-3) var(--space-5); } }

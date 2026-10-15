@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, Check, Circle, Diamond, Info, Minus, X, XCircle } from 'lucide-react';
-import type { AppointmentStatus } from '../api/types';
+import { AlertTriangle, Check, Circle, Clock, Diamond, FlaskConical, Info, Minus, RefreshCw, Send, X, XCircle } from 'lucide-react';
+import type { AppointmentStatus, DocStatus } from '../api/types';
 import { ApiError } from '../api/client';
 import { Button } from './Button';
 
@@ -31,6 +31,25 @@ export function StatusBadge({ status, label }: { status: AppointmentStatus; labe
       {label}
     </Badge>
   );
+}
+
+const DOC: Record<DocStatus, { tone: Tone; icon: ReactNode }> = {
+  PENDING_SEND: { tone: 'neutral', icon: <Clock size={14} aria-hidden="true" /> },
+  SENT: { tone: 'info', icon: <Send size={14} aria-hidden="true" /> },
+  ISSUED: { tone: 'success', icon: <Check size={14} aria-hidden="true" /> },
+  REJECTED: { tone: 'danger', icon: <X size={14} aria-hidden="true" /> },
+  RETRYABLE_ERROR: { tone: 'warning', icon: <AlertTriangle size={14} aria-hidden="true" /> },
+  NEEDS_RECONCILIATION: { tone: 'warning', icon: <RefreshCw size={14} aria-hidden="true" /> },
+};
+
+export function DocStatusBadge({ status, label }: { status: DocStatus; label: string }) {
+  const s = DOC[status];
+  return <Badge tone={s.tone} icon={s.icon}>{label}</Badge>;
+}
+
+/** Etiqueta fija de lo que proviene de una simulación. */
+export function SimulatedTag() {
+  return <Badge tone="accent" icon={<FlaskConical size={14} aria-hidden="true" />}>Simulación</Badge>;
 }
 
 export function Alert({ tone = 'info', title, children, action }: { tone?: 'info' | 'warning' | 'danger' | 'success'; title?: string; children?: ReactNode; action?: ReactNode }) {

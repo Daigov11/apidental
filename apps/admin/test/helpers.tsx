@@ -56,3 +56,8 @@ export function renderApp(route = '/') {
     </MemoryRouter>,
   );
 }
+
+export const CASHIER_PERMS = ['appointment:read', 'billing:manage', 'billing:read', 'branch:read', 'charge:manage', 'charge:read', 'clinic:read', 'loyalty:manage', 'loyalty:read', 'patient:read_basic'];
+export const SIM = { active: true, label: 'SIMULACIÓN: datos ficticios de demostración. No hay conexión con Apiworking ni con SUNAT.', demoMark: 'DEMO — NO VÁLIDO PARA SUNAT' };
+export const STATUS_MOCK = { mode: 'mock', simulation: SIM, scenarios: [{ code: 'ISSUE', label: 'Emitido de inmediato' }, { code: 'REJECT', label: 'Rechazado' }, { code: 'TIMEOUT', label: 'No responde a tiempo (requiere conciliación)' }] };
+export const STATUS_OFF = { mode: 'off', simulation: null, scenarios: [] };

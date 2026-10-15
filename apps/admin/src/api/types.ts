@@ -64,3 +64,30 @@ export interface OdontogramSpecLite {
   surfaceStates: { code: string; label: string }[];
   marks: { code: string; label: string }[];
 }
+
+// ------------------------------------------------------------------ 4.1 simulación (cobros, comprobantes, fidelización)
+export interface SimulationInfo { active: true; label: string; demoMark: string }
+export interface IntegrationStatus { mode: 'off' | 'mock'; simulation: SimulationInfo | null; scenarios: { code: string; label: string }[] }
+export type DocStatus = 'PENDING_SEND' | 'SENT' | 'ISSUED' | 'REJECTED' | 'RETRYABLE_ERROR' | 'NEEDS_RECONCILIATION';
+export interface BillingDocument {
+  id: string; chargeId: string; type: 'BOLETA' | 'FACTURA'; typeLabel: string; number: string; status: DocStatus; statusLabel: string;
+  customer: { name: string; docType: string; docNumber: string }; amountText: string; igvText: string; subtotalText: string;
+  demoMark: string; simulated: true; providerRef: string | null; rejectionReason: string | null; scenarioLabel: string | null;
+  attempts: number; issuedAt: string | null; createdAt: string; description?: string; patientName?: string;
+  actions: { retry: boolean; reconcile: boolean; pdf: boolean };
+}
+export interface Charge {
+  id: string; patient: { id: string; name: string }; appointmentId: string | null; description: string; amountCents: number; amountText: string;
+  status: 'PENDING' | 'PAID' | 'VOIDED'; statusLabel: string; paymentMethod: string | null; paymentMethodLabel: string | null; paidAt: string | null;
+  createdAt: string; version: number; document: BillingDocument | null;
+  actions: { pay: boolean; void: boolean; emitDocument: boolean };
+}
+export interface OutboxItem { id: string; kind: string; kindLabel: string; status: 'PENDING' | 'DONE' | 'FAILED' | 'SKIPPED'; statusLabel: string; attempts: number; note: string | null; reference: string; createdAt: string }
+export type LoyaltySummary =
+  | { simulation: SimulationInfo; consent: 'MISSING'; message: string }
+  | {
+      simulation: SimulationInfo; consent: 'GRANTED'; rule: string;
+      points: { balance: number; accrued: number; redeemed: number; tier: string; recent: { kind: string; kindLabel: string; points: number; reason: string | null; at: string }[] };
+      nfc: { cardLabel: string; status: string; tapsLast30Days: number; lastTapAt: string | null; tier: string };
+    };
+export interface ReviewSummary { simulation: SimulationInfo; average: number; total: number; requestsSent: number; queued: number; recent: { rating: number; comment: string; label: string }[] }

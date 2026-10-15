@@ -4,6 +4,8 @@ import { ClipboardList, Stethoscope } from 'lucide-react';
 import { ApiError, get, post } from '../api/client';
 import type { Appointment, PatientSummary, Slot } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
+import { useIntegrations } from '../lib/integrations';
+import type { Charge } from '../api/types';
 import { fmtLongDay, timeOf, dayOf } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { Button } from '../ui/Button';
@@ -88,6 +90,7 @@ export function NewAppointmentDrawer({
 
 export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
   const { can } = useAuth();
+  const { mode } = useIntegrations();
   const navigate = useNavigate();
   const toast = useToast();
   const appt = useAsync(() => get<Appointment>(`/appointments/${id}`), [id]);
@@ -111,6 +114,22 @@ export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onCl
       await navigate(`/pacientes/${r.visit.patientId}/atencion/${r.visit.id}`);
     } catch (e) {
       toast.error(e instanceof ApiError && e.code === 'TOO_EARLY' ? 'Aún es temprano: podrá iniciar la atención 30 minutos antes de la cita.' : explain(e));
+      setBusy(null);
+    }
+  };
+
+  const charge = async () => {
+    setBusy('charge');
+    try {
+      const c = await post<Charge>('/billing/charges', { patientId: a!.patient.id, appointmentId: id });
+      await navigate(`/caja/${c.id}`);
+    } catch (e) {
+      if (e instanceof ApiError && e.code === 'CHARGE_EXISTS') {
+        const list = await get<Charge[]>('/billing/charges', { patientId: a!.patient.id, limit: 50 });
+        const found = list.find((c) => c.appointmentId === id && c.status !== 'VOIDED');
+        if (found) { await navigate(`/caja/${found.id}`); return; }
+      }
+      toast.error(explain(e));
       setBusy(null);
     }
   };
@@ -144,6 +163,7 @@ export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onCl
               {a.actions.reschedule && <Button onClick={() => setResched(true)}>Reprogramar</Button>}
               {a.actions.noShow && <Button onClick={() => setDialog('noShow')}>Marcar ausencia</Button>}
               {a.actions.cancel && <Button variant="danger" onClick={() => setDialog('cancel')}>Cancelar cita</Button>}
+              {mode === 'mock' && a.status === 'ATTENDED' && can('charge:manage') && <Button variant="primary" loading={busy === 'charge'} loadingText="Abriendo…" onClick={() => void charge()}>Registrar cobro</Button>}
               {can('patient:read_basic') && <Button variant="tertiary" onClick={() => navigate(`/pacientes/${a.patient.id}`)}>Ver paciente</Button>}
             </div>
           </>
