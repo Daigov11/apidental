@@ -38,19 +38,24 @@ export interface PatientSummary {
 export interface PatientDetail extends PatientSummary { guardianCount?: number; warnings?: unknown[] }
 
 export interface VisitRow { id: string; visitNumber: number; status: string; reason: string | null; startedAt: string; closedAt: string | null }
+export interface SheetActions {
+  readOnly: boolean; canAddDiagnosis?: boolean; canAddProcedure?: boolean; canWriteEvolution?: boolean; canCloseEvolution?: boolean;
+  canCorrectEvolution?: boolean; canCloseVisit?: boolean; closeVisitBlockedBy?: string[];
+}
 export interface Sheet {
   alerts: { advisory: boolean; items: { id: string; origin: string; severity: 'INFO' | 'WARNING' | 'CRITICAL'; label: string }[] };
   patient: { id: string; fullName: string; age: number | null; isMinor: boolean };
-  allergyAssessment: { status: string; label: string; activeAllergyCount: number };
+  allergyAssessment: { status: string; label: string; activeAllergyCount: number; version?: number };
   consent: { state: string; label: string };
-  visit: { id: string; number: number; status: string; statusLabel: string; reason: string | null; startedAt: string; closedAt: string | null };
-  diagnoses: { id: string; description: string; certaintyLabel: string; statusLabel: string }[];
-  procedures: { id: string; name: string; notes: string | null; statusLabel: string; closeBlockedMessage: string | null }[];
+  visit: { id: string; number: number; status: string; statusLabel: string; reason: string | null; startedAt: string; closedAt: string | null; version?: number };
+  diagnoses: { id: string; version?: number; description: string; code?: string | null; certainty?: string; certaintyLabel: string; status?: string; statusLabel: string }[];
+  procedures: { id: string; version?: number; name: string; notes: string | null; status?: string; statusLabel: string; closeBlockedMessage: string | null; canClose?: boolean }[];
   odontogram: { savedVersion: { version: number; savedAt: string; stateLabel: string } | null; hasDraft: boolean; formatNotice: string };
-  evolution: { state: string; stateLabel: string; body: string | null; followUp: string | null; contentHidden: boolean } | null;
-  actions: { readOnly: boolean };
+  evolution: { state: string; stateLabel: string; body: string | null; followUp: string | null; contentHidden: boolean; etag?: string } | null;
+  actions: SheetActions;
   notice: string;
 }
+export interface ProcedureDefinition { id: string; code: string; name: string; requiresClinicalConsent: boolean; status: string }
 export interface ToothEntry { status?: string; surfaces?: Record<string, { state: string; note?: string }>; marks?: string[]; note?: string }
 export interface OdontogramVersion {
   version: number; state: string; stateLabel: string; kindLabel: string; dentition: string; dentitionLabel: string;

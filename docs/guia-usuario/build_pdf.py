@@ -177,10 +177,17 @@ ODONTOLOGO = [
         note='el botón aparece desde **30 minutos antes** de la cita y hasta **6 horas después** de que termina. Fuera de ese rango solo se ve «Ver paciente».'),
     task('Leer la ficha de atención', [
         'Lea primero las **alertas**: alergias, avisos y si hay **consentimiento clínico vigente**.',
-        'Más abajo están **Diagnósticos**, **Procedimientos** y **Evolución** (en el panel se muestran en solo lectura) y el resumen del **Odontograma**.',
+        'Si falta la evaluación de alergias, pulse **Registrar evaluación**: indique «No refiere alergias conocidas» o registre la alergia.',
+        'Más abajo están **Diagnósticos**, **Procedimientos** y **Evolución**, y el resumen del **Odontograma**.',
         'Pulse **Ver odontograma** para registrarlo.'],
         [fig('odontologo-03-ficha.jpg', 'Ficha de atención con alertas.', top=96, bottom=200)],
-        note='diagnósticos, procedimientos y evolución se registran hoy por la API. Lo editable en el panel es el odontograma.'),
+        note='el consentimiento clínico no se registra desde el panel todavía: si falta, pida a recepción o administración que lo registre. Los registros son declaraciones suyas; el sistema no recomienda ni decide.'),
+    task('Registrar diagnósticos, procedimientos y evolución', [
+        'En **Diagnósticos** pulse **Agregar**, escriba el diagnóstico y elija **Presuntivo** o **Definitivo**. Con **Corregir** o **Retirar** (pide motivo) se conserva el historial.',
+        'En **Procedimientos** pulse **Agregar** y elija uno del catálogo. Al terminarlo, pulse **Marcar realizado** (o **Cancelar**, con motivo).',
+        'En **Evolución** escriba lo observado y pulse **Guardar borrador**. Cuando esté lista, pulse **Cerrar evolución** y confirme con su contraseña (no es una firma digital).',
+        'Al terminar, pulse **Cerrar la visita**. Si hay un procedimiento abierto o la evolución sigue en borrador, la pantalla le indica qué falta.'],
+        note='solo el odontólogo responsable de la visita puede registrar, y solo mientras la visita está abierta. Receta e indicaciones al paciente aún no existen en el sistema.'),
     task('Ver el historial del paciente', [
         'Abra al paciente desde **Pacientes** o desde la cita.',
         'En **Atención clínica** están todas sus visitas, abiertas o cerradas.',
