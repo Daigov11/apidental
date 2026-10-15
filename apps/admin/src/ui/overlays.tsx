@@ -6,16 +6,21 @@ import { errorText } from './feedback';
 
 const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-/** Atrapa el foco, cierra con Esc y devuelve el foco a quien abrió el panel. */
+const modalStack: object[] = [];
+
+/** Atrapa el foco, cierra con Esc y devuelve el foco a quien abrió el panel. Con modales apilados, solo el de arriba responde. */
 function useModal(onClose: () => void, initialFocus?: 'cancel') {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const token = {};
+    modalStack.push(token);
     const opener = document.activeElement as HTMLElement | null;
     const node = ref.current;
     const items = () => Array.from(node?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []);
     const start = initialFocus === 'cancel' ? node?.querySelector<HTMLElement>('[data-initial-focus]') : items().find((e) => e.dataset['close'] === undefined);
     (start ?? items()[0] ?? node)?.focus();
     const onKey = (e: KeyboardEvent) => {
+      if (modalStack[modalStack.length - 1] !== token) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         onClose();
@@ -31,6 +36,7 @@ function useModal(onClose: () => void, initialFocus?: 'cancel') {
     document.addEventListener('keydown', onKey);
     return () => {
       document.removeEventListener('keydown', onKey);
+      modalStack.splice(modalStack.indexOf(token), 1);
       opener?.focus?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

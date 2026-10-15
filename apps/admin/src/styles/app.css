@@ -245,3 +245,11 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .cross-btn:disabled { opacity: .4; cursor: not-allowed; }
 .cross-btn:focus-visible { outline: 3px solid var(--color-brand-600); outline-offset: 1px; }
 .cross-top { grid-area: 1 / 2; } .cross-bottom { grid-area: 3 / 2; } .cross-left { grid-area: 2 / 1; } .cross-right { grid-area: 2 / 3; } .cross-center { grid-area: 2 / 2; }
+
+/* Alta de paciente */
+.patient-form .row-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
+@media (max-width: 560px) { .patient-form .row-2 { grid-template-columns: 1fr; gap: 0; } }
+.dup-list { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: grid; gap: var(--space-3); }
+.dup-list li { display: flex; justify-content: space-between; align-items: center; gap: var(--space-4); padding: var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.combo-empty { padding: var(--space-5); display: grid; gap: var(--space-3); justify-items: start; }
+.combo-empty p { margin: 0; }

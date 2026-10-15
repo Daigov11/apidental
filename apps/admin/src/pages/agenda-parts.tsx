@@ -4,6 +4,9 @@ import type { AgendaService, Availability, PatientSummary, Slot } from '../api/t
 import { useAsync } from '../lib/useAsync';
 import { Loading, errorText } from '../ui/feedback';
 import { mobileFmt } from '../lib/format';
+import { useAuth } from '../auth/AuthProvider';
+import { Button } from '../ui/Button';
+import { CreatePatientDialog } from './CreatePatientDialog';
 
 /** Buscador de pacientes (combobox): por DNI, nombre o celular. */
 export function PatientPicker({ onPick, error }: { onPick: (p: PatientSummary | null) => void; error?: string | null }) {
@@ -14,17 +17,20 @@ export function PatientPicker({ onPick, error }: { onPick: (p: PatientSummary | 
   const [active, setActive] = useState(0);
   const [picked, setPicked] = useState<PatientSummary | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const { can } = useAuth();
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     clearTimeout(timer.current);
     const q = text.trim();
-    if (picked || q.length < 2) { setResults([]); return; }
+    if (picked || q.length < 2) { setResults([]); setSearched(false); return; }
     timer.current = setTimeout(() => {
       const digits = /^\d+$/.test(q);
       const query = digits ? (q.length >= 8 ? { identifier: q } : { phone: q }) : { name: q };
       get<PatientSummary[]>('/patients', { ...query, limit: 8 }).then(
-        (r) => { setResults(r); setOpen(true); setActive(0); setFailed(null); },
+        (r) => { setResults(r); setSearched(true); setOpen(true); setActive(0); setFailed(null); },
         (e: unknown) => setFailed(errorText(e)),
       );
     }, 250);
@@ -48,6 +54,14 @@ export function PatientPicker({ onPick, error }: { onPick: (p: PatientSummary | 
             else if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); }
           }}
         />
+        {open && searched && results.length === 0 && !picked && !failed && (
+          <div className="combo-list combo-empty" role="status">
+            <p>No se encontró a «{text.trim()}».</p>
+            {can('patient:write')
+              ? <Button type="button" variant="primary" size="sm" onClick={() => { setOpen(false); setCreating(true); }}>Crear paciente nuevo</Button>
+              : <p className="caption muted">Pida a recepción que lo registre.</p>}
+          </div>
+        )}
         {open && results.length > 0 && (
           <ul id={`${id}-list`} role="listbox" className="combo-list" aria-label="Pacientes encontrados">
             {results.map((p, i) => (
@@ -60,9 +74,10 @@ export function PatientPicker({ onPick, error }: { onPick: (p: PatientSummary | 
         )}
       </div>
       <p className="field-help" aria-live="polite">
-        {failed ?? (picked ? 'Paciente elegido.' : text.trim().length >= 2 && results.length === 0 && !open ? 'Sin resultados. Revise el dato o registre al paciente.' : 'Escriba al menos 2 caracteres.')}
+        {failed ?? (picked ? 'Paciente elegido.' : text.trim().length >= 2 && searched && results.length === 0 ? 'Sin resultados. Revise el dato o cree al paciente.' : 'Escriba al menos 2 caracteres.')}
       </p>
       {error && <p className="field-error" role="alert">{error}</p>}
+      {creating && <CreatePatientDialog initialText={text} onClose={() => setCreating(false)} onCreated={(p) => { setCreating(false); choose(p); }} />}
     </div>
   );
 }

@@ -28,12 +28,12 @@ ROLES = [
 
 MATRIX_HEAD = ['Rol', 'Agenda', 'Pacientes', 'Historia clínica y odontograma', 'Caja', 'Comprobantes', 'Fidelización']
 MATRIX = [
-    ['Recepción', 'Gestiona', 'Datos completos', 'No', 'Cobra', 'Ve', 'Ve'],
+    ['Recepción', 'Gestiona', 'Datos completos y alta', 'No', 'Cobra', 'Ve', 'Ve'],
     ['Odontólogo', 'Ve e inicia la atención', 'Lectura', 'Sí, de sus pacientes', 'No', 'No', 'No'],
     ['Asistente', 'Ve', 'Datos básicos', 'No', 'No', 'No', 'No'],
     ['Director clínico', 'Ve', 'Lectura', 'Solo por la API, con justificación', 'No', 'No', 'No'],
     ['Cajero', 'Ve', 'Datos básicos', 'No', 'Cobra', 'Emite y concilia', 'Canjea puntos'],
-    ['Administrador de clínica', 'Gestiona', 'Datos completos', 'No', 'Cobra', 'Emite y concilia', 'Canjea puntos'],
+    ['Administrador de clínica', 'Gestiona', 'Datos completos y alta', 'No', 'Cobra', 'Emite y concilia', 'Canjea puntos'],
     ['Administrador de plataforma', 'No', 'No', 'No', 'No', 'No', 'No'],
 ]
 
@@ -72,6 +72,17 @@ SECTIONS = {
                'Si hace falta, agregue una nota administrativa y pulse **Reservar cita**.']),
     ('img', 'recepcion-03-nueva-cita.jpg', 'Formulario de nueva cita.'),
     ('note', 'Solo se ofrecen horarios libres según el horario del odontólogo, su consultorio y la duración del servicio. No se puede reservar encima de otra cita.'),
+    ('h4', 'Si el paciente todavía no está registrado'),
+    ('p', 'Si la búsqueda no encuentra a nadie, aparece **Crear paciente nuevo** en la misma lista. No necesita salir de la cita.'),
+    ('img', 'recepcion-03b-paciente-no-encontrado.jpg', 'La búsqueda no encontró al paciente y ofrece crearlo ahí mismo.'),
+    ('steps', ['Pulse **Crear paciente nuevo**. El formulario se abre encima de la cita, con lo que ya escribió (nombres, DNI o celular).',
+               'Complete **nombres** y **apellido paterno** (obligatorios). El resto es opcional: documento, apellido materno, fecha de nacimiento, sexo, celular y correo.',
+               'Pulse **Crear paciente**. Queda elegido en la cita y puede seguir con el servicio, el odontólogo y el horario.']),
+    ('img', 'recepcion-03c-nuevo-paciente.jpg', 'Formulario de nuevo paciente.'),
+    ('p', 'Antes de crear, el sistema revisa si la persona ya existe:'),
+    ('list', ['**Mismo documento:** no crea otra ficha. Le ofrece **Usar a este paciente**.',
+              '**Nombre, celular o correo parecidos:** le muestra a quién se parece. Elija **Usar a este paciente** si es la misma persona, o **Crear de todos modos** si es otra.']),
+    ('note', 'Para un menor de edad, cree primero al paciente y luego registre a su representante, porque el consentimiento lo da el representante.'),
     ('h3', '4. Gestionar una cita'),
     ('p', 'Pulse una cita de la agenda para abrir su detalle.'),
     ('img', 'recepcion-04-cita.jpg', 'Detalle de la cita con sus acciones.'),
@@ -86,7 +97,11 @@ SECTIONS = {
     ('img', 'recepcion-05-pacientes.jpg', 'Búsqueda de pacientes.'),
     ('p', 'La ficha reúne la identificación, las citas y la tarjeta de fidelización simulada con su saldo de puntos.'),
     ('img', 'recepcion-06-ficha-paciente.jpg', 'Ficha del paciente.'),
-    ('warn', 'Aún **no hay pantalla para crear o editar pacientes** en el panel. Eso se hace hoy por la API. La historia clínica y el odontograma no son visibles para recepción.'),
+    ('h4', 'Registrar un paciente nuevo'),
+    ('p', 'En **Pacientes** pulse **Nuevo paciente** (arriba a la derecha). Si busca a alguien que no existe, también aparece el botón **Crear a «nombre»** y el formulario ya viene con lo que escribió.'),
+    ('img', 'recepcion-05b-pacientes-sin-resultados.jpg', 'Sin resultados: se puede crear al paciente desde la misma pantalla.'),
+    ('p', 'El formulario y las revisiones de duplicados son los mismos que al reservar una cita. Al terminar se abre la ficha del paciente nuevo.'),
+    ('warn', 'Aún **no hay pantalla para editar los datos** de un paciente ya creado, ni para sus consentimientos y adjuntos. Eso se hace hoy por la API. La historia clínica y el odontograma no son visibles para recepción.'),
     ('h3', '6. Cobrar una atención'),
     ('steps', ['Cuando el odontólogo atendió la cita, ábrala en la agenda y pulse **Registrar cobro**. También puede entrar por **Caja** y elegir el cobro pendiente.',
                'En **Caja** verá todos los cobros con su fecha, paciente, concepto, monto y estado.']),
@@ -204,14 +219,15 @@ FAQ = [
     ('No veo el botón «Iniciar atención».', 'Solo aparece para el odontólogo de la cita, desde 30 minutos antes de su hora y hasta 6 horas después de terminar, y mientras la cita no esté cancelada ni marcada como ausencia.'),
     ('Me aparece «Acceso denegado».', 'Su rol no incluye esa pantalla. Consulte la tabla de roles. Si la necesita, pida el cambio a su administrador.'),
     ('Mi sesión se cerró sola.', 'Por seguridad la sesión caduca. Ingrese de nuevo. En equipos compartidos use siempre Cerrar sesión.'),
-    ('No encuentro al paciente.', 'Busque por DNI, nombre o celular con al menos 2 caracteres. Puede haber dos fichas parecidas con documentos distintos: el sistema las avisa y no las fusiona.'),
+    ('No encuentro al paciente.', 'Busque por DNI, nombre o celular con al menos 2 caracteres. Si no existe, recepción puede crearlo desde Pacientes o desde la propia cita con «Crear paciente nuevo». Los demás roles deben pedírselo a recepción.'),
+    ('Al crear un paciente me dice que ya existe.', 'Otra ficha tiene el mismo documento, o se parece por nombre, celular o correo. Use «Usar a este paciente» para no duplicar. El sistema nunca fusiona fichas por su cuenta.'),
     ('Un comprobante dice «DEMO — NO VÁLIDO PARA SUNAT».', 'Es correcto. Esta versión simula la facturación para mostrar el flujo. No hay conexión con SUNAT ni con Apiworking, y esos comprobantes no tienen validez tributaria.'),
     ('Un comprobante quedó en «Error reintentable» o «Requiere conciliación».', 'Es un caso previsto. Pida a Caja que use Reintentar o Conciliar. Nada se duplica.'),
     ('Guardé un odontograma con un error.', 'Una versión guardada no se modifica. Abra «Corregir la versión guardada», indique el motivo y confirme con su contraseña. Queda el historial de ambas versiones.'),
 ]
 
 PENDING = [
-    'Crear y editar pacientes, consentimientos y adjuntos desde el panel (hoy por la API).',
+    'Editar los datos de un paciente ya creado, y registrar consentimientos, representantes y adjuntos desde el panel (hoy por la API).',
     'Registrar diagnósticos, procedimientos y evolución desde el panel (hoy en solo lectura).',
     'Planes de tratamiento, presupuestos, cuotas y saldos.',
     'Apertura y cierre de caja, pagos parciales y cuentas por cobrar.',

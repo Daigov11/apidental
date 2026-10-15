@@ -53,12 +53,12 @@ Significa que su rol no puede ver esa pantalla. No es un error. Si necesita ese 
 
 | Rol | Agenda | Pacientes | Historia clínica y odontograma | Caja | Comprobantes | Fidelización |
 |---|---|---|---|---|---|---|
-| Recepción | Gestiona | Datos completos | No | Cobra | Ve | Ve |
+| Recepción | Gestiona | Datos completos y alta | No | Cobra | Ve | Ve |
 | Odontólogo | Ve e inicia la atención | Lectura | Sí, de sus pacientes | No | No | No |
 | Asistente | Ve | Datos básicos | No | No | No | No |
 | Director clínico | Ve | Lectura | Solo por la API, con justificación | No | No | No |
 | Cajero | Ve | Datos básicos | No | Cobra | Emite y concilia | Canjea puntos |
-| Administrador de clínica | Gestiona | Datos completos | No | Cobra | Emite y concilia | Canjea puntos |
+| Administrador de clínica | Gestiona | Datos completos y alta | No | Cobra | Emite y concilia | Canjea puntos |
 | Administrador de plataforma | No | No | No | No | No | No |
 
 ## Recepción
@@ -93,6 +93,27 @@ En **Agenda** elija la fecha, la vista (día o semana en lista) y el odontólogo
 
 > **Tenga en cuenta.** Solo se ofrecen horarios libres según el horario del odontólogo, su consultorio y la duración del servicio. No se puede reservar encima de otra cita.
 
+#### Si el paciente todavía no está registrado
+
+Si la búsqueda no encuentra a nadie, aparece **Crear paciente nuevo** en la misma lista. No necesita salir de la cita.
+
+![La búsqueda no encontró al paciente y ofrece crearlo ahí mismo.](img/recepcion-03b-paciente-no-encontrado.jpg)
+*La búsqueda no encontró al paciente y ofrece crearlo ahí mismo.*
+
+1. Pulse **Crear paciente nuevo**. El formulario se abre encima de la cita, con lo que ya escribió (nombres, DNI o celular).
+2. Complete **nombres** y **apellido paterno** (obligatorios). El resto es opcional: documento, apellido materno, fecha de nacimiento, sexo, celular y correo.
+3. Pulse **Crear paciente**. Queda elegido en la cita y puede seguir con el servicio, el odontólogo y el horario.
+
+![Formulario de nuevo paciente.](img/recepcion-03c-nuevo-paciente.jpg)
+*Formulario de nuevo paciente.*
+
+Antes de crear, el sistema revisa si la persona ya existe:
+
+- **Mismo documento:** no crea otra ficha. Le ofrece **Usar a este paciente**.
+- **Nombre, celular o correo parecidos:** le muestra a quién se parece. Elija **Usar a este paciente** si es la misma persona, o **Crear de todos modos** si es otra.
+
+> **Tenga en cuenta.** Para un menor de edad, cree primero al paciente y luego registre a su representante, porque el consentimiento lo da el representante.
+
 ### 4. Gestionar una cita
 
 Pulse una cita de la agenda para abrir su detalle.
@@ -120,7 +141,16 @@ La ficha reúne la identificación, las citas y la tarjeta de fidelización simu
 ![Ficha del paciente.](img/recepcion-06-ficha-paciente.jpg)
 *Ficha del paciente.*
 
-> **Todavía no.** Aún **no hay pantalla para crear o editar pacientes** en el panel. Eso se hace hoy por la API. La historia clínica y el odontograma no son visibles para recepción.
+#### Registrar un paciente nuevo
+
+En **Pacientes** pulse **Nuevo paciente** (arriba a la derecha). Si busca a alguien que no existe, también aparece el botón **Crear a «nombre»** y el formulario ya viene con lo que escribió.
+
+![Sin resultados: se puede crear al paciente desde la misma pantalla.](img/recepcion-05b-pacientes-sin-resultados.jpg)
+*Sin resultados: se puede crear al paciente desde la misma pantalla.*
+
+El formulario y las revisiones de duplicados son los mismos que al reservar una cita. Al terminar se abre la ficha del paciente nuevo.
+
+> **Todavía no.** Aún **no hay pantalla para editar los datos** de un paciente ya creado, ni para sus consentimientos y adjuntos. Eso se hace hoy por la API. La historia clínica y el odontograma no son visibles para recepción.
 
 ### 6. Cobrar una atención
 
@@ -368,7 +398,10 @@ Su rol no incluye esa pantalla. Consulte la tabla de roles. Si la necesita, pida
 Por seguridad la sesión caduca. Ingrese de nuevo. En equipos compartidos use siempre Cerrar sesión.
 
 **No encuentro al paciente.**  
-Busque por DNI, nombre o celular con al menos 2 caracteres. Puede haber dos fichas parecidas con documentos distintos: el sistema las avisa y no las fusiona.
+Busque por DNI, nombre o celular con al menos 2 caracteres. Si no existe, recepción puede crearlo desde Pacientes o desde la propia cita con «Crear paciente nuevo». Los demás roles deben pedírselo a recepción.
+
+**Al crear un paciente me dice que ya existe.**  
+Otra ficha tiene el mismo documento, o se parece por nombre, celular o correo. Use «Usar a este paciente» para no duplicar. El sistema nunca fusiona fichas por su cuenta.
 
 **Un comprobante dice «DEMO — NO VÁLIDO PARA SUNAT».**  
 Es correcto. Esta versión simula la facturación para mostrar el flujo. No hay conexión con SUNAT ni con Apiworking, y esos comprobantes no tienen validez tributaria.
@@ -381,7 +414,7 @@ Una versión guardada no se modifica. Abra «Corregir la versión guardada», in
 
 ## Lo que todavía no está en el panel
 
-- Crear y editar pacientes, consentimientos y adjuntos desde el panel (hoy por la API).
+- Editar los datos de un paciente ya creado, y registrar consentimientos, representantes y adjuntos desde el panel (hoy por la API).
 - Registrar diagnósticos, procedimientos y evolución desde el panel (hoy en solo lectura).
 - Planes de tratamiento, presupuestos, cuotas y saldos.
 - Apertura y cierre de caja, pagos parciales y cuentas por cobrar.
