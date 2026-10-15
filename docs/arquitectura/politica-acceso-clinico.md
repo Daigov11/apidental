@@ -1,6 +1,6 @@
 # Política de acceso clínico (P0)
 
-**Estado:** adoptada para P0 por decisión del responsable del producto (2026-10-14). **Solo documentación: no hay código que la implemente todavía.** Su validación normativa/legal queda **[por validar]**.
+**Estado:** adoptada para P0 por decisión del responsable del producto (2026-10-14). **Implementada en el sub-incremento 3.1** (2026-10-15): ver [`incremento-3-1-acceso-clinico.md`](incremento-3-1-acceso-clinico.md), que describe cómo se aplica y qué decisiones de producto la afinaron (relación por cita/visita/asignación, lectura en otras sedes, vista del asistente, consentimiento como alerta). Su validación normativa/legal queda **[por validar]**.
 
 Alcance: datos **clínicos** (historia clínica, antecedentes, alergias, alertas clínicas, visitas, diagnósticos, procedimientos, evoluciones y, más adelante, odontograma y adjuntos clínicos). Los datos demográficos, de contacto, consentimientos y adjuntos administrativos siguen regidos por el [incremento 2](incremento-2-pacientes.md).
 
@@ -110,7 +110,7 @@ La auditoría **no copia contenido clínico**: guarda quién, a quién, cuándo,
 | `clinical:read_all` (solo lectura, con justificación) | — | — | ✔ | solo si además es Director | — | — | — |
 | `care:assign` (asignar paciente a odontólogo; no clínico) | — | — | ✔ | ✔ | ✔ | — | — |
 
-Los nombres se confirman en el incremento 3. **`clinical:read_all` aún no existe en el catálogo de permisos**: se creará **junto con** el mecanismo de justificación y auditoría que lo hace seguro (ver nota en 9), no antes.
+Los nombres se confirman en el incremento 3. `clinical:read_all` **ya existe** (3.1), creado **junto con** su justificación, reautenticación y auditoría previa; solo el rol Director Clínico lo posee (un trigger lo impide en cualquier otro).
 
 ## 6. Plataforma y soporte
 

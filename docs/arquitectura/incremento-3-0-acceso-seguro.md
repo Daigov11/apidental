@@ -261,14 +261,14 @@ Una clínica **nunca** queda sin autoridad administrativa ni, una vez designado,
 
 1. **Un operador de plataforma que controle un correo puede invitarlo como primer administrador de una clínica sin administrador.** El sistema no puede saber que ese correo es del propio operador. Controles: solo existe esa ventana (sin administrador), la persona define su clave, **no obtiene acceso clínico** ni puede designar al Director por sí sola (exige registro formal + reautenticación + ser el administrador), y queda todo **trazado** (`issuedByPlatform`). Mitigación operativa recomendada: verificar con la clínica, por un canal independiente, quién es su administrador antes de invitarlo **[por validar]**.
 2. **El registro de aprovisionamiento es declarativo** (sección 6.3).
-3. **Un administrador de clínica puede invitar una segunda identidad propia** a un rol asistencial (p. ej. odontólogo). Eso contradice la separación de funciones; en 3.1 la relación asistencial la asignan terceros y quedan informes de autoasignación; hasta entonces es un riesgo conocido.
+3. **Un administrador de clínica puede invitar una segunda identidad propia** a un rol asistencial. **Mitigado en 3.1** (autoinvitación y alias bloqueados, `granted_by_id`, quien otorgó el rol clínico no asigna pacientes a esa cuenta); queda la colusión de dos personas (ver 3.1, sección 10).
 4. **El token viaja por el canal de entrega**: la confidencialidad del enlace depende de ese canal (correo, SMS, etc.). Por eso el enlace usa fragmento, vence a las 72 h y es de un solo uso.
 5. **La recuperación depende del canal de entrega**: quien controle el correo (o el receptor del webhook) controla la cuenta. No hay segundo factor. **Falta la notificación de “contraseña cambiada”** a la persona (pendiente, requiere canal).
 6. **Política de contraseña mínima**: longitud, variedad y no igual al correo; sin lista de contraseñas filtradas **[por validar]**.
 7. **El modo estricto ante reutilización** exige que el panel serialice las renovaciones; si no, un usuario con varias pestañas verá cierres de sesión.
 8. **El access token no tiene `jti`**: dos emisiones en el mismo segundo para la misma sesión y contexto producen el mismo JWT (no es una vulnerabilidad: la revocación va por la sesión).
 9. **El mantenimiento no tiene bloqueo de ejecución**: es idempotente, pero dos instancias simultáneas solo competirían por las mismas filas; use el timer `oneshot`. Retenciones **[por validar]**.
-10. **Un administrador de clínica puede deshabilitar al Director** (queda protegido solo por la regla de último Director). En 3.1 conviene exigir reautenticación y/o que lo decida un Director.
+10. ~~Un administrador de clínica puede deshabilitar al Director~~ **Resuelto en 3.1**: solo otro Director vigente deshabilita o retira el rol de un Director.
 11. **Alertas**: los eventos (`ACCESS_DENIED`, `REAUTH_REJECTED`, `REFRESH_REUSE_DETECTED`) quedan auditados, pero **no hay alertas automáticas** ni panel; debe revisarlos una persona.
 12. **Aceptación y confirmación en `READ COMMITTED`**: se eligió para evitar la instantánea de `REPEATABLE READ` bajo concurrencia; los deadlocks se reintentan.
 

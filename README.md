@@ -7,6 +7,7 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 - Incremento 2 (pacientes, consentimientos, adjuntos privados): [`docs/arquitectura/incremento-2-pacientes.md`](docs/arquitectura/incremento-2-pacientes.md)
 - **Política de acceso clínico P0** (adoptada): [`docs/arquitectura/politica-acceso-clinico.md`](docs/arquitectura/politica-acceso-clinico.md)
 - **Sub-incremento 3.0** (acceso seguro: invitaciones, sesiones, reautenticación, último administrador): [`docs/arquitectura/incremento-3-0-acceso-seguro.md`](docs/arquitectura/incremento-3-0-acceso-seguro.md)
+- **Sub-incremento 3.1** (relación asistencial y control de acceso clínico): [`docs/arquitectura/incremento-3-1-acceso-clinico.md`](docs/arquitectura/incremento-3-1-acceso-clinico.md)
 - Incremento 3 (**propuesta**, historia clínica; sin código): [`docs/arquitectura/incremento-3-historia-clinica.md`](docs/arquitectura/incremento-3-historia-clinica.md)
 - Sistema de diseño (propuesta, previo al frontend): [`docs/diseno/sistema-de-diseno.md`](docs/diseno/sistema-de-diseno.md) · vista previa: [`docs/diseno/vista-previa.html`](docs/diseno/vista-previa.html)
 
@@ -14,7 +15,9 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 
 Incluye: API NestJS versionada en `/v1`, Prisma + MySQL, clínicas, sedes, usuarios, roles, permisos y asignaciones, autenticación JWT con **refresh token rotativo y logout**, **reautenticación**, **alta de usuarios solo por invitación**, aprovisionamiento formal del Director Clínico, regla de último administrador, autorización por clínica/sede/rol, auditoría inmutable, health check, **pacientes** (identificadores DNI/CE/pasaporte, contacto, detección de duplicados sin fusión, representantes de menores), **consentimientos** separados (clínico, fidelización, marketing) y **adjuntos administrativos privados**, con pruebas unitarias y e2e.
 
-**No** incluye (a propósito): historia clínica (antecedentes, diagnósticos, evolución), `clinical:read_all`, odontograma, citas, pagos, inventario, firma digital, recuperación de contraseña, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
+Desde 3.1 incluye también el **control de acceso clínico**: relación asistencial paciente–odontólogo, permisos `clinical:*`, vista de apoyo del asistente y lectura excepcional del Director (`clinical:read_all`) con justificación, reautenticación y auditoría previa.
+
+**No** incluye (a propósito): **datos clínicos** (antecedentes, alergias, diagnósticos, visitas, evolución), odontograma, citas, pagos, inventario, firma digital, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
 
 ## Estructura
 
@@ -134,6 +137,7 @@ Flujo: **login** (access token sin contexto + cookie del refresh token) → **li
 | `POST /v1/invitations` · `GET` · `POST /:id/revoke` · `POST /:id/resend` | `invitation:manage` / `director:manage` · `invitation:read` | Invitaciones de un solo uso (el token solo viaja por el canal de entrega) |
 | `POST /v1/invitations/preview` · `POST /v1/invitations/accept` | **público** (límite estricto por IP) | La persona crea su propia contraseña (o usa la actual si ya tiene cuenta) |
 | `POST /v1/provisioning-records` · `GET` · `POST /:id/revoke` | `provisioning:record` / `provisioning:read` | Registro formal de la autorización de la clínica para su primer Director Clínico (declarativo; ver limitaciones) |
+| `POST /v1/users/:id/disable` · `/reactivate` | `user:manage` (o `director:manage` si el destino es Director) | Nunca elimina; el Director solo lo deshabilita otro Director |
 | `GET /v1/audit-logs` | `audit:read` | Auditoría de la clínica activa (plataforma: todas); filtros `action`, `userId`, `patientId` |
 
 **Pacientes** (requieren contexto de clínica; el administrador de plataforma no tiene acceso). Detalle y reglas en [`incremento-2-pacientes.md`](docs/arquitectura/incremento-2-pacientes.md).
@@ -151,6 +155,15 @@ Flujo: **login** (access token sin contexto + cookie del refresh token) → **li
 | `GET/POST /v1/patients/:id/consents` · `POST …/:consentId/revoke` | `consent:read` / `consent:write` | Consentimientos (revocar exige motivo) |
 | `POST /v1/patients/:id/attachments` (multipart) · `POST …/:attachmentId/remove` | `attachment:write` | Carga y baja lógica de adjuntos |
 | `GET /v1/patients/:id/attachments` · `GET …/:attachmentId/download` | `attachment:read` | Listado y descarga autorizada (sin URL pública) |
+
+**Acceso clínico (3.1).** Ningún permiso `clinical:*` da acceso por sí solo; hace falta además una **relación asistencial** (odontólogo, asistente) o una **autorización justificada** (Director). Detalle en [`incremento-3-1-acceso-clinico.md`](docs/arquitectura/incremento-3-1-acceso-clinico.md).
+
+| Método y ruta | Permiso | Descripción |
+|---|---|---|
+| `POST /v1/patients/:id/care-relationships` · `GET` | `care:assign` | Asigna/lista la relación paciente–odontólogo (acto administrativo; nadie se asigna a sí mismo ni a quien él otorgó) |
+| `POST /v1/care-relationships/:relId/revoke` · `GET /v1/care-relationships` | `care:assign` | Revoca con motivo / revisión de la clínica |
+| `GET /v1/patients/:id/clinical-summary` | `clinical:read` · `read_limited` · `read_all` | Resumen clínico (hoy: acceso, alertas y datos de apoyo). Auditado **antes** de entregar; `404` igual para ajeno e inexistente |
+| `POST /v1/patients/:id/clinical-access` | `clinical:read_all` (Director) | Categoría + motivo ≥ 10 caracteres + reautenticación `CLINICAL_READ_ALL` del paciente → lectura de **ese** paciente por 30 min, solo lectura |
 
 Ejemplo de carga y descarga:
 
@@ -200,7 +213,7 @@ Plantillas en `deploy/`. **Nada se despliega ni se ejecuta desde este repositori
 - **Triggers y binlog:** la migración crea triggers (auditoría inmutable). Con el binlog activo (por defecto en MySQL 8), MySQL exige `SUPER` o `log_bin_trust_function_creators=1` para crearlos. Ejecute las migraciones con un usuario con privilegios (o active esa variable) y use **otro usuario** para la aplicación.
 - **Usuario de la aplicación:** `SELECT, INSERT, UPDATE, DELETE` sobre las tablas, pero **solo `SELECT, INSERT` sobre `audit_logs`** como segunda barrera además de los triggers.
 - **Adjuntos:** defina `ATTACHMENTS_DIR` con una ruta **absoluta** (p. ej. `/var/lib/apidental/files`), propietario `apidental`, modo `0700`, fuera de cualquier `root`/`alias` de Nginx, y agregue `ReadWritePaths=` en la unidad systemd. Ese directorio **debe incluirse en los respaldos** junto con MySQL; un respaldo solo de la base deja registros sin archivos. Se recomienda cifrar el volumen. La API se niega a iniciar en producción si la ruta es relativa.
-- Antes de dar acceso **real**: canal de entrega operativo y probado (invitaciones y recuperación), mantenimiento programado, **notificación de “contraseña cambiada”** (pendiente), los respaldos diarios externos con prueba de restauración (ver documento de arquitectura, sección 8.6) y revisión legal.
+- **Condiciones obligatorias antes de cargar pacientes reales:** (1) canal de entrega de invitaciones y recuperación **probado** de extremo a extremo; (2) **respaldo diario externo con restauración verificada** (base de datos y adjuntos); (3) **revisión legal**. Además: mantenimiento programado y **notificación de “contraseña cambiada”** (pendiente).
 
 ## Solución de problemas
 

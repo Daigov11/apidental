@@ -279,7 +279,7 @@ Reglas: inmutable; en la **misma transacción** en escrituras y **antes de entre
 | # | Contenido | Compuerta de salida |
 |---|---|---|
 | **3.0** ✅ | **Hecho** ([`incremento-3-0-acceso-seguro.md`](incremento-3-0-acceso-seguro.md)): aprovisionamiento por **invitación** que reemplaza la excepción de plataforma; **reautenticación**; **refresh token/logout**; regla de **último administrador/Director**; rol Director. **Completado:** **recuperación de contraseña**, **deshabilitación/reactivación** de usuarios, **mantenimiento** (depuración) y auditoría de **accesos denegados**. Pendiente antes de datos reales: notificación de contraseña cambiada, canal de entrega probado, respaldos | Plataforma ya no otorga roles de clínica; 368 pruebas e2e; sin fugas de secretos |
-| **3.1** | Modelo base, `clinical_record`, **relación asistencial**, permisos, rol **Director Clínico**, `clinical:read_all` con justificación, auditoría clínica y su suite negativa | Matriz de acceso completa verde |
+| **3.1** ✅ | **Hecho** ([`incremento-3-1-acceso-clinico.md`](incremento-3-1-acceso-clinico.md)): **relación asistencial**, permisos `clinical:*` y `care:assign`, `clinical:read_all` con justificación + reautenticación + auditoría previa, vista de apoyo del asistente, protección del Director y mitigaciones de escalamiento. `clinical_record` y el modelo clínico se crean con 3.2 | Matriz de acceso completa verde (431 e2e) |
 | **3.2** | Antecedentes, alergias (y evaluación) y alertas versionados | Versionado e inmutabilidad probados en BD |
 | **3.3** | Visitas, diagnósticos y procedimientos | Reglas de sede y visita probadas |
 | **3.4** | Evoluciones: borrador, cierre con reautenticación, correcciones, errores, adendos | Criterios 14-19 |
