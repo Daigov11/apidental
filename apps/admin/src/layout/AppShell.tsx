@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { CalendarDays, FileText, Home, LogOut, Repeat, Users, Wallet } from 'lucide-react';
+import { BookOpen, CalendarDays, FileText, Home, LogOut, Repeat, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { BranchProvider } from '../lib/branch';
 import { IntegrationsProvider, useIntegrations } from '../lib/integrations';
@@ -53,6 +53,7 @@ function Shell() {
           </nav>
           <div className="sidebar-foot">
             <span className="label">{me?.user.firstName} {me?.user.lastName}</span>
+            <a className="btn btn-tertiary btn-sm" href={`${import.meta.env.BASE_URL}guia/Guia-ApiDental.pdf`} target="_blank" rel="noopener" download="Guia-ApiDental.pdf"><BookOpen size={18} aria-hidden="true" /><span className="label">Guía de uso (PDF)</span></a>
             <Button variant="tertiary" size="sm" onClick={() => void switchContext()} icon={<Repeat size={18} aria-hidden="true" />}><span className="label">Cambiar sede</span></Button>
             <Button variant="tertiary" size="sm" onClick={() => void logout()} icon={<LogOut size={18} aria-hidden="true" />}><span className="label">Cerrar sesión</span></Button>
           </div>
