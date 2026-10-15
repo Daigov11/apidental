@@ -187,6 +187,7 @@ ODONTOLOGO = [
         'En **Procedimientos** pulse **Agregar** y elija uno del catálogo. Al terminarlo, pulse **Marcar realizado** (o **Cancelar**, con motivo).',
         'En **Evolución** escriba lo observado y pulse **Guardar borrador**. Cuando esté lista, pulse **Cerrar evolución** y confirme con su contraseña (no es una firma digital).',
         'Al terminar, pulse **Cerrar la visita**. Si hay un procedimiento abierto o la evolución sigue en borrador, la pantalla le indica qué falta.'],
+        [],
         note='solo el odontólogo responsable de la visita puede registrar, y solo mientras la visita está abierta. Receta e indicaciones al paciente aún no existen en el sistema.'),
     task('Ver el historial del paciente', [
         'Abra al paciente desde **Pacientes** o desde la cita.',
