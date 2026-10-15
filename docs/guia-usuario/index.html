@@ -1,0 +1,184 @@
+<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Guía de ApiDental</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap">
+<style>
+:root{--bg:#f6f8f9;--surface:#ffffff;--fg:#141e26;--muted:#475965;--line:#d9e1e6;--brand:#0f7889;--brand-strong:#0d6070;--brand-tint:#e6f4f6;--note:#e8f1fb;--note-line:#2b6cb0;--limit:#fff4db;--limit-line:#c27803;--code:#eef3f5;--shadow:0 1px 2px rgba(20,30,38,.06),0 8px 24px rgba(20,30,38,.06)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f161c;--surface:#16212a;--fg:#e8eef2;--muted:#a3b3bf;--line:#2a3944;--brand:#4cc0d2;--brand-strong:#79d3e0;--brand-tint:#12323a;--note:#14283d;--note-line:#6aa6e8;--limit:#3a2c0a;--limit-line:#e2a436;--code:#1e2c36;--shadow:none;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f161c;--surface:#16212a;--fg:#e8eef2;--muted:#a3b3bf;--line:#2a3944;--brand:#4cc0d2;--brand-strong:#79d3e0;--brand-tint:#12323a;--note:#14283d;--note-line:#6aa6e8;--limit:#3a2c0a;--limit-line:#e2a436;--code:#1e2c36;--shadow:none;color-scheme:dark}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:5rem}
+body{margin:0;background:var(--bg);color:var(--fg);font:400 1rem/1.65 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 4rem}
+h1,h2,h3,h4{font-family:"Manrope","Inter",system-ui,sans-serif;line-height:1.2;text-wrap:balance;margin:0}
+a{color:var(--brand-strong)}
+code{font:500 .9em ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:.1em .35em;border-radius:4px}
+.wrap{max-width:74rem;margin:0 auto;display:grid;grid-template-columns:15rem minmax(0,1fr);gap:3rem}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr);gap:0}}
+nav.toc{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;max-height:100vh;overflow:auto;padding:2rem 0}
+nav.toc .brandline{font:800 1.25rem "Manrope",sans-serif;color:var(--brand-strong);margin-bottom:.15rem}
+nav.toc small{display:block;color:var(--muted);margin-bottom:1.25rem}
+nav.toc a{display:block;padding:.4rem .6rem;border-radius:6px;text-decoration:none;color:var(--fg);font-size:.95rem}
+nav.toc a:hover{background:var(--brand-tint)}
+nav.toc .grp{font:700 .72rem "Inter",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:1.1rem .6rem .3rem}
+@media (max-width:900px){nav.toc{position:static;max-height:none;padding:1.25rem 0 .5rem;display:flex;flex-wrap:wrap;gap:.25rem}nav.toc .brandline,nav.toc small,nav.toc .grp{flex-basis:100%;margin:.2rem 0}nav.toc a{border:1px solid var(--line);background:var(--surface)}}
+main{min-width:0;padding-top:2rem}
+.hero{padding:1rem 0 2rem;border-bottom:1px solid var(--line)}
+.hero h1{font-size:clamp(2rem,5vw,3rem);font-weight:800;letter-spacing:-.02em}
+.hero p{max-width:42rem;color:var(--muted);font-size:1.1rem;margin:1rem 0 0}
+section.role{padding-top:3.5rem}
+section.role>h2{font-size:clamp(1.6rem,3.5vw,2.1rem);font-weight:800;letter-spacing:-.01em;display:flex;flex-wrap:wrap;align-items:baseline;gap:.6rem 1rem}
+.who{font:500 .9rem "Inter",sans-serif;color:var(--muted)}
+.who code{white-space:nowrap}
+h3{font-size:1.25rem;font-weight:700;margin:2.25rem 0 .6rem}
+h4{font-size:1.05rem;margin:1.5rem 0 .4rem}
+p,li{max-width:46rem}
+ol.steps{padding-left:0;list-style:none;counter-reset:s;display:grid;gap:.6rem;margin:.75rem 0}
+ol.steps li{counter-increment:s;display:grid;grid-template-columns:2rem minmax(0,1fr);gap:.75rem;align-items:start}
+ol.steps li::before{content:counter(s);display:grid;place-items:center;width:1.7rem;height:1.7rem;border-radius:50%;background:var(--brand);color:#fff;font:700 .85rem "Manrope",sans-serif;margin-top:.1rem}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) ol.steps li::before{color:#08242a}}
+:root[data-theme="dark"] ol.steps li::before{color:#08242a}
+ul{padding-left:1.25rem}li{margin:.3rem 0}
+figure{margin:1.25rem 0 1.75rem}
+figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);background:var(--surface)}
+figcaption{margin-top:.5rem;color:var(--muted);font-size:.9rem}
+.callout{max-width:46rem;border-radius:8px;padding:.85rem 1rem;margin:1.1rem 0;border:1px solid var(--line)}
+.callout p{margin:.25rem 0 0}.callout .tag{font:700 .72rem "Inter",sans-serif;letter-spacing:.08em;text-transform:uppercase}
+.callout.note{background:var(--note);border-color:var(--note-line)}.callout.note .tag{color:var(--note-line)}
+.callout.limit{background:var(--limit);border-color:var(--limit-line)}.callout.limit .tag{color:var(--limit-line)}
+.tablewrap{overflow-x:auto;margin:1.25rem 0;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;min-width:46rem;font-size:.92rem}
+th,td{padding:.65rem .8rem;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+thead th{background:var(--brand-tint);font:700 .8rem "Inter",sans-serif;letter-spacing:.03em}
+tbody tr:last-child td{border-bottom:0}tbody th{font-weight:600}
+.faq details{border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:.2rem 1rem;margin:.6rem 0;max-width:46rem}
+.faq summary{cursor:pointer;font-weight:600;padding:.6rem 0}
+.faq summary:focus-visible,a:focus-visible{outline:3px solid var(--brand);outline-offset:2px;border-radius:4px}
+.foot{margin-top:4rem;padding-top:1.5rem;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+</style>
+<div class="wrap">
+<nav class="toc" aria-label="Contenido">
+<div class="brandline">ApiDental</div><small>Guía de uso por rol</small>
+<div class="grp">General</div><a href="#primeros">Primeros pasos</a><a href="#roles">Qué puede hacer cada rol</a>
+<div class="grp">Por rol</div><a href="#recepcion">Recepción</a><a href="#odontologo">Odontólogo</a><a href="#asistente">Asistente</a><a href="#director">Director clínico</a><a href="#cajero">Cajero</a><a href="#admin">Administrador de clínica</a><a href="#plataforma">Administrador de plataforma</a>
+<div class="grp">Ayuda</div><a href="#faq">Preguntas frecuentes</a><a href="#pendiente">Lo que falta</a>
+</nav>
+<main>
+<header class="hero"><h1>Guía de uso de ApiDental</h1>
+<p>Cómo trabajar en el panel de la clínica según su rol: qué ve, qué puede hacer y cómo hacerlo, con capturas de la versión demo. Los pacientes, citas y montos de las capturas son ficticios.</p></header>
+<section class="role" id="primeros"><h2>Primeros pasos</h2><h3>Ingresar</h3>
+<ol class="steps"><li>Abra <code>https://dental.apiworking.com.pe/admin/</code> en su navegador.</li><li>Escriba su <strong>correo</strong> y su <strong>contraseña</strong>. Con «Mostrar contraseña» puede comprobar lo que escribe.</li><li>Pulse <strong>Ingresar</strong>.</li></ol>
+<figure><img src="img/comun-01-login.jpg" alt="Pantalla de ingreso." loading="lazy"><figcaption>Pantalla de ingreso.</figcaption></figure>
+<aside class="callout note"><span class="tag">Tenga en cuenta</span><p>Después de <strong>5 intentos fallidos</strong> seguidos la cuenta se bloquea 15 minutos. Si olvidó su contraseña, pida a su administrador que la restablezca.</p></aside>
+<h3>Elegir dónde trabaja</h3>
+<p>Si su usuario tiene más de una clínica o sede, aparece esta pantalla. Elija una. Para cambiar más tarde use <strong>Cambiar sede</strong>, abajo a la izquierda del menú.</p>
+<figure><img src="img/comun-02-elegir-sede.jpg" alt="Selección de clínica y sede. Con un solo lugar de trabajo se entra directo." loading="lazy"><figcaption>Selección de clínica y sede. Con un solo lugar de trabajo se entra directo.</figcaption></figure>
+<h3>Cómo está organizada la pantalla</h3>
+<ul><li><strong>Menú de la izquierda.</strong> Solo muestra lo que su rol puede usar, por eso cada persona ve opciones distintas.</li><li><strong>Barra amarilla «DEMO — NO VÁLIDO PARA SUNAT».</strong> Indica que cobros, comprobantes, puntos y reseñas son una simulación con datos ficticios. Nada se envía a SUNAT ni a Apiworking. Siempre está visible.</li><li><strong>Cerrar sesión</strong>, abajo a la izquierda. Ciérrela siempre en equipos compartidos.</li></ul>
+<h3>Cuando aparece «Acceso denegado»</h3>
+<figure><img src="img/comun-03-acceso-denegado.jpg" alt="Su rol no incluye esa información." loading="lazy"><figcaption>Su rol no incluye esa información.</figcaption></figure>
+<p>Significa que su rol no puede ver esa pantalla. No es un error. Si necesita ese acceso, consulte con el administrador de su clínica.</p></section>
+<section class="role" id="roles"><h2>Qué puede hacer cada rol</h2>
+<p>El menú solo muestra lo que su rol permite. Esta tabla resume los permisos del panel actual.</p><div class="tablewrap"><table><thead><tr><th scope="col">Rol</th><th scope="col">Agenda</th><th scope="col">Pacientes</th><th scope="col">Historia clínica y odontograma</th><th scope="col">Caja</th><th scope="col">Comprobantes</th><th scope="col">Fidelización</th></tr></thead><tbody><tr><th scope="row">Recepción</th><td>Gestiona</td><td>Datos completos</td><td>No</td><td>Cobra</td><td>Ve</td><td>Ve</td></tr><tr><th scope="row">Odontólogo</th><td>Ve e inicia la atención</td><td>Lectura</td><td>Sí, de sus pacientes</td><td>No</td><td>No</td><td>No</td></tr><tr><th scope="row">Asistente</th><td>Ve</td><td>Datos básicos</td><td>No</td><td>No</td><td>No</td><td>No</td></tr><tr><th scope="row">Director clínico</th><td>Ve</td><td>Lectura</td><td>Solo por la API, con justificación</td><td>No</td><td>No</td><td>No</td></tr><tr><th scope="row">Cajero</th><td>Ve</td><td>Datos básicos</td><td>No</td><td>Cobra</td><td>Emite y concilia</td><td>Canjea puntos</td></tr><tr><th scope="row">Administrador de clínica</th><td>Gestiona</td><td>Datos completos</td><td>No</td><td>Cobra</td><td>Emite y concilia</td><td>Canjea puntos</td></tr><tr><th scope="row">Administrador de plataforma</th><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td><td>No</td></tr></tbody></table></div></section>
+<section class="role" id="recepcion"><h2>Recepción <span class="who">Cuenta demo: <code>recepcion.demo@apidental.test</code></span></h2><p>Agenda, citas, datos del paciente y cobros.</p><p>Recepción organiza la agenda, mantiene los datos del paciente y cobra la atención.</p>
+<h3>1. Revisar el día</h3>
+<p>La pantalla <strong>Hoy</strong> resume las citas del día: cuántas hay, cuántas faltan por confirmar y las ausencias. Los nombres de la lista abren la ficha del paciente.</p>
+<figure><img src="img/recepcion-01-hoy.jpg" alt="Hoy, vista de recepción." loading="lazy"><figcaption>Hoy, vista de recepción.</figcaption></figure>
+<h3>2. Ver la agenda</h3>
+<p>En <strong>Agenda</strong> elija la fecha, la vista (día o semana en lista) y el odontólogo. Cada cita muestra la hora, el paciente, el servicio, el consultorio y su estado.</p>
+<figure><img src="img/recepcion-02-agenda.jpg" alt="Agenda del día por odontólogo." loading="lazy"><figcaption>Agenda del día por odontólogo.</figcaption></figure>
+<h3>3. Reservar una cita</h3>
+<ol class="steps"><li>Pulse <strong>Nueva cita</strong> (en la agenda o en la ficha del paciente).</li><li>Busque al <strong>paciente</strong> por DNI, nombre o celular (mínimo 2 caracteres) y elíjalo.</li><li>Elija <strong>servicio</strong>, <strong>odontólogo</strong> y <strong>fecha</strong>. Aparecen los <strong>horarios disponibles</strong>; elija uno.</li><li>Si hace falta, agregue una nota administrativa y pulse <strong>Reservar cita</strong>.</li></ol>
+<figure><img src="img/recepcion-03-nueva-cita.jpg" alt="Formulario de nueva cita." loading="lazy"><figcaption>Formulario de nueva cita.</figcaption></figure>
+<aside class="callout note"><span class="tag">Tenga en cuenta</span><p>Solo se ofrecen horarios libres según el horario del odontólogo, su consultorio y la duración del servicio. No se puede reservar encima de otra cita.</p></aside>
+<h3>4. Gestionar una cita</h3>
+<p>Pulse una cita de la agenda para abrir su detalle.</p>
+<figure><img src="img/recepcion-04-cita.jpg" alt="Detalle de la cita con sus acciones." loading="lazy"><figcaption>Detalle de la cita con sus acciones.</figcaption></figure>
+<ul><li><strong>Confirmar</strong>: cuando el paciente avisó que viene. Pasa de «Reservado» a «Confirmado».</li><li><strong>Reprogramar</strong>: elija otro horario disponible. La cita guarda cuántas veces se movió.</li><li><strong>Cancelar cita</strong>: pide un motivo (mínimo 3 caracteres).</li><li><strong>Marcar ausencia</strong>: disponible desde la hora de inicio, si el paciente no llegó. Pide un motivo.</li><li><strong>Ver paciente</strong>: abre su ficha.</li></ul>
+<p>Estados de una cita: Reservado → Confirmado → Atendido. También puede terminar en Cancelado o Ausente.</p>
+<h3>5. Buscar al paciente y ver su ficha</h3>
+<p>En <strong>Pacientes</strong> busque por DNI, nombre o celular y pulse el nombre.</p>
+<figure><img src="img/recepcion-05-pacientes.jpg" alt="Búsqueda de pacientes." loading="lazy"><figcaption>Búsqueda de pacientes.</figcaption></figure>
+<p>La ficha reúne la identificación, las citas y la tarjeta de fidelización simulada con su saldo de puntos.</p>
+<figure><img src="img/recepcion-06-ficha-paciente.jpg" alt="Ficha del paciente." loading="lazy"><figcaption>Ficha del paciente.</figcaption></figure>
+<aside class="callout limit"><span class="tag">Todavía no</span><p>Aún <strong>no hay pantalla para crear o editar pacientes</strong> en el panel. Eso se hace hoy por la API. La historia clínica y el odontograma no son visibles para recepción.</p></aside>
+<h3>6. Cobrar una atención</h3>
+<ol class="steps"><li>Cuando el odontólogo atendió la cita, ábrala en la agenda y pulse <strong>Registrar cobro</strong>. También puede entrar por <strong>Caja</strong> y elegir el cobro pendiente.</li><li>En <strong>Caja</strong> verá todos los cobros con su fecha, paciente, concepto, monto y estado.</li></ol>
+<figure><img src="img/recepcion-07-caja.jpg" alt="Caja: lista de cobros. Se puede filtrar por estado." loading="lazy"><figcaption>Caja: lista de cobros. Se puede filtrar por estado.</figcaption></figure>
+<ol class="steps"><li>Abra el cobro pendiente.</li><li>Elija el <strong>medio de pago</strong>: efectivo, tarjeta, transferencia o Yape/Plin.</li><li>Pulse <strong>Registrar pago</strong>.</li></ol>
+<figure><img src="img/recepcion-08-cobro-pendiente.jpg" alt="Cobro pendiente de pago." loading="lazy"><figcaption>Cobro pendiente de pago.</figcaption></figure>
+<aside class="callout note"><span class="tag">Tenga en cuenta</span><p>Si el cobro se creó por error, use <strong>Anular cobro</strong>. El cobro queda anulado y visible en la lista; no se borra.</p></aside>
+<h3>7. Ver el comprobante</h3>
+<p>Al pagar, se encolan los puntos de fidelización y la solicitud de reseña (simulados). El comprobante aparece debajo del cobro, siempre con la marca <strong>«DEMO — NO VÁLIDO PARA SUNAT»</strong>.</p>
+<figure><img src="img/recepcion-09-cobro-pagado.jpg" alt="Cobro pagado." loading="lazy"><figcaption>Cobro pagado.</figcaption></figure>
+<figure><img src="img/recepcion-10-comprobante.jpg" alt="Boleta simulada emitida, con subtotal, IGV y total." loading="lazy"><figcaption>Boleta simulada emitida, con subtotal, IGV y total.</figcaption></figure>
+<p>En <strong>Comprobantes</strong> está la lista de todos los emitidos, con su estado.</p>
+<figure><img src="img/recepcion-11-comprobantes.jpg" alt="Lista de comprobantes." loading="lazy"><figcaption>Lista de comprobantes.</figcaption></figure>
+<p>Abajo está la <strong>cola de integraciones</strong>: lo que quedó pendiente de enviar (comprobantes, puntos y reseñas) y qué pasó con cada tarea.</p>
+<figure><img src="img/recepcion-12-cola.jpg" alt="Cola de integraciones." loading="lazy"><figcaption>Cola de integraciones.</figcaption></figure>
+<aside class="callout note"><span class="tag">Tenga en cuenta</span><p>Recepción <strong>ve</strong> los comprobantes. Emitirlos, reintentarlos o conciliarlos lo hace Caja.</p></aside></section><section class="role" id="odontologo"><h2>Odontólogo <span class="who">Cuenta demo: <code>odontologa.demo@apidental.test</code></span></h2><p>Atiende a sus pacientes y registra el odontograma.</p><p>El odontólogo atiende a los pacientes con los que tiene relación asistencial vigente y registra el odontograma. Solo ve la historia clínica de esos pacientes.</p>
+<h3>1. Revisar el día</h3>
+<figure><img src="img/odontologo-01-hoy.jpg" alt="Hoy, vista del odontólogo. No tiene Caja ni Comprobantes." loading="lazy"><figcaption>Hoy, vista del odontólogo. No tiene Caja ni Comprobantes.</figcaption></figure>
+<h3>2. Iniciar la atención</h3>
+<ol class="steps"><li>En <strong>Agenda</strong> abra la cita del paciente.</li><li>Pulse <strong>Iniciar atención</strong>. Se abre una visita clínica y la cita pasa a «Atendido».</li></ol>
+<figure><img src="img/odontologo-02-iniciar-atencion.jpg" alt="Cita lista para iniciar la atención." loading="lazy"><figcaption>Cita lista para iniciar la atención.</figcaption></figure>
+<aside class="callout note"><span class="tag">Tenga en cuenta</span><p>El botón aparece desde <strong>30 minutos antes</strong> de la hora de la cita y hasta <strong>6 horas después</strong> de que termina. Fuera de esa ventana, solo se ve «Ver paciente».</p></aside>
+<h3>3. La ficha de atención</h3>
+<p>Arriba aparecen las <strong>alertas</strong> del paciente: alergias registradas, avisos y si tiene consentimiento clínico vigente. Léalas antes de empezar.</p>
+<figure><img src="img/odontologo-03-ficha.jpg" alt="Ficha de atención con alertas de alergia y consentimiento." loading="lazy"><figcaption>Ficha de atención con alertas de alergia y consentimiento.</figcaption></figure>
+<p>Más abajo están los diagnósticos, los procedimientos, la evolución y el resumen del odontograma de la visita.</p>
+<figure><img src="img/odontologo-04-ficha-secciones.jpg" alt="Secciones de la ficha." loading="lazy"><figcaption>Secciones de la ficha.</figcaption></figure>
+<aside class="callout limit"><span class="tag">Todavía no</span><p>En el panel, <strong>diagnósticos, procedimientos y evolución se muestran en solo lectura</strong>. Hoy se registran por la API. Lo que sí se edita desde el panel es el odontograma.</p></aside>
+<h3>4. Registrar el odontograma</h3>
+<p>Desde la ficha pulse <strong>Ver odontograma</strong>, o entre por la ficha del paciente. Según el caso verá:</p>
+<ul><li><strong>Iniciar odontograma</strong>: si el paciente no tiene ninguno.</li><li><strong>Actualizar odontograma</strong>: abre un borrador nuevo a partir de la última versión guardada.</li><li><strong>Corregir la versión guardada</strong>: para corregir un error. Pide el motivo y, al guardar, su contraseña.</li></ul>
+<figure><img src="img/odontologo-05-odontograma.jpg" alt="Editor del odontograma: dentición, pinceles y estado del guardado." loading="lazy"><figcaption>Editor del odontograma: dentición, pinceles y estado del guardado.</figcaption></figure>
+<p>Cada pieza (numeración FDI) se dibuja con su raíz y, en premolares y molares, su cara oclusal. Para marcar:</p>
+<ol class="steps"><li><strong>Toque una pieza</strong> para elegirla. Se abre su panel a la derecha.</li><li>Elija un <strong>pincel</strong> (Caries, Restauración, Sellante, Fractura u Otro hallazgo) y toque una <strong>superficie</strong> en la cruz del panel: V vestibular, L lingual o palatina, M mesial, D distal, O oclusal o incisal.</li><li>Para quitar un hallazgo, toque la misma superficie otra vez o use el pincel <strong>Quitar</strong>.</li><li>En el panel también puede indicar el <strong>estado de la pieza</strong> (presente, ausente, sin erupcionar, implante o resto radicular), las <strong>marcas</strong> (corona, endodoncia, prótesis) y una nota.</li></ol>
+<figure><img src="img/odontologo-06-odontograma-pieza.jpg" alt="Pieza 16 elegida, con la cruz de superficies y su detalle." loading="lazy"><figcaption>Pieza 16 elegida, con la cruz de superficies y su detalle.</figcaption></figure>
+<figure><img src="img/odontologo-07-odontograma-marcado.png" alt="Caries marcadas en las superficies oclusal y mesial de la pieza 16. Se pintan sobre el propio diente." loading="lazy"><figcaption>Caries marcadas en las superficies oclusal y mesial de la pieza 16. Se pintan sobre el propio diente.</figcaption></figure>
+<ul><li><strong>Dentición:</strong> cambie entre permanente, temporal y mixta con el selector de arriba.</li><li><strong>Se guarda solo.</strong> El indicador «Guardado» confirma que el borrador está a salvo. No necesita pulsar nada para no perder el trabajo.</li><li>Con las flechas del teclado puede moverse entre piezas y con Enter elegirla.</li></ul>
+<h3>5. Guardar la versión</h3>
+<p>Al terminar, escriba las notas generales si las hay y pulse <strong>Guardar versión</strong>. La versión queda <strong>inmutable</strong>: no se puede cambiar. Para modificar algo después, se abre otra versión y se conserva el historial completo.</p>
+<figure><img src="img/odontologo-08-odontograma-guardar.jpg" alt="Notas generales, Descartar borrador y Guardar versión." loading="lazy"><figcaption>Notas generales, Descartar borrador y Guardar versión.</figcaption></figure>
+<p>Si abrió el borrador por error, pulse <strong>Descartar borrador</strong>: pide un motivo, y la última versión guardada no cambia.</p>
+<figure><img src="img/odontologo-09-descartar.jpg" alt="Descartar el borrador." loading="lazy"><figcaption>Descartar el borrador.</figcaption></figure>
+<aside class="callout note"><span class="tag">Tenga en cuenta</span><p>Se confirma con su contraseña únicamente al guardar una <strong>corrección</strong>. Esa confirmación no es una firma digital, legal ni clínica.</p></aside>
+<aside class="callout limit"><span class="tag">Todavía no</span><p>El odontograma registra <strong>lo que usted observa o declara</strong>. El sistema no sugiere diagnósticos ni tratamientos. El formato clínico está <strong>por validar</strong> y no se declara cumplimiento de normas del MINSA.</p></aside>
+<h3>6. La ficha del paciente</h3>
+<p>En <strong>Atención clínica</strong> están todas las visitas del paciente, abiertas o cerradas, con acceso directo a cada ficha y al odontograma.</p>
+<figure><img src="img/odontologo-10-paciente.jpg" alt="Ficha del paciente con su historial de visitas." loading="lazy"><figcaption>Ficha del paciente con su historial de visitas.</figcaption></figure></section><section class="role" id="asistente"><h2>Asistente <span class="who">Cuenta demo: <code>asistente.demo@apidental.test</code></span></h2><p>Apoyo: consulta la agenda y los datos básicos.</p><p>El asistente apoya la atención. Consulta la agenda y los datos básicos de los pacientes.</p>
+<figure><img src="img/asistente-01-hoy.jpg" alt="Hoy, vista del asistente. El menú solo tiene Hoy, Agenda y Pacientes." loading="lazy"><figcaption>Hoy, vista del asistente. El menú solo tiene Hoy, Agenda y Pacientes.</figcaption></figure>
+<p>En la ficha del paciente ve su identificación y sus citas. La historia clínica, la evolución y el odontograma no están disponibles para este rol.</p>
+<figure><img src="img/asistente-02-paciente.jpg" alt="Ficha del paciente: información clínica reservada al odontólogo." loading="lazy"><figcaption>Ficha del paciente: información clínica reservada al odontólogo.</figcaption></figure>
+<figure><img src="img/asistente-03-sin-acceso.jpg" alt="Si abre una ficha clínica por un enlace, verá «Acceso denegado»." loading="lazy"><figcaption>Si abre una ficha clínica por un enlace, verá «Acceso denegado».</figcaption></figure>
+<aside class="callout note"><span class="tag">Tenga en cuenta</span><p>El asistente puede consultar la agenda, pero no reserva, reprograma ni cancela citas. Eso lo hace Recepción.</p></aside></section><section class="role" id="director"><h2>Director clínico <span class="who">Cuenta demo: <code>director.demo@apidental.test</code></span></h2><p>Autoridad clínica de la clínica; consulta agenda y pacientes.</p><p>El director clínico es la autoridad clínica de la clínica. En el panel consulta la agenda y los datos de los pacientes.</p>
+<figure><img src="img/director-01-hoy.jpg" alt="Hoy, vista del director clínico." loading="lazy"><figcaption>Hoy, vista del director clínico.</figcaption></figure>
+<figure><img src="img/director-02-paciente.jpg" alt="Ficha del paciente. La historia clínica queda reservada al odontólogo que atiende." loading="lazy"><figcaption>Ficha del paciente. La historia clínica queda reservada al odontólogo que atiende.</figcaption></figure>
+<aside class="callout limit"><span class="tag">Todavía no</span><p>El director puede leer la historia de <strong>un paciente por vez</strong>, de forma excepcional, con justificación, confirmación de contraseña y registro de auditoría. Esa lectura <strong>todavía no tiene pantalla</strong> en el panel y se hace por la API.</p></aside></section><section class="role" id="cajero"><h2>Cajero <span class="who">Cuenta demo: <code>cajero.demo@apidental.test</code></span></h2><p>Caja, comprobantes y puntos de fidelización.</p><p>El cajero registra los pagos, emite y concilia los comprobantes simulados y canjea puntos de fidelización.</p>
+<figure><img src="img/cajero-01-hoy.jpg" alt="Hoy, vista del cajero. El menú incluye Caja y Comprobantes." loading="lazy"><figcaption>Hoy, vista del cajero. El menú incluye Caja y Comprobantes.</figcaption></figure>
+<h3>1. Cobrar</h3>
+<p>En <strong>Caja</strong> están todos los cobros. Abra un cobro <strong>pendiente</strong>, elija el medio de pago y pulse <strong>Registrar pago</strong>. Es el mismo flujo que en Recepción (ver la pantalla de Caja allí).</p>
+<h3>2. Emitir el comprobante simulado</h3>
+<ol class="steps"><li>Abra un cobro <strong>pagado</strong> que aún no tenga comprobante.</li><li>Elija <strong>Boleta</strong> o <strong>Factura</strong>. La factura pide un RUC de 11 dígitos y la razón social, ambos ficticios.</li><li>Elija el <strong>escenario de simulación</strong>: emitido de inmediato, pendiente, rechazado o con reintento. Sirve para mostrar cómo responde cada caso.</li><li>Pulse <strong>Emitir comprobante simulado</strong>.</li></ol>
+<p>El comprobante nace con la marca <strong>«DEMO — NO VÁLIDO PARA SUNAT»</strong>, un número correlativo y un estado.</p>
+<h3>3. Comprobantes, cola y conciliación</h3>
+<p>En <strong>Comprobantes</strong> el cajero tiene dos botones que Recepción no ve:</p>
+<ul><li><strong>Procesar cola</strong>: entrega al proveedor simulado lo pendiente (comprobantes, puntos y reseñas).</li><li><strong>Conciliar pendientes</strong>: consulta el estado real de los comprobantes que quedaron «Enviado» o «Requiere conciliación».</li></ul>
+<figure><img src="img/cajero-02-comprobantes.jpg" alt="Comprobantes con Procesar cola y Conciliar pendientes." loading="lazy"><figcaption>Comprobantes con Procesar cola y Conciliar pendientes.</figcaption></figure>
+<figure><img src="img/cajero-03-cola.jpg" alt="Cola de integraciones: procesado, en cola u omitido, con el motivo." loading="lazy"><figcaption>Cola de integraciones: procesado, en cola u omitido, con el motivo.</figcaption></figure>
+<h4>Qué significa cada estado de comprobante</h4>
+<ul><li><strong>Emitido</strong>: aceptado por el proveedor simulado.</li><li><strong>Enviado</strong>: se envió y falta la confirmación. Use Conciliar.</li><li><strong>Requiere conciliación</strong>: no se sabe el resultado. Use Conciliar.</li><li><strong>Error reintentable</strong>: falló por algo temporal. Use Reintentar en el detalle del cobro.</li><li><strong>Rechazado</strong>: el proveedor simulado lo rechazó y muestra el motivo.</li></ul>
+<aside class="callout note"><span class="tag">Tenga en cuenta</span><p>Si un comprobante fue rechazado, se puede emitir uno nuevo desde el mismo cobro; tendrá otro número.</p></aside>
+<aside class="callout note"><span class="tag">Tenga en cuenta</span><p>Procesar cola y Reintentar son seguros de repetir: un cobro no genera dos comprobantes ni suma los puntos dos veces.</p></aside>
+<h3>4. Canjear puntos</h3>
+<p>En la ficha del paciente, la tarjeta <strong>Fidelización</strong> muestra su nivel, su saldo y el estado de su tarjeta NFC (simulada). Si el cajero está autorizado, escriba los puntos en <strong>Canjear puntos</strong> y pulse <strong>Canjear</strong>. Un paciente solo acumula puntos si autorizó la fidelización.</p></section><section class="role" id="admin"><h2>Administrador de clínica <span class="who">Cuenta demo: <code>admin.dev@apidental.test</code></span></h2><p>Todo lo de recepción y caja, más la administración de su clínica.</p><p>El administrador de clínica tiene el mismo panel que Recepción y Caja juntos: agenda, pacientes, cobros, comprobantes y fidelización. Además administra a las personas de su clínica.</p>
+<figure><img src="img/admin-01-contexto.jpg" alt="Este usuario tiene dos asignaciones: administración de la plataforma y administración de la clínica." loading="lazy"><figcaption>Este usuario tiene dos asignaciones: administración de la plataforma y administración de la clínica.</figcaption></figure>
+<figure><img src="img/admin-02-hoy.jpg" alt="Hoy, con la clínica elegida." loading="lazy"><figcaption>Hoy, con la clínica elegida.</figcaption></figure>
+<p>Para las tareas del día siga las guías de <strong>Recepción</strong> y <strong>Cajero</strong>.</p>
+<aside class="callout limit"><span class="tag">Todavía no</span><p><strong>Usuarios, sedes, roles e invitaciones no tienen pantalla</strong> en el panel todavía. Se administran por la API. El envío de invitaciones requiere configurar el canal de entrega, que hoy está desactivado.</p></aside></section><section class="role" id="plataforma"><h2>Administrador de plataforma <span class="who">Cuenta demo: <code>admin.dev@apidental.test</code></span></h2><p>Opera la plataforma. No ve datos de pacientes.</p><p>El administrador de plataforma opera la plataforma. Por diseño <strong>no tiene acceso a datos de pacientes</strong>. Si el mismo usuario también administra una clínica, elija esa asignación al ingresar o con <strong>Cambiar sede</strong>.</p>
+<figure><img src="img/plataforma-01-hoy.jpg" alt="En la administración de la plataforma solo existe la pantalla Hoy." loading="lazy"><figcaption>En la administración de la plataforma solo existe la pantalla Hoy.</figcaption></figure></section>
+<section class="role" id="faq"><h2>Preguntas frecuentes</h2><div class="faq"><details><summary>No veo el botón «Iniciar atención».</summary><p>Solo aparece para el odontólogo de la cita, desde 30 minutos antes de su hora y hasta 6 horas después de terminar, y mientras la cita no esté cancelada ni marcada como ausencia.</p></details><details><summary>Me aparece «Acceso denegado».</summary><p>Su rol no incluye esa pantalla. Consulte la tabla de roles. Si la necesita, pida el cambio a su administrador.</p></details><details><summary>Mi sesión se cerró sola.</summary><p>Por seguridad la sesión caduca. Ingrese de nuevo. En equipos compartidos use siempre Cerrar sesión.</p></details><details><summary>No encuentro al paciente.</summary><p>Busque por DNI, nombre o celular con al menos 2 caracteres. Puede haber dos fichas parecidas con documentos distintos: el sistema las avisa y no las fusiona.</p></details><details><summary>Un comprobante dice «DEMO — NO VÁLIDO PARA SUNAT».</summary><p>Es correcto. Esta versión simula la facturación para mostrar el flujo. No hay conexión con SUNAT ni con Apiworking, y esos comprobantes no tienen validez tributaria.</p></details><details><summary>Un comprobante quedó en «Error reintentable» o «Requiere conciliación».</summary><p>Es un caso previsto. Pida a Caja que use Reintentar o Conciliar. Nada se duplica.</p></details><details><summary>Guardé un odontograma con un error.</summary><p>Una versión guardada no se modifica. Abra «Corregir la versión guardada», indique el motivo y confirme con su contraseña. Queda el historial de ambas versiones.</p></details></div></section>
+<section class="role" id="pendiente"><h2>Lo que todavía no está en el panel</h2><p>Estas funciones existen como objetivo del producto, pero no están disponibles en esta versión o se usan por la API:</p><ul><li>Crear y editar pacientes, consentimientos y adjuntos desde el panel (hoy por la API).</li><li>Registrar diagnósticos, procedimientos y evolución desde el panel (hoy en solo lectura).</li><li>Planes de tratamiento, presupuestos, cuotas y saldos.</li><li>Apertura y cierre de caja, pagos parciales y cuentas por cobrar.</li><li>Reportes y tablero de gestión.</li><li>Recordatorios por WhatsApp o SMS y confirmación de asistencia por el paciente.</li><li>Letreros NFC y métricas de reseñas, tarjeta en Wallet, cumpleaños y referidos.</li><li>Administración de usuarios, sedes e invitaciones desde el panel.</li></ul></section>
+<p class="foot">Versión demostrativa: cobros, comprobantes, puntos y reseñas son simulaciones con datos ficticios, sin conexión con SUNAT ni con Apiworking. El formato clínico del odontograma está por validar.</p>
+</main></div></html>

@@ -25,6 +25,7 @@ export const DEMO_STAFF = [
   { key: 'assistant', email: 'asistente.demo@apidental.test', firstName: 'Andrés', lastName: 'Demo (asistente)', role: 'ASSISTANT', scope: 'branch' },
   { key: 'reception', email: 'recepcion.demo@apidental.test', firstName: 'Rosa', lastName: 'Demo (recepción)', role: 'RECEPTIONIST', scope: 'clinic' },
   { key: 'director', email: 'director.demo@apidental.test', firstName: 'Daniel', lastName: 'Demo (director clínico)', role: 'CLINICAL_DIRECTOR', scope: 'clinic' },
+  { key: 'cashier', email: 'cajero.demo@apidental.test', firstName: 'Pablo', lastName: 'Demo (caja)', role: 'CASHIER', scope: 'clinic' },
 ] as const;
 
 export const DEMO_CATALOG = [
