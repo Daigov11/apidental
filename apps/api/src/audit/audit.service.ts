@@ -38,6 +38,7 @@ export const AuditAction = {
   ProvisioningRecorded: 'PROVISIONING_RECORDED',
   ProvisioningConsumed: 'PROVISIONING_CONSUMED',
   ProvisioningRevoked: 'PROVISIONING_REVOKED',
+  ProvisioningExpired: 'PROVISIONING_EXPIRED',
   LastAuthorityBlocked: 'LAST_AUTHORITY_BLOCKED',
   // --- Pacientes (lecturas incluidas: son datos personales) ---
   PatientCreated: 'PATIENT_CREATED',

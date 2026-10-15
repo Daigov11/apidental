@@ -1,17 +1,4 @@
-import { Transform, Type } from 'class-transformer';
-import {
-  IsEmail,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Matches,
-  MaxLength,
-  MinLength,
-  ValidateNested,
-} from 'class-validator';
-import { normalizeEmail } from '../../common/utils/email.js';
-
-const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
+import { IsOptional, IsString, IsUUID, Matches } from 'class-validator';
 
 export class GrantDto {
   @IsString()
@@ -29,37 +16,7 @@ export class GrantDto {
   branchId?: string;
 }
 
-export class CreateUserDto {
-  @Transform(({ value }) => (typeof value === 'string' ? normalizeEmail(value) : value))
-  @IsEmail()
-  @MaxLength(254)
-  email!: string;
-
-  /** Contraseña inicial. No hay flujo de recuperación todavía (ver README). */
-  @IsString()
-  @MinLength(12, { message: 'La contraseña debe tener al menos 12 caracteres' })
-  @MaxLength(128)
-  password!: string;
-
-  @Transform(trim)
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
-  firstName!: string;
-
-  @Transform(trim)
-  @IsString()
-  @MinLength(1)
-  @MaxLength(100)
-  lastName!: string;
-
-  /** Obligatoria para administradores de clínica; opcional para plataforma. */
-  @IsOptional()
-  @ValidateNested()
-  @Type(() => GrantDto)
-  assignment?: GrantDto;
-}
-
+/** Asigna un rol a un usuario EXISTENTE. Los usuarios nuevos solo se incorporan por invitación. */
 export class CreateAssignmentDto extends GrantDto {
   @IsUUID()
   userId!: string;
