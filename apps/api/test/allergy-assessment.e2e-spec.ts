@@ -766,7 +766,9 @@ describe('Parche 3.2.1: evaluación de alergias y motivo del alta', () => {
         w.patientId,
         assess({ expectedVersion: 1, reason: 'Recepción no escribe' }),
       ).expect(403);
-      for (const token of [w.admin.token]) {
+      const cashierTok = (await actorIn(ctx, fx, 'CASHIER', { clinicId: w.clinic.id })).token;
+      await get(w.admin.token, w.patientId, '/allergy-assessment').expect(200); // administración: acceso total auditado
+      for (const token of [cashierTok]) {
         const real = await get(
           token,
           w.patientId,

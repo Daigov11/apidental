@@ -42,6 +42,8 @@ export const PERMISSIONS = {
   'clinical:write': 'Registrar información clínica de pacientes con relación asistencial vigente',
   'clinical:read_limited': 'Ver la vista de apoyo (alertas y datos de apoyo, sin diagnósticos ni evoluciones)',
   'clinical:view': 'Ver (solo lectura, sin editar) la información clínica de los pacientes de la clínica',
+  'clinical:admin':
+    'Acceso clínico total de la clínica para administración (ver y registrar en cualquier paciente, con auditoría)',
   'clinical:read_all':
     'Leer (nunca escribir) información clínica de un paciente de la clínica con justificación, reautenticación y auditoría previa (solo Director Clínico)',
   // --- Catálogo de procedimientos de la clínica (3.3). Configuración administrativa, no datos de pacientes ---
@@ -68,6 +70,7 @@ export const CLINICAL_PERMISSIONS = [
   'clinical:write',
   'clinical:read_limited',
   'clinical:view',
+  'clinical:admin',
   'clinical:read_all',
 ] as const satisfies readonly PermissionCode[];
 
@@ -161,7 +164,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     code: 'CLINIC_ADMIN',
     name: 'Administrador de clínica',
     scope: 'CLINIC',
-    description: 'Administra usuarios, sedes y asignaciones de su clínica.',
+    description: 'Administra usuarios, sedes y asignaciones de su clínica, y tiene vista y acciones sobre todo el sistema (incluida la información clínica, con auditoría).',
     permissions: [
       'clinic:read',
       'branch:read',
@@ -176,6 +179,9 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'provisioning:record',
       'provisioning:read',
       'care:assign',
+      'clinical:view',
+      'clinical:write',
+      'clinical:admin',
       'procedure:read',
       'procedure:manage',
       'appointment:read',

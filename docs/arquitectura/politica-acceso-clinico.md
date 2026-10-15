@@ -19,7 +19,7 @@ Alcance: datos **clínicos** (historia clínica, antecedentes, alergias, alertas
 | Rol | Acceso clínico | Detalle |
 |---|---|---|
 | **Administrador de plataforma** | **Ninguno** | Sin acceso predeterminado ni acceso de soporte (ver 6). |
-| **Administrador de clínica** | **Ninguno** | Administra usuarios, sedes y asignaciones, y ve datos demográficos, consentimientos y adjuntos administrativos (incremento 2). No lee ni escribe información clínica. |
+| **Administrador de clínica** | **Total, auditado** | Decisión del responsable del producto (2026-10-15): vista y acciones sobre todo el sistema. Permiso `clinical:admin` (+ `clinical:view`, `clinical:write`): lee y registra en cualquier paciente de **su** clínica sin relación asistencial (otra clínica: 404). Cada acceso queda auditado (`via: admin_access`). **No** obtiene `clinical:read_all`. Las acciones ligadas a una visita (abrirla, evolución, diagnósticos y procedimientos de la visita) siguen siendo del odontólogo responsable (separación de funciones). |
 | **Odontólogo** | **Lectura y escritura** | Solo de pacientes con **relación asistencial** y dentro de **sus sedes asignadas**. Es el único que crea, edita y corrige evoluciones, diagnósticos y procedimientos. |
 | **Asistente** | **Lectura limitada** | Ve la *vista de apoyo* (ver 3.3) de pacientes con relación vigente en su sede. **No crea, edita ni corrige** evoluciones ni ningún dato clínico. |
 | **Recepcionista** | **Solo lectura (vista)** | Decisión del responsable del producto (2026-10-15): ve la información clínica (ficha, historia, evolución, odontograma) sin necesitar relación asistencial, **nunca escribe** y cada lectura queda auditada (`CLINICAL_RECORD_VIEWED`, nivel `VIEW`, sin contenido clínico). Además asigna pacientes a odontólogos (acto administrativo). |
@@ -28,7 +28,7 @@ Alcance: datos **clínicos** (historia clínica, antecedentes, alergias, alertas
 
 Notas:
 
-- **Administrador de clínica ≠ Director Clínico.** Un administrador de clínica solo puede leer información clínica si **además** se le asigna expresamente el rol Director Clínico (ver 4.3).
+- **Administrador de clínica ≠ Director Clínico.** El administrador accede por `clinical:admin` (auditado); la lectura excepcional `clinical:read_all` sigue exigiendo el rol Director Clínico (ver 4.3).
 - Un mismo usuario puede tener varios roles; los permisos se evalúan **por contexto** (clínica y sede activas), como en el RBAC vigente.
 - Esta política **no cambia** el acceso demográfico actual (administración, recepción, odontólogo, asistente y cajero según el incremento 2).
 
@@ -132,7 +132,7 @@ En el incremento 2 la plataforma podía otorgar roles de clínica directamente (
 - La plataforma **ya no otorga roles de clínica** ni crea usuarios con contraseña: solo emite una **invitación de un solo uso** al **primer administrador** de una clínica **sin administrador**; la persona define su propia contraseña.
 - La plataforma **nunca** designa al Director Clínico ni posee `provisioning:*` ni `director:manage`. El primer Director exige **registro formal de aprovisionamiento** de la clínica + reautenticación; los siguientes, un Director vigente.
 - Una clínica no puede quedar sin administrador ni sin Director (regla de último administrador).
-- **Riesgo residual documentado:** un operador de plataforma que controle un correo puede invitarlo a una clínica sin administrador. No obtiene acceso clínico y todo queda trazado, pero conviene verificar con la clínica, por un canal independiente, quién es su administrador **[por validar]**. El registro de aprovisionamiento es declarativo mientras no exista firma o flujo contractual integrado.
+- **Riesgo residual documentado:** un operador de plataforma que controle un correo puede invitarlo a una clínica sin administrador. Ese administrador obtiene `clinical:admin` (acceso clínico total, auditado), por lo que el riesgo es mayor que antes; todo queda trazado, pero conviene verificar con la clínica, por un canal independiente, quién es su administrador **[por validar]**. El registro de aprovisionamiento es declarativo mientras no exista firma o flujo contractual integrado.
 
 ## 8. Auditoría exigida por esta política
 

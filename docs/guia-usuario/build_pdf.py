@@ -90,7 +90,7 @@ MATRIX = [
     ('Asistente', 'Ve', 'Datos básicos', '—', '—', '—', '—'),
     ('Director clínico', 'Ve', 'Lectura', 'Solo por la API', '—', '—', '—'),
     ('Cajero', 'Ve', 'Datos básicos', '—', 'Cobra', 'Emite y concilia', 'Canjea puntos'),
-    ('Admin. de clínica', 'Gestiona citas y solicitudes web', 'Datos completos; crea pacientes', '—', 'Cobra', 'Emite y concilia', 'Canjea puntos'),
+    ('Admin. de clínica', 'Gestiona citas y solicitudes web', 'Datos completos; crea pacientes', 'Ve y registra (auditado)', 'Cobra', 'Emite y concilia', 'Canjea puntos'),
     ('Admin. de plataforma', '—', '—', '—', '—', '—', '—'),
 ]
 
@@ -261,6 +261,7 @@ ADMIN = [
     task('Trabajar como administrador de clínica', [
         'Al ingresar, elija **Clínica Demo** (la otra opción es la administración de la plataforma).',
         'Tiene el mismo panel que Recepción y Caja juntos. Siga sus guías para agenda, pacientes, cobros, comprobantes y fidelización.',
+        'Además puede **ver y registrar** la información clínica de cualquier paciente de la clínica (historia y odontograma). Cada acceso queda auditado. Las acciones propias de una visita (iniciar atención, evoluciones) siguen siendo del odontólogo responsable.',
         'Usuarios, sedes, roles e invitaciones se administran hoy **por la API**; no hay pantalla.'],
         [fig('admin-01-contexto.jpg', 'Dos asignaciones: plataforma y clínica.', left=500, right=500, top=190, bottom=190)]),
     task('Administración de la plataforma', [

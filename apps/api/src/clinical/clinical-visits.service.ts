@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
 } from '@nestjs/common';
@@ -98,6 +99,10 @@ export class ClinicalVisitsService {
       ['visit:open'],
       meta,
     );
+    if (d.via === 'admin_access')
+      throw new ForbiddenException(
+        'Solo el odontólogo con relación asistencial puede abrir una visita',
+      );
     if (!d.branchId)
       throw new BadRequestException(
         'Seleccione una sede para abrir una visita',

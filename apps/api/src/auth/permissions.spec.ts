@@ -30,9 +30,10 @@ describe('catálogo RBAC', () => {
       expect(holders('clinical:read_all')).toEqual(['CLINICAL_DIRECTOR']);
     });
 
-    it('clinical:read y clinical:write son exclusivos del odontólogo; clinical:read_limited, del asistente', () => {
+    it('clinical:read es exclusivo del odontólogo; clinical:write, del odontólogo y de administración; clinical:read_limited, del asistente', () => {
       expect(holders('clinical:read')).toEqual(['DENTIST']);
-      expect(holders('clinical:write')).toEqual(['DENTIST']);
+      expect(holders('clinical:write')).toEqual(['CLINIC_ADMIN', 'DENTIST']);
+      expect(holders('clinical:admin')).toEqual(['CLINIC_ADMIN']);
       expect(holders('clinical:read_limited')).toEqual(['ASSISTANT']);
     });
 
@@ -41,14 +42,15 @@ describe('catálogo RBAC', () => {
       expect(perms('CLINICAL_DIRECTOR')).not.toContain('clinical:read');
     });
 
-    it('plataforma, administración y caja no tienen NINGÚN permiso clínico', () => {
-      for (const code of ['PLATFORM_ADMIN', 'CLINIC_ADMIN', 'CASHIER']) {
+    it('plataforma y caja no tienen NINGÚN permiso clínico; la administración de la clínica sí (clinical:admin), nunca clinical:read_all', () => {
+      expect(perms('CLINIC_ADMIN')).not.toContain('clinical:read_all');
+      for (const code of ['PLATFORM_ADMIN', 'CASHIER']) {
         for (const p of CLINICAL_PERMISSIONS) expect(perms(code), `${code} ${p}`).not.toContain(p);
       }
     });
 
     it('recepción solo tiene clinical:view (vista de solo lectura): ningún otro permiso clínico ni de escritura', () => {
-      expect(holders('clinical:view')).toEqual(['RECEPTIONIST']);
+      expect(holders('clinical:view')).toEqual(['CLINIC_ADMIN', 'RECEPTIONIST']);
       for (const p of CLINICAL_PERMISSIONS.filter((x) => x !== 'clinical:view')) expect(perms('RECEPTIONIST'), `RECEPTIONIST ${p}`).not.toContain(p);
     });
 

@@ -26,7 +26,7 @@ export type ClinicalAccessLevel = 'FULL' | 'LIMITED' | 'READ_ALL' | 'VIEW';
 
 export interface ClinicalAccessDecision {
   level: ClinicalAccessLevel;
-  via: 'care_relationship' | 'support_view' | 'read_all_grant' | 'view_only';
+  via: 'care_relationship' | 'support_view' | 'read_all_grant' | 'view_only' | 'admin_access';
   clinicId: string;
   branchId: string | null;
   patientId: string;
@@ -83,6 +83,7 @@ const DENIALS = {
  *  - odontólogo (`clinical:read`/`clinical:write`): relación asistencial VIGENTE con el paciente;
  *  - asistente (`clinical:read_limited`): el paciente tiene una relación vigente en su sede (vista de apoyo);
  *  - Director (`clinical:read_all`): una autorización de lectura vigente para ESE paciente, de su sesión;
+ *  - Administración (`clinical:admin`): ve y registra en cualquier paciente de la clínica (siempre auditado);
  *  - Recepción (`clinical:view`): solo lectura (vista visual) de cualquier paciente de la clínica; nunca escribe.
  * El paciente siempre debe ser de la clínica del contexto; uno ajeno responde 404 igual que uno inexistente.
  * Todo acceso, permitido o denegado, se audita; el permitido se audita ANTES de entregar el dato y, si la
@@ -139,6 +140,17 @@ export class ClinicalAccessService {
     });
     const perms = actor.permissions;
     let denial: Denial = DENIALS.noPermission;
+
+    // 0) Administración de la clínica (clinical:admin): acceso total a cualquier paciente de la clínica, auditado.
+    if (perms.has('clinical:admin')) {
+      return this.allow(
+        actor,
+        { level: 'FULL', via: 'admin_access', clinicId, branchId, patientId, relationshipIds: [], grant: null },
+        intent,
+        sections,
+        meta,
+      );
+    }
 
     // 1) Odontólogo: relación asistencial propia (lectura: cualquier sede de la clínica; escritura: su sede de origen).
     if (perms.has(intent === 'write' ? 'clinical:write' : 'clinical:read')) {

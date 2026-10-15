@@ -163,8 +163,10 @@ describe('La plataforma solo aprovisiona al PRIMER administrador (sin acceso a d
     await acceptReq(ctx, token).expect(200); // el sistema no puede saber que ese correo es del propio operador
     const adminToken = await loginInContext(ctx, controlled, { clinicId: clinic.id }, NEW_PASSWORD);
     const me = await ctx.http().get('/v1/auth/me').set(bearer(adminToken)).expect(200);
-    // sigue SIN acceso clínico ni poder de designar Director por sí solo (exige registro formal + reautenticación)
-    expect(me.body.permissions.filter((x: string) => x.startsWith('clinical:') || x === 'director:manage')).toEqual([]);
+    // Desde que administración tiene acceso clínico total (clinical:admin), este riesgo residual incluye esa lectura/escritura
+    // (siempre auditada). Sigue sin poder designar Director por sí solo (exige registro formal + reautenticación) ni read_all.
+    expect(me.body.permissions).toContain('clinical:admin');
+    expect(me.body.permissions.filter((x: string) => x === 'clinical:read_all' || x === 'director:manage')).toEqual([]);
     await inviteReq(ctx, adminToken, { email: email(), roleCode: 'CLINICAL_DIRECTOR' }).expect(400);
     // la trazabilidad permite detectarlo: quién invitó (plataforma), a quién (enmascarado) y quién aceptó
     const trail = await ctx.db.auditLog.findMany({ where: { entityId: id } });

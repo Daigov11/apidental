@@ -243,12 +243,16 @@ describe('Odontograma digital versionado y exportable (3.5)', () => {
         ).toBe(true); // nunca solo color
       }
       expect(odontogramSpec().example.teeth).toBeDefined();
-      for (const t of [w.cashier.token, w.admin.token])
-        await ctx
-          .http()
-          .get('/v1/clinical/odontogram/spec')
-          .set(bearer(t))
-          .expect(403);
+      await ctx
+        .http()
+        .get('/v1/clinical/odontogram/spec')
+        .set(bearer(w.cashier.token))
+        .expect(403);
+      await ctx
+        .http()
+        .get('/v1/clinical/odontogram/spec')
+        .set(bearer(w.admin.token))
+        .expect(200);
       await ctx
         .http()
         .get('/v1/clinical/odontogram/spec')
@@ -984,7 +988,6 @@ describe('Odontograma digital versionado y exportable (3.5)', () => {
       await post(w.assistant.token, w, '/draft').expect(403);
       for (const t of [
         platform,
-        w.admin.token,
         w.cashier.token,
       ]) {
         for (const p of ['', '/versions', '/export']) {

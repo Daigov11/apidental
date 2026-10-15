@@ -937,9 +937,9 @@ describe('Evoluciones narrativas (3.4)', () => {
       await put(w.reception.token, w, { body: 'x' }).expect(403);
       const { user } = await fx.userWithRole('PLATFORM_ADMIN');
       const platform = await loginInContext(ctx, user.email);
+      await getEvo(w.admin.token, w).expect(200); // administración: lectura total auditada
       for (const t of [
         platform,
-        w.admin.token,
         w.cashier.token,
       ]) {
         const real = await getEvo(t, w).expect(403);
@@ -1365,8 +1365,8 @@ describe('Evoluciones narrativas (3.4)', () => {
       expect(
         (await sheet('sheet', w.assistant.token).expect(403)).body.code,
       ).toBe('CLINICAL_LIMITED_VIEW');
-      for (const t of [w.admin.token, w.cashier.token])
-        await sheet('sheet', t).expect(403);
+      await sheet('sheet', w.cashier.token).expect(403);
+      expect((await sheet('sheet', w.admin.token).expect(200)).body.access).toMatchObject({ via: 'admin_access' });
       const rec = (await sheet('sheet', w.reception.token).expect(200)).body;
       expect(rec.access).toMatchObject({ level: 'VIEW' });
       expect(rec.actions.readOnly).toBe(true);

@@ -1032,7 +1032,6 @@ describe('Antecedentes, alergias y alertas clínicas (3.2)', () => {
       const platform = await loginInContext(ctx, user.email);
       for (const token of [
         platform,
-        w.admin.token,
         w.cashier.token,
       ]) {
         for (const path of [

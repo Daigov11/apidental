@@ -1417,7 +1417,6 @@ describe('Visitas, diagnósticos y procedimientos (3.3)', () => {
       const platform = await loginInContext(ctx, user.email);
       for (const t of [
         platform,
-        w.admin.token,
         w.cashier.token,
       ]) {
         for (const path of [

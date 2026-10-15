@@ -420,7 +420,6 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
       for (const token of [
         platformToken,
         platformInClinic,
-        w.admin.token,
         w.cashier.token,
       ]) {
         const real = await summaryReq(ctx, token, w.patientId).expect(403);
@@ -459,14 +458,14 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
       const token = await loginInContext(ctx, both.email, {
         clinicId: w.clinic.id,
       });
-      await summaryReq(ctx, token, w.patientId).expect(403);
+      // administración tiene acceso clínico total por su rol (clinical:admin), auditado como admin_access
+      expect((await summaryReq(ctx, token, w.patientId).expect(200)).body.access).toMatchObject({ via: 'admin_access' });
       await ctx
         .http()
         .post(`/v1/patients/${w.patientId}/care-relationships`)
         .set(bearer(token))
         .send({ dentistUserId: both.id })
-        .expect(403);
-      await summaryReq(ctx, token, w.patientId).expect(403);
+        .expect(403); // no puede asignarse a sí mismo (separación de funciones)
       await assignCare(ctx, w.reception.token, w.patientId, both.id); // otra persona sí puede
       await summaryReq(ctx, token, w.patientId).expect(200);
     });
@@ -575,11 +574,17 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
         );
       expect(msgs.size).toBe(1);
       await summaryReq(ctx, w.reception.token, w.patientId).expect(200);
-      // administración y caja (sin permiso clínico): 403 igual para cualquier id
+      // administración: ids inexistentes o de otra clínica = 404 uniforme; el propio paciente = 200
+      const adminMsgs = new Set<string>();
+      for (const id of [GHOST, patientOfOtherClinic])
+        adminMsgs.add((await summaryReq(ctx, w.admin.token, id).expect(404)).body.message);
+      expect(adminMsgs.size).toBe(1);
+      await summaryReq(ctx, w.admin.token, w.patientId).expect(200);
+      // caja (sin permiso clínico): 403 igual para cualquier id
       const denied = new Set<string>();
       for (const id of [GHOST, foreignPatient, w.patientId])
         denied.add(
-          (await summaryReq(ctx, w.admin.token, id).expect(403)).body.message,
+          (await summaryReq(ctx, w.cashier.token, id).expect(403)).body.message,
         );
       expect(denied.size).toBe(1);
       // la búsqueda demográfica sigue limitada a la clínica
@@ -1026,7 +1031,8 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
         .send({ userId: w.admin.user.id, roleCode: 'CLINICAL_DIRECTOR' })
         .expect(403);
       expect(res.body.message).toBeDefined();
-      await summaryReq(ctx, w.admin.token, w.patientId).expect(403);
+      // el rol de administración sí lee (clinical:admin), pero NO obtiene read_all
+      expect((await summaryReq(ctx, w.admin.token, w.patientId).expect(200)).body.access.level).not.toBe('READ_ALL');
     });
 
     it('el permiso read_all solo puede estar en el rol Director: la base de datos lo impide en cualquier otro', async () => {

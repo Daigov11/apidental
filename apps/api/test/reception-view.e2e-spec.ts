@@ -65,11 +65,9 @@ describe('Recepción: vista clínica de solo lectura', () => {
     expect(JSON.stringify(rows)).toContain('VIEW');
   });
 
-  it('administración y caja siguen sin acceso clínico (403 igual exista o no)', async () => {
+  it('caja sigue sin acceso clínico (403 igual exista o no)', async () => {
     const w = await world();
-    for (const t of [w.admin.token, w.cashier.token]) {
-      expect((await get(t, w.patientId, '/history')).status).toBe(403);
-      expect((await get(t, GHOST, '/history')).status).toBe(403);
-    }
+    expect((await get(w.cashier.token, w.patientId, '/history')).status).toBe(403);
+    expect((await get(w.cashier.token, GHOST, '/history')).status).toBe(403);
   });
 });

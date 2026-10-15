@@ -83,8 +83,8 @@ describe('Relación asistencial (care:assign)', () => {
         source: 'ASSIGNMENT',
         scope: 'clinic',
       });
-      // asignar no da acceso clínico: administración sigue sin él; recepción solo tiene su vista de lectura (sin escribir)
-      await summaryReq(ctx, w.admin.token, w.patientId).expect(403);
+      // asignar no da acceso clínico: recepción solo tiene su vista de lectura (sin escribir); administración lo tiene por su rol, no por la asignación
+      await summaryReq(ctx, (await actorIn(ctx, fx, 'CASHIER', { clinicId: w.clinic.id })).token, w.patientId).expect(403);
       expect((await summaryReq(ctx, w.reception.token, w.patientId).expect(200)).body.access).toMatchObject({ level: 'VIEW', readOnly: true });
       expect(
         (await ctx.db.auditLog.findMany({ where: { patientId: w.patientId, userId: w.reception.user.id, action: 'CLINICAL_RECORD_VIEWED' } }))[0]?.summary,
