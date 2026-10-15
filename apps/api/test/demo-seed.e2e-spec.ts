@@ -231,6 +231,116 @@ describe('Datos de demostración de Clínica Demo (ficticios) y flujo completo',
     ]);
   });
 
+  it('odontogramas de ejemplo: Lucía guardado y corregido, Mateo en borrador, Jorge guardado; se exporta a PDF con el aviso de formato por validar', async () => {
+    const w = await demoWorld();
+    const dentist = await demoLogin(
+      DEMO_STAFF[0].email,
+      w.clinic.id,
+      w.branch.id,
+    );
+    const luciaState = (
+      await ctx
+        .http()
+        .get(`/v1/patients/${w.lucia}/clinical/odontogram`)
+        .set(bearer(dentist))
+        .expect(200)
+    ).body;
+    expect(luciaState.official).toMatchObject({
+      version: 4,
+      state: 'CORRECTED',
+      stateLabel: 'Corregida',
+      kind: 'RECTIFIED',
+      dentition: 'PERMANENT',
+    });
+    expect(luciaState.official.lastChange.reason).toBe(
+      'Se agregan dos piezas aclaradas (ejemplo)',
+    );
+    expect(Object.keys(luciaState.official.data.teeth).sort()).toEqual([
+      '14',
+      '16',
+      '18',
+      '21',
+      '24',
+      '26',
+      '36',
+      '46',
+      '47',
+    ]);
+    expect(luciaState.official.data.teeth['36']).toEqual({ status: 'ABSENT' });
+    expect(luciaState.official.closure).toMatchObject({ isSignature: false });
+    const mateoState = (
+      await ctx
+        .http()
+        .get(`/v1/patients/${w.mateo}/clinical/odontogram`)
+        .set(bearer(dentist))
+        .expect(200)
+    ).body;
+    expect(mateoState.official).toBeNull();
+    expect(mateoState.draft).toMatchObject({
+      state: 'DRAFT',
+      stateLabel: 'Borrador',
+      dentition: 'MIXED',
+      contentHidden: false,
+    });
+    const jorgeState = (
+      await ctx
+        .http()
+        .get(`/v1/patients/${w.jorge}/clinical/odontogram`)
+        .set(bearer(dentist))
+        .expect(200)
+    ).body;
+    expect(jorgeState.official).toMatchObject({
+      version: 2,
+      stateLabel: 'Guardada',
+    });
+
+    const pdf = await ctx
+      .http()
+      .get(`/v1/patients/${w.lucia}/clinical/odontogram/export`)
+      .set(bearer(dentist))
+      .buffer(true)
+      .parse((res, cb) => {
+        const c: Buffer[] = [];
+        res.on('data', (d: Buffer) => c.push(d));
+        res.on('end', () => cb(null, Buffer.concat(c)));
+      })
+      .expect(200);
+    expect((pdf.body as Buffer).subarray(0, 5).toString()).toBe('%PDF-');
+    const svg = await ctx
+      .http()
+      .get(`/v1/patients/${w.lucia}/clinical/odontogram/export?format=svg`)
+      .set(bearer(dentist))
+      .buffer(true)
+      .parse((res, cb) => {
+        const c: Buffer[] = [];
+        res.on('data', (d: Buffer) => c.push(d));
+        res.on('end', () => cb(null, Buffer.concat(c)));
+      })
+      .expect(200);
+    expect((svg.body as Buffer).toString('utf8')).toContain('id="tooth-47"');
+    // la asistente no ve el detalle; el Director solo con autorización
+    const assistant = await demoLogin(
+      DEMO_STAFF[1].email,
+      w.clinic.id,
+      w.branch.id,
+    );
+    expect(
+      (
+        await ctx
+          .http()
+          .get(`/v1/patients/${w.lucia}/clinical/odontogram`)
+          .set(bearer(assistant))
+          .expect(403)
+      ).body.code,
+    ).toBe('CLINICAL_LIMITED_VIEW');
+    const director = await demoLogin(DEMO_STAFF[3].email, w.clinic.id);
+    await ctx
+      .http()
+      .get(`/v1/patients/${w.lucia}/clinical/odontogram`)
+      .set(bearer(director))
+      .expect(403);
+  });
+
   it('Mateo: visita abierta con la evolución en BORRADOR (se puede seguir editando y cerrar con contraseña)', async () => {
     const w = await demoWorld();
     const dentist = await demoLogin(
