@@ -8,6 +8,7 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 - **Política de acceso clínico P0** (adoptada): [`docs/arquitectura/politica-acceso-clinico.md`](docs/arquitectura/politica-acceso-clinico.md)
 - **Sub-incremento 3.0** (acceso seguro: invitaciones, sesiones, reautenticación, último administrador): [`docs/arquitectura/incremento-3-0-acceso-seguro.md`](docs/arquitectura/incremento-3-0-acceso-seguro.md)
 - **Sub-incremento 3.1** (relación asistencial y control de acceso clínico): [`docs/arquitectura/incremento-3-1-acceso-clinico.md`](docs/arquitectura/incremento-3-1-acceso-clinico.md)
+- **Sub-incremento 3.4** (evoluciones narrativas, ficha de atención y datos demo): [`docs/arquitectura/incremento-3-4-evoluciones.md`](docs/arquitectura/incremento-3-4-evoluciones.md) · contrato de pantalla: [`docs/diseno/ficha-de-atencion.md`](docs/diseno/ficha-de-atencion.md)
 - **Sub-incremento 3.3** (visitas, diagnósticos y procedimientos): [`docs/arquitectura/incremento-3-3-visitas-diagnosticos-procedimientos.md`](docs/arquitectura/incremento-3-3-visitas-diagnosticos-procedimientos.md)
 - **Sub-incremento 3.2** (antecedentes, alergias y alertas clínicas): [`docs/arquitectura/incremento-3-2-antecedentes-alertas.md`](docs/arquitectura/incremento-3-2-antecedentes-alertas.md) · **parche 3.2.1** (evaluación de alergias, motivo del alta): [`incremento-3-2-1-parche.md`](docs/arquitectura/incremento-3-2-1-parche.md)
 - Incremento 3 (**propuesta**, historia clínica; sin código): [`docs/arquitectura/incremento-3-historia-clinica.md`](docs/arquitectura/incremento-3-historia-clinica.md)
@@ -19,11 +20,13 @@ Incluye: API NestJS versionada en `/v1`, Prisma + MySQL, clínicas, sedes, usuar
 
 Desde 3.1 incluye también el **control de acceso clínico**: relación asistencial paciente–odontólogo, permisos `clinical:*`, vista de apoyo del asistente y lectura excepcional del Director (`clinical:read_all`) con justificación, reautenticación y auditoría previa.
 
+Desde 3.4 incluye la **evolución narrativa** por visita (borrador → cerrada con reautenticación → corregida, sin edición ni borrado de lo cerrado) y la **ficha de atención** en una sola lectura, con **datos demo ficticios** de Clínica Demo.
+
 Desde 3.3 incluye **visitas clínicas, diagnósticos y procedimientos** (versionados) con un **catálogo de procedimientos por clínica**; el consentimiento clínico faltante nunca bloquea abrir una visita ni diagnosticar, pero sí **cerrar** los procedimientos que la clínica configure como "requiere consentimiento".
 
 Desde 3.2 incluye **antecedentes, alergias y alertas clínicas** versionados (corrección, rectificación, desactivación, historial y motivo; sin eliminación física), siempre bajo el motor de acceso de 3.1.
 
-**No** incluye (a propósito): evoluciones narrativas, odontograma, planes de tratamiento, citas, pagos, inventario, firma digital, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
+**No** incluye (a propósito): odontograma, planes de tratamiento, citas, pagos, inventario, firma digital, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
 
 ## Estructura
 
@@ -64,7 +67,7 @@ npm run db:up
 # 4. Cliente Prisma, migración inicial y datos de desarrollo
 npm run prisma:generate -w apps/api
 npm run db:migrate                    # aplica prisma/migrations
-npm run db:seed                       # roles, permisos, Clínica Demo, Sede Demo, admin de desarrollo y pacientes FICTICIOS
+npm run db:seed                       # roles, permisos, Clínica Demo, Sede Demo, admin de desarrollo, pacientes y atención clínica FICTICIOS
 
 # 5. Ejecutar la API
 npm run api:dev                       # http://127.0.0.1:3000/v1/health
@@ -91,6 +94,8 @@ Las pruebas e2e **se niegan a ejecutarse** si `TEST_DATABASE_URL` no termina en 
 **Primer administrador de plataforma.**
 
 *Desarrollo.* Con `SEED_ADMIN_EMAIL`/`SEED_ADMIN_PASSWORD` definidos, `npm run db:seed` crea un usuario con `PLATFORM_ADMIN` y `CLINIC_ADMIN` de la Clínica Demo. La contraseña vive solo en su `.env`. El seed ignora estas variables en producción.
+
+*Datos de demostración (ficticios).* El mismo seed crea, solo en desarrollo, un equipo de **Clínica Demo** (odontóloga, asistente, recepción y Director, con correos reservados `@apidental.test` y la contraseña `SEED_DEMO_PASSWORD` o, si falta, la del administrador), un catálogo de procedimientos de ejemplo y tres pacientes con atención clínica (evolución *Corregida*, *Borrador* y un procedimiento bloqueado por consentimiento) para mostrar el flujo **paciente → alerta/alergia → visita → diagnóstico → procedimiento → evolución** sin cargar nada a mano. **Todo es ficticio**: sin personas, DNI, teléfonos, correos, fotografías ni direcciones reales. Cuentas y escenarios: [`docs/diseno/ficha-de-atencion.md`](docs/diseno/ficha-de-atencion.md), sección 9. El seed es idempotente.
 
 *Producción.*
 
@@ -185,6 +190,9 @@ Flujo: **login** (access token sin contexto + cookie del refresh token) → **li
 | `POST/GET /v1/patients/:id/clinical/visits` · `GET …/:visitId` · `POST …/:visitId/close\|cancel` | Odontólogo con relación (solo el responsable escribe, en la sede de la visita); Director autorizado lee; **no** el asistente | Visitas: `OPEN → CLOSED\|CANCELLED` con versión optimista. Abrirla no se bloquea por consentimiento |
 | `POST …/visits/:visitId/diagnoses` · `GET …/diagnoses` · `…/:itemId` · `…/versions` · `POST …/diagnoses/:itemId/correct\|rectify\|deactivate\|reactivate\|mark-error` | ídem | Diagnósticos declarados por el profesional, versionados, motivo en cada cambio. No dependen del consentimiento |
 | `POST …/visits/:visitId/procedures` · `GET …/procedures` · `…/:itemId` · `…/versions` · `POST …/procedures/:itemId/correct\|rectify\|close\|cancel\|mark-error` | ídem | Procedimientos versionados. **Cerrar** uno que "requiere consentimiento" sin consentimiento clínico vigente: `409 CLINICAL_CONSENT_REQUIRED` (auditado sin contenido) |
+| `GET …/visits/:visitId/sheet` | Odontólogo con relación; Director autorizado (lectura); **no** el asistente | **Ficha de atención**: alertas, diagnóstico, procedimientos y evolución en una lectura, con textos claros y acciones disponibles |
+| `GET\|PUT …/visits/:visitId/evolution` · `GET …/evolution/versions` | Responsable escribe; otros lectores autorizados leen lo cerrado | Evolución narrativa: el `PUT` crea o actualiza el **borrador** (con `etag`) |
+| `POST …/evolution/close` · `correct` · `rectify` · `mark-error` · `discard` | Odontólogo responsable | Cierra con **contraseña en un paso** (o prueba de reautenticación): **no es una firma digital, legal ni clínica**. Corregir/rectificar: versión nueva con motivo |
 | `GET /v1/clinical/options` | Cualquier perfil clínico | Valores sugeridos (no limitan lo que se registra) |
 
 Ejemplo de carga y descarga:
