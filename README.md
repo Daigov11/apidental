@@ -8,6 +8,7 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 - **Política de acceso clínico P0** (adoptada): [`docs/arquitectura/politica-acceso-clinico.md`](docs/arquitectura/politica-acceso-clinico.md)
 - **Sub-incremento 3.0** (acceso seguro: invitaciones, sesiones, reautenticación, último administrador): [`docs/arquitectura/incremento-3-0-acceso-seguro.md`](docs/arquitectura/incremento-3-0-acceso-seguro.md)
 - **Sub-incremento 3.1** (relación asistencial y control de acceso clínico): [`docs/arquitectura/incremento-3-1-acceso-clinico.md`](docs/arquitectura/incremento-3-1-acceso-clinico.md)
+- **Incremento 4.1** (simuladores de Apiworking para demostración: cobro, comprobante «DEMO — NO VÁLIDO PARA SUNAT», cola, conciliación, fidelización y reseñas simuladas): [`docs/arquitectura/incremento-4-1-simuladores-apiworking.md`](docs/arquitectura/incremento-4-1-simuladores-apiworking.md)
 - **Incremento 4.0** (panel React inicial y agenda de citas: paciente → cita → atención → odontograma): [`docs/arquitectura/incremento-4-0-agenda-panel.md`](docs/arquitectura/incremento-4-0-agenda-panel.md)
 - **Sub-incremento 3.5** (odontograma versionado y exportable): [`docs/arquitectura/incremento-3-5-odontograma.md`](docs/arquitectura/incremento-3-5-odontograma.md) · especificación visual: [`docs/diseno/odontograma.md`](docs/diseno/odontograma.md)
 - **Sub-incremento 3.4** (evoluciones narrativas, ficha de atención y datos demo): [`docs/arquitectura/incremento-3-4-evoluciones.md`](docs/arquitectura/incremento-3-4-evoluciones.md) · contrato de pantalla: [`docs/diseno/ficha-de-atencion.md`](docs/diseno/ficha-de-atencion.md)
@@ -266,3 +267,6 @@ npm run admin:dev    # panel en http://localhost:5173/admin/ (Vite reenvía /v1 
 npm run admin:build  # build estático en apps/admin/dist (se sirve en /admin/ con Nginx)
 ```
 `CORS_ORIGINS` debe incluir el origen del panel. Cuentas demo (ficticias, tras `npm run db:seed`): `recepcion.demo@apidental.test` (agenda; **sin acceso clínico**) y `odontologa.demo@apidental.test` (atiende; la cita de hoy de «Camila Demo Nueva» permite iniciar la atención). Agenda: `/v1/agenda/*` y `/v1/appointments/*` (permisos `appointment:read|manage|attend`, `agenda:manage`). Detalle en [`docs/arquitectura/incremento-4-0-agenda-panel.md`](docs/arquitectura/incremento-4-0-agenda-panel.md).
+
+## Simuladores de Apiworking (4.1, solo demostración)
+`INTEGRATIONS_MODE=mock` activa cobros, comprobantes **«DEMO — NO VÁLIDO PARA SUNAT»**, cola con reintentos y conciliación, fidelización (puntos, canjes, resumen NFC) y reseñas, todo **simulado** con datos ficticios y sin credenciales ni endpoints reales. Por defecto (`off`) no existe nada de esto. No es apto para producción. Detalle, flujo de demostración y pendientes: [`docs/arquitectura/incremento-4-1-simuladores-apiworking.md`](docs/arquitectura/incremento-4-1-simuladores-apiworking.md).
