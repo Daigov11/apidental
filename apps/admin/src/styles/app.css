@@ -213,3 +213,35 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .doc-card::after { content: 'DEMO — NO VÁLIDO PARA SUNAT'; position: absolute; inset: 0; display: grid; place-items: center; transform: rotate(-18deg); font: 800 1.6rem/1 var(--font-display); color: rgba(204, 59, 50, 0.1); pointer-events: none; text-align: center; padding: var(--space-5); }
 .money { font: 800 1.5rem/1.1 var(--font-display); font-variant-numeric: tabular-nums; }
 @media (max-width: 767px) { .sim-banner { padding: var(--space-3) var(--space-5); } }
+
+/* Odontograma interactivo */
+.odonto-editor { display: grid; gap: var(--space-4); }
+.odonto-bar { display: flex; flex-wrap: wrap; gap: var(--space-5); align-items: flex-end; }
+.odonto-bar .field { margin-bottom: 0; min-width: 190px; }
+.odonto-brushes { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.brush { display: inline-flex; align-items: center; gap: var(--space-3); min-height: var(--control-height-sm); padding: 0 var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-surface); font: inherit; cursor: pointer; }
+.brush.is-on { border-color: var(--color-brand-600); background: var(--color-brand-50); box-shadow: inset 0 0 0 1px var(--color-brand-600); font-weight: 600; }
+.odonto-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: var(--space-6); align-items: start; }
+@media (max-width: 1100px) { .odonto-layout { grid-template-columns: 1fr; } }
+.odonto-figure-edit { overflow-x: auto; display: flex; justify-content: center; }
+.odonto-svg { display: block; max-width: none; }
+.odonto-num.is-selected { fill: var(--color-brand-700); font-weight: 700; }
+.odonto-midline { stroke: var(--color-neutral-300); stroke-dasharray: 3 3; }
+.odonto-side { position: sticky; top: var(--space-5); }
+.check { display: flex; gap: var(--space-3); align-items: center; min-height: 32px; }
+
+
+/* Odontograma: tarjetas por pieza (aspecto de React Advanced Odontogram) */
+.odonto-card-bg { fill: #fff; stroke: var(--color-neutral-200); stroke-width: 1; }
+.odonto-card.is-empty .odonto-card-bg { fill: var(--color-neutral-25); stroke-dasharray: 3 3; }
+.odonto-card.is-interactive { cursor: pointer; }
+.odonto-card.is-interactive:hover .odonto-card-bg { stroke: var(--color-brand-400); }
+.odonto-card:focus { outline: none; }
+.odonto-card:focus-visible .odonto-card-bg { stroke: var(--color-brand-600); stroke-width: 2.5; }
+.odonto-card.is-selected .odonto-card-bg { stroke: var(--color-brand-600); stroke-width: 2.5; fill: var(--color-brand-50); }
+.odonto-other { fill: var(--color-neutral-500); stroke: #fff; stroke-width: 1; }
+.odonto-cross { display: grid; grid-template-columns: repeat(3, 40px); grid-template-rows: repeat(3, 40px); gap: 4px; margin: var(--space-4) 0; justify-content: center; }
+.cross-btn { border: 2px solid var(--color-neutral-300); background: var(--bg-surface); border-radius: var(--radius-md); font: 700 0.9rem var(--font-ui); cursor: pointer; }
+.cross-btn:disabled { opacity: .4; cursor: not-allowed; }
+.cross-btn:focus-visible { outline: 3px solid var(--color-brand-600); outline-offset: 1px; }
+.cross-top { grid-area: 1 / 2; } .cross-bottom { grid-area: 3 / 2; } .cross-left { grid-area: 2 / 1; } .cross-right { grid-area: 2 / 3; } .cross-center { grid-area: 2 / 2; }

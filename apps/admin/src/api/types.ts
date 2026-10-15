@@ -56,14 +56,21 @@ export interface OdontogramVersion {
   version: number; state: string; stateLabel: string; kindLabel: string; dentition: string; dentitionLabel: string;
   data: { teeth: Record<string, ToothEntry>; notes?: string } | null; contentHidden: boolean; formatNotice: string;
   lastChange: { reason: string | null; at: string } | null;
+  etag?: string; kind?: string;
 }
-export interface OdontogramView { official: OdontogramVersion | null; draft: OdontogramVersion | null; versionsCount: number; formatNotice: string }
+export interface OdontogramView { official: OdontogramVersion | null; draft: OdontogramVersion | null; draftIsMine?: boolean; versionsCount: number; formatNotice: string }
 export interface OdontogramSpecLite {
   toothStatuses: { code: string; label: string }[];
   surfaces: { code: string; label: string }[];
-  surfaceStates: { code: string; label: string }[];
+  surfaceStates: { code: string; label: string; color?: string; pattern?: 'hatch' | 'dots' | 'cross' | 'grid' | 'solid' }[];
   marks: { code: string; label: string }[];
+  dentitions?: { code: string; label: string }[];
+  layout?: { permanent: { upper: string[]; lower: string[] }; primary: { upper: string[]; lower: string[] } };
+  cell?: { size: number; polygons: Record<'top' | 'bottom' | 'left' | 'right' | 'center', number[][]> };
+  limits?: { toothNote?: number; surfaceNote?: number; generalNotes?: number };
 }
+export type Dentition = 'PERMANENT' | 'PRIMARY' | 'MIXED';
+export interface OdontogramDoc { schema: string; schemaVersion: number; teeth: Record<string, ToothEntry>; notes?: string }
 
 // ------------------------------------------------------------------ 4.1 simulación (cobros, comprobantes, fidelización)
 export interface SimulationInfo { active: true; label: string; demoMark: string }

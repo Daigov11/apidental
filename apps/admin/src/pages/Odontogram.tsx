@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Download } from 'lucide-react';
-import { get, getBlob } from '../api/client';
-import type { OdontogramSpecLite, OdontogramView } from '../api/types';
+import { Download, Pencil } from 'lucide-react';
+import { get, post } from '../api/client';
+import type { Dentition, OdontogramSpecLite, OdontogramView } from '../api/types';
 import { downloadFile } from '../lib/download';
 import { fmtDateTime } from '../lib/format';
 import { useAsync } from '../lib/useAsync';
 import { Button } from '../ui/Button';
 import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
+import { ReasonDialog } from '../ui/overlays';
+import { OdontogramEditor } from './odontogram/OdontogramEditor';
+import { OdontogramFigure } from './odontogram/OdontogramFigure';
 
 /** Vista básica del odontograma vigente: figura (SVG del servidor), tabla equivalente accesible y descarga del PDF. */
 export function OdontogramPage() {
@@ -15,21 +18,10 @@ export function OdontogramPage() {
   const toast = useToast();
   const view = useAsync(() => get<OdontogramView>(`/patients/${id}/clinical/odontogram`), [id]);
   const spec = useAsync(() => get<OdontogramSpecLite>('/clinical/odontogram/spec'), []);
-  const [figure, setFigure] = useState<string | null>(null);
-  const [figureError, setFigureError] = useState<string | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const [correcting, setCorrecting] = useState<'CORRECTION' | 'RECTIFICATION' | null>(null);
   const official = view.data?.official ?? null;
-
-  useEffect(() => {
-    if (!official) return;
-    let url: string | null = null;
-    let alive = true;
-    getBlob(`/patients/${id}/clinical/odontogram/export`, { format: 'svg', version: official.version }).then(
-      (b) => { if (alive) { url = URL.createObjectURL(b); setFigure(url); } },
-      (e: unknown) => alive && setFigureError(errorText(e)),
-    );
-    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
-  }, [id, official?.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const downloadPdf = async () => {
     setPdfBusy(true);
@@ -38,6 +30,16 @@ export function OdontogramPage() {
     } catch (e) { toast.error(errorText(e)); }
     finally { setPdfBusy(false); }
   };
+
+  const start = async (purpose?: 'UPDATE', reason?: string, kind?: 'CORRECTION' | 'RECTIFICATION') => {
+    setStarting(true);
+    try {
+      await post(`/patients/${id}/clinical/odontogram/draft`, { purpose: kind ?? purpose, ...(reason ? { reason } : {}), ...(!official ? { dentition: 'PERMANENT' } : {}) });
+      view.reload();
+    } catch (e) { toast.error(errorText(e)); }
+    finally { setStarting(false); }
+  };
+  const finished = (msg: string) => { toast.success(msg); view.reload(); };
 
   if (view.loading && !view.data) return <Loading rows={4} label="Cargando el odontograma" />;
   if (view.error != null) return <ErrorState error={view.error} onRetry={view.reload} />;
@@ -56,11 +58,32 @@ export function OdontogramPage() {
       </div>
       <Alert tone="info">{view.data?.formatNotice ?? 'Formato clínico por validar.'} El odontograma registra lo que el profesional observa; no genera tratamientos ni presupuestos.</Alert>
 
-      {!official && <EmptyState title="Todavía no hay un odontograma guardado">El odontólogo lo registra durante la atención.</EmptyState>}
-      {official && (
+      {view.data?.draft && view.data.draftIsMine && spec.data?.layout && (
+        <OdontogramEditor key={view.data.draft.version} patientId={id} draft={view.data.draft} spec={spec.data} onFinished={finished} />
+      )}
+      {view.data?.draft && !view.data.draftIsMine && <Alert tone="warning">Hay un borrador en curso de otro odontólogo.</Alert>}
+      {!view.data?.draft && (
+        <div className="toolbar" style={{ gap: 'var(--space-4)' }}>
+          <Button variant="primary" icon={<Pencil size={18} aria-hidden="true" />} loading={starting} loadingText="Abriendo…" onClick={() => void start('UPDATE')}>
+            {official ? 'Actualizar odontograma' : 'Iniciar odontograma'}
+          </Button>
+          {official && <Button onClick={() => setCorrecting('CORRECTION')}>Corregir la versión guardada</Button>}
+        </div>
+      )}
+      {correcting && (
+        <ReasonDialog
+          title="Corregir el odontograma" example="Se registró la pieza equivocada" confirmLabel="Abrir corrección" explain="Se abre un borrador nuevo a partir de la última versión guardada. Al guardarlo se pedirá su contraseña."
+          onClose={() => setCorrecting(null)}
+          onConfirm={async (reason) => { await start(undefined, reason, correcting); setCorrecting(null); }}
+        />
+      )}
+      {!official && !view.data?.draft && <EmptyState title="Todavía no hay un odontograma guardado">Use «Iniciar odontograma» para registrarlo durante la atención.</EmptyState>}
+      {official && !view.data?.draft && (
         <>
-          <div className="odonto-figure">
-            {figure ? <img src={figure} alt={`Odontograma, versión ${official.version}: ${teeth.length} pieza(s) con hallazgos. La tabla siguiente tiene el mismo contenido.`} /> : figureError ? <p role="alert">{figureError}</p> : <Loading rows={2} label="Preparando el dibujo" />}
+          <div className="odonto-figure odonto-figure-edit">
+            {spec.data?.layout && official.data
+              ? <OdontogramFigure spec={spec.data} dentition={official.dentition as Dentition} teeth={official.data.teeth} selected={null} />
+              : official.contentHidden ? <p className="muted">El detalle no está disponible para su perfil.</p> : <Loading rows={2} label="Preparando el dibujo" />}
           </div>
           <section className="card" aria-labelledby="od-table-h" style={{ marginTop: 'var(--space-6)' }}>
             <h2 id="od-table-h" className="h3" style={{ marginBottom: 'var(--space-4)' }}>Vista de tabla</h2>

@@ -85,12 +85,13 @@ describe('Pacientes y acceso clínico', () => {
         draft: null, versionsCount: 4, formatNotice: 'Formato clínico por validar.' } },
       'GET /clinical/odontogram/spec': { json: {
         toothStatuses: [{ code: 'PRESENT', label: 'Presente' }, { code: 'ABSENT', label: 'Ausente' }], surfaces: [{ code: 'O', label: 'Oclusal / incisal' }],
-        surfaceStates: [{ code: 'CARIES', label: 'Caries' }], marks: [{ code: 'CROWN', label: 'Corona' }] } },
+        surfaceStates: [{ code: 'CARIES', label: 'Caries' }], marks: [{ code: 'CROWN', label: 'Corona' }],
+        layout: { permanent: { upper: ['16', '26'], lower: ['36', '46'] }, primary: { upper: ['55', '65'], lower: ['75', '85'] } }, cell: { size: 36, polygons: {} } } },
       'GET /patients/p-1/clinical/odontogram/export': { json: {} },
     });
     renderApp('/pacientes/p-1/odontograma');
     expect(await screen.findByRole('heading', { name: 'Odontograma' })).toBeInTheDocument();
-    expect(await screen.findByRole('img', { name: /3 pieza\(s\) con hallazgos/ })).toBeInTheDocument();
+    expect(await screen.findByRole('group', { name: 'Odontograma, numeración FDI' })).toBeInTheDocument(); // el dibujo (solo lectura); la tabla siguiente tiene el mismo contenido
     const table = await screen.findByRole('table', { name: 'Piezas con hallazgos registrados' });
     expect(within(table).getByRole('rowheader', { name: 'Pieza 16' })).toBeInTheDocument();
     expect(await within(table).findByText('Oclusal / incisal: Caries')).toBeInTheDocument();
@@ -99,6 +100,5 @@ describe('Pacientes y acceso clínico', () => {
     expect(screen.getAllByText(/Formato clínico por validar/).length).toBeGreaterThan(0);
     await userEvent.click(screen.getByRole('button', { name: 'Descargar PDF' }));
     await waitFor(() => expect(called('GET', '/patients/p-1/clinical/odontogram/export').some((c) => c.query.get('format') === 'pdf')).toBe(true));
-    expect(called('GET', '/patients/p-1/clinical/odontogram/export').some((c) => c.query.get('format') === 'svg' && c.query.get('version') === '4')).toBe(true);
   });
 });

@@ -77,9 +77,9 @@ export function Drawer({ title, onClose, children, footer, width = 480 }: ShellP
 
 /** Diálogo de motivo (cancelar, marcar ausencia, reprogramar): el motivo es obligatorio (mínimo 3 caracteres). */
 export function ReasonDialog({
-  title, explain, confirmLabel, danger, onConfirm, onClose,
+  title, explain, confirmLabel, danger, example = 'El paciente avisó que no podrá asistir', onConfirm, onClose,
 }: {
-  title: string; explain: string; confirmLabel: string; danger?: boolean;
+  title: string; explain: string; confirmLabel: string; danger?: boolean; example?: string;
   onConfirm: (reason: string) => Promise<void>; onClose: () => void;
 }) {
   const [reason, setReason] = useState('');
@@ -118,7 +118,7 @@ export function ReasonDialog({
         <p className="muted">{explain}</p>
         <TextAreaField
           label="Motivo"
-          help="Por ejemplo: «El paciente avisó que no podrá asistir». Mínimo 3 caracteres."
+          help={`Por ejemplo: «${example}». Mínimo 3 caracteres.`}
           value={reason}
           onChange={(e) => setReason(e.target.value)}
           onBlur={() => setTouched(true)}

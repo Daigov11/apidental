@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
 import { AppShell } from './layout/AppShell';
@@ -7,11 +8,13 @@ import { ChargePage } from './pages/Charge';
 import { DocumentsPage } from './pages/Documents';
 import { DashboardPage } from './pages/Dashboard';
 import { ContextPage, LoginPage } from './pages/Login';
-import { OdontogramPage } from './pages/Odontogram';
 import { PatientDetailPage } from './pages/PatientDetail';
 import { PatientsPage } from './pages/Patients';
 import { VisitSheetPage } from './pages/VisitSheet';
 import { Loading } from './ui/feedback';
+
+// El odontograma trae las plantillas anatómicas (~1 MB sin comprimir): se carga solo al abrirlo.
+const OdontogramPage = lazy(() => import('./pages/Odontogram').then((m) => ({ default: m.OdontogramPage })));
 
 export function App() {
   const { status } = useAuth();
@@ -29,7 +32,7 @@ export function App() {
         <Route path="pacientes" element={<PatientsPage />} />
         <Route path="pacientes/:id" element={<PatientDetailPage />} />
         <Route path="pacientes/:id/atencion/:visitId" element={<VisitSheetPage />} />
-        <Route path="pacientes/:id/odontograma" element={<OdontogramPage />} />
+        <Route path="pacientes/:id/odontograma" element={<Suspense fallback={<Loading label="Cargando el odontograma" rows={3} />}><OdontogramPage /></Suspense>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>
