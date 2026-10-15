@@ -36,8 +36,10 @@ export async function seedDemoAgenda(db: PrismaDb, c: Ctx): Promise<{ rooms: num
     create: { clinicId, userId: dentistId, specialtyId: specialty.id },
   });
   const services: Record<string, { id: string; minutes: number }> = {};
-  for (const [name, minutes] of [['Consulta (demo)', 30], ['Limpieza dental (demo)', 45], ['Control (demo)', 20], ['Restauración (demo)', 60]] as const) {
-    const s = (await db.agendaService.findUnique({ where: { clinicId_name: { clinicId, name } } })) ?? (await db.agendaService.create({ data: { clinicId, name, durationMinutes: minutes, specialtyId: specialty.id } }));
+  // Precios de referencia FICTICIOS (céntimos de sol) para sugerir el monto del cobro de demostración.
+  for (const [name, minutes, priceCents] of [['Consulta (demo)', 30, 12_000], ['Limpieza dental (demo)', 45, 8_000], ['Control (demo)', 20, 5_000], ['Restauración (demo)', 60, 25_000]] as const) {
+    let s = (await db.agendaService.findUnique({ where: { clinicId_name: { clinicId, name } } })) ?? (await db.agendaService.create({ data: { clinicId, name, durationMinutes: minutes, priceCents, specialtyId: specialty.id } }));
+    if (s.priceCents === null) s = await db.agendaService.update({ where: { id: s.id }, data: { priceCents } });
     services[name] = { id: s.id, minutes };
   }
   // La clínica demo atiende todos los días de 08:00 a 18:00 (solo para que la demostración funcione cualquier día).

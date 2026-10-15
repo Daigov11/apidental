@@ -152,6 +152,9 @@ async function seedDemoPatients(clinicId: string, authorId: string) {
   // Paciente nueva (sin visitas previas) para mostrar el flujo cita → atención desde cero.
   const newcomer = await ensure({ dni: '90000006', firstName: 'Camila', lastName: 'Demo', secondLastName: 'Nueva', birthDate: '1995-06-18', sex: 'FEMALE', mobile: '900000006' });
   await consent(newcomer, 'CLINICAL', 'PATIENT');
+  // Autorizaciones de fidelización y comunicaciones: permiten mostrar puntos y reseñas simulados en la demostración.
+  await consent(newcomer, 'LOYALTY', 'PATIENT');
+  await consent(newcomer, 'MARKETING', 'PATIENT');
   console.log('Pacientes demo (ficticios) listos: adulto, menor con representante y un par de posibles duplicados.');
 }
 
