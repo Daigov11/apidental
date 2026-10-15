@@ -14,10 +14,17 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
     add_header X-Content-Type-Options "nosniff" always;
 
-    # Panel: build estático de apps/admin (base '/admin/'). Aún no existe en este incremento.
+    # Panel: build estático de apps/admin (base '/admin/'; `npm run admin:build`).
     location /admin/ {
         alias /var/www/apidental/admin/;
         try_files $uri $uri/ /admin/index.html;
+    }
+
+    # La API también se expone en este host (mismo origen que el panel): la cookie del refresh token y la protección CSRF
+    # funcionan sin CORS. El panel llama a rutas relativas /v1/... CORS_ORIGINS debe incluir https://dental.apiworking.com.pe
+    location /v1/ {
+        client_max_body_size 1m;
+        include /etc/nginx/snippets/apidental-api-proxy.conf;
     }
 
     # Sitio público: Next.js escuchando solo en loopback (puerto a definir). Aún no existe.

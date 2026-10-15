@@ -8,6 +8,7 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 - **Política de acceso clínico P0** (adoptada): [`docs/arquitectura/politica-acceso-clinico.md`](docs/arquitectura/politica-acceso-clinico.md)
 - **Sub-incremento 3.0** (acceso seguro: invitaciones, sesiones, reautenticación, último administrador): [`docs/arquitectura/incremento-3-0-acceso-seguro.md`](docs/arquitectura/incremento-3-0-acceso-seguro.md)
 - **Sub-incremento 3.1** (relación asistencial y control de acceso clínico): [`docs/arquitectura/incremento-3-1-acceso-clinico.md`](docs/arquitectura/incremento-3-1-acceso-clinico.md)
+- **Incremento 4.0** (panel React inicial y agenda de citas: paciente → cita → atención → odontograma): [`docs/arquitectura/incremento-4-0-agenda-panel.md`](docs/arquitectura/incremento-4-0-agenda-panel.md)
 - **Sub-incremento 3.5** (odontograma versionado y exportable): [`docs/arquitectura/incremento-3-5-odontograma.md`](docs/arquitectura/incremento-3-5-odontograma.md) · especificación visual: [`docs/diseno/odontograma.md`](docs/diseno/odontograma.md)
 - **Sub-incremento 3.4** (evoluciones narrativas, ficha de atención y datos demo): [`docs/arquitectura/incremento-3-4-evoluciones.md`](docs/arquitectura/incremento-3-4-evoluciones.md) · contrato de pantalla: [`docs/diseno/ficha-de-atencion.md`](docs/diseno/ficha-de-atencion.md)
 - **Sub-incremento 3.3** (visitas, diagnósticos y procedimientos): [`docs/arquitectura/incremento-3-3-visitas-diagnosticos-procedimientos.md`](docs/arquitectura/incremento-3-3-visitas-diagnosticos-procedimientos.md)
@@ -43,7 +44,7 @@ docker/, docker-compose.dev.yml   MySQL 8.4 SOLO para desarrollo local
 docs/arquitectura/   documentación de arquitectura
 ```
 
-Reservados y **no creados** todavía (no aportan valor funcional en este incremento): `apps/admin` (React + Vite, servido en `/admin`), `apps/web` (Next.js) y `packages/shared`. Se agregarán al workspace cuando exista código que los justifique.
+`apps/admin` (panel React + Vite, servido en `/admin`; desde 4.0). Reservados y **no creados** todavía: `apps/web` (Next.js) y `packages/shared`. Se agregarán al workspace cuando exista código que los justifique.
 
 ## Requisitos
 
@@ -257,3 +258,11 @@ Plantillas en `deploy/`. **Nada se despliega ni se ejecuta desde este repositori
 - Puerto ocupado: cambie `MYSQL_HOST_PORT` (y las URLs) en `.env`.
 - `npm install` falla con `Cannot read properties of null (reading 'edgesOut')`: es un defecto de npm 10 con `vitest@4.1.x`; el proyecto usa `vitest@5`. Actualice npm si aparece con otras versiones.
 - Prisma 7 no carga `.env` por sí mismo: `prisma.config.ts` lo hace; ejecute los comandos desde `apps/api` o con `-w apps/api`.
+
+## Panel y agenda (4.0)
+```bash
+npm run api:dev      # API en http://127.0.0.1:3000/v1
+npm run admin:dev    # panel en http://localhost:5173/admin/ (Vite reenvía /v1 a la API)
+npm run admin:build  # build estático en apps/admin/dist (se sirve en /admin/ con Nginx)
+```
+`CORS_ORIGINS` debe incluir el origen del panel. Cuentas demo (ficticias, tras `npm run db:seed`): `recepcion.demo@apidental.test` (agenda; **sin acceso clínico**) y `odontologa.demo@apidental.test` (atiende; la cita de hoy de «Camila Demo Nueva» permite iniciar la atención). Agenda: `/v1/agenda/*` y `/v1/appointments/*` (permisos `appointment:read|manage|attend`, `agenda:manage`). Detalle en [`docs/arquitectura/incremento-4-0-agenda-panel.md`](docs/arquitectura/incremento-4-0-agenda-panel.md).

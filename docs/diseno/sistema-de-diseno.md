@@ -565,3 +565,4 @@ SEO: `<title>` y metadatos por página, `sitemap.xml`, `robots.txt`, datos estru
 4. **Mapeo de estados Apiworking/SUNAT** y tipos de comprobante: provisional.
 5. **Mensajes comerciales** sobre cumplimiento normativo: prohibidos hasta validar.
 6. **Dispositivos reales de la Clínica Demo** (tamaño de tableta, navegador, resolución) para ajustar las pruebas responsive.
+7. **Implementación inicial (4.0):** `apps/admin` aplica estos tokens y componentes (botones, campos, tablas, insignias, panel lateral, `ReasonDialog`, avisos). Pendientes: `ReauthDialog` en el panel, cierre por inactividad con difuminado, `axe` automatizado y revisión con lector de pantalla. Ver [`incremento-4-0-agenda-panel.md`](../arquitectura/incremento-4-0-agenda-panel.md).
