@@ -326,6 +326,7 @@ model Patient {
   visits             ClinicalVisit[]
   diagnoses          ClinicalDiagnosis[]
   procedures         ClinicalProcedure[]
+  notes              ClinicalNote[]
   clinicalAlerts     ClinicalAlert[]
 
   @@unique([id, clinicId])
@@ -1091,11 +1092,12 @@ model ClinicalVisit {
   version            Int         @default(1)
   createdById        String      @map("created_by_id") @db.Char(36)
 
-  patient    Patient             @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
-  branch     Branch              @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict)
-  dentist    User                @relation(fields: [dentistUserId], references: [id], onDelete: Restrict)
-  diagnoses  ClinicalDiagnosis[]
-  procedures ClinicalProcedure[]
+  patient       Patient             @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  branch        Branch              @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  dentist       User                @relation(fields: [dentistUserId], references: [id], onDelete: Restrict)
+  diagnoses     ClinicalDiagnosis[]
+  procedures    ClinicalProcedure[]
+  clinicalNotes ClinicalNote[]
 
   @@unique([patientId, visitNumber])
   @@unique([id, clinicId, patientId])
@@ -1171,4 +1173,66 @@ model ClinicalProcedure {
   @@index([clinicId, patientId, currentKey])
   @@index([visitId, currentKey])
   @@map("clinical_procedures")
+}
+
+// ---------------------------------------------------------------------------
+// Sub-incremento 3.4: evoluciones narrativas clínicas (una por visita).
+// Borrador editable en el sitio por el odontólogo responsable; al CERRAR (con reautenticación, que NO es una firma
+// digital, legal ni clínica) se crea una versión inmutable con hash de integridad. Corregir o rectificar crea una versión
+// nueva enlazada a la anterior, con motivo. Nunca se borra. Sin recomendaciones automáticas, IA ni decisiones clínicas.
+// ---------------------------------------------------------------------------
+
+enum NoteStatus {
+  DRAFT
+  CLOSED
+  DISCARDED
+  ENTERED_IN_ERROR
+}
+
+enum NoteChangeKind {
+  CREATED
+  CLOSED
+  CORRECTED
+  RECTIFIED
+  DISCARDED
+  MARKED_IN_ERROR
+}
+
+model ClinicalNote {
+  id            String         @id @default(uuid()) @db.Char(36)
+  clinicId      String         @map("clinic_id") @db.Char(36)
+  patientId     String         @map("patient_id") @db.Char(36)
+  visitId       String         @map("visit_id") @db.Char(36)
+  itemId        String         @map("item_id") @db.Char(36)
+  version       Int
+  supersedesId  String?        @map("supersedes_id") @db.Char(36)
+  currentKey    String?        @unique @map("current_key") @db.Char(36)
+  /// = visit_id mientras esta versión sea la vigente y esté en borrador o cerrada: una sola evolución activa por visita.
+  visitKey      String?        @unique @map("visit_key") @db.Char(36)
+  status        NoteStatus
+  /// Relato de la evolución (texto del profesional). Nunca va a la auditoría.
+  body          String         @db.VarChar(10000)
+  /// Indicaciones y seguimiento (opcional).
+  followUp      String?        @map("follow_up") @db.VarChar(2000)
+  /// Ediciones del borrador en el sitio (solo mientras es DRAFT).
+  revision      Int            @default(0)
+  changeKind    NoteChangeKind @map("change_kind")
+  /// Obligatorio al corregir, rectificar, descartar o marcar por error.
+  changeReason  String?        @map("change_reason") @db.VarChar(300)
+  /// SHA-256 del contenido al cerrar o corregir: evidencia de integridad, NO una firma.
+  contentHash   String?        @map("content_hash") @db.Char(64)
+  closedAt      DateTime?      @map("closed_at") @db.DateTime(3)
+  /// Prueba de reautenticación consumida (id, nunca el token).
+  reauthProofId String?        @map("reauth_proof_id") @db.Char(36)
+  createdById   String         @map("created_by_id") @db.Char(36)
+  createdAt     DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime       @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  patient Patient       @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  visit   ClinicalVisit @relation(fields: [visitId, clinicId, patientId], references: [id, clinicId, patientId], onDelete: Restrict)
+
+  @@unique([itemId, version])
+  @@index([clinicId, patientId, currentKey])
+  @@index([visitId, currentKey])
+  @@map("clinical_notes")
 }
