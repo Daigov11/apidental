@@ -1,4 +1,7 @@
 import { seedDemoAgenda } from '../prisma/demo-agenda.js';
+import { seedDemoCases } from '../prisma/demo-cases.js';
+import { seedDemoClinicHistory } from '../prisma/demo-clinic-history.js';
+import { seedDemoExtra } from '../prisma/demo-extra.js';
 import {
   DEMO_CATALOG,
   DEMO_STAFF,
@@ -597,5 +600,42 @@ describe('Datos de demostración de Clínica Demo (ficticios) y flujo completo',
       )
       .set(bearer(w.reception.token))
       .expect(403);
+  });
+
+  it('historias demo: 4 odontólogos más, citas sin choques, visitas enlazadas y odontogramas con varias versiones; idempotente', async () => {
+    const w = await demoWorld();
+    const c = {
+      clinicId: w.clinic.id,
+      branchId: w.branch.id,
+      dentistId: w.first.users['dentist']!,
+      receptionId: w.first.users['reception']!,
+      adminUserId: w.admin.id,
+    };
+    await seedDemoAgenda(ctx.db, c);
+    await seedDemoExtra(ctx.db, c);
+    await seedDemoCases(ctx.db, c);
+    const h = await seedDemoClinicHistory(ctx.db, { ...c, password: DEMO_PASSWORD });
+    expect(h['dentists']).toBe(4);
+    expect(h['appointments']).toBeGreaterThanOrEqual(90);
+    const mine = await ctx.db.appointment.findMany({
+      where: { clinicId: w.clinic.id, notes: { startsWith: 'Demo§:' } },
+    });
+    expect(mine.length).toBe(h['appointments']);
+    expect(new Set(mine.map((a) => a.dentistUserId)).size).toBe(5);
+    expect(new Set(mine.map((a) => a.roomId)).size).toBeGreaterThanOrEqual(3);
+    for (const a of mine) {
+      expect(a.startsAt.getTime() % (15 * 60_000)).toBe(0);
+      if (a.status === 'ATTENDED') expect(a.visitId).not.toBeNull();
+      if (a.status === 'CANCELLED') expect(a.cancelReason).toBeTruthy();
+      if (a.status === 'NO_SHOW') expect(a.noShowReason).toBeTruthy();
+    }
+    expect(await ctx.db.clinicalVisit.count({ where: { clinicId: w.clinic.id, status: 'OPEN', reason: { startsWith: 'DEMO§' } } })).toBe(0);
+    const odo = await ctx.db.clinicalOdontogram.groupBy({ by: ['patientId'], where: { clinicId: w.clinic.id, status: 'CLOSED' }, _count: true });
+    expect(odo.some((x) => x._count >= 3)).toBe(true);
+    const before = await ctx.db.appointment.count({ where: { clinicId: w.clinic.id } });
+    const again = await seedDemoClinicHistory(ctx.db, { ...c, password: DEMO_PASSWORD });
+    expect(again['appointments']).toBe(0);
+    expect(again['visits']).toBe(0);
+    expect(await ctx.db.appointment.count({ where: { clinicId: w.clinic.id } })).toBe(before);
   });
 });

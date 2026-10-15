@@ -9,6 +9,7 @@ import { assignmentKey } from '../src/users/assignment-key.js';
 import { seedDemoClinical } from './demo-data.js';
 import { seedDemoAgenda } from './demo-agenda.js';
 import { seedDemoCases } from './demo-cases.js';
+import { seedDemoClinicHistory } from './demo-clinic-history.js';
 import { seedDemoExtra } from './demo-extra.js';
 
 loadEnvFile();
@@ -74,6 +75,8 @@ async function seedDemo() {
   console.log(`Datos demo adicionales (ficticios) listos: ${JSON.stringify(extra)} (elementos nuevos en esta ejecución).`);
   const cases = await seedDemoCases(db, { clinicId: clinic.id, branchId: branch.id, dentistId: demo.users['dentist']!, receptionId: demo.users['reception']!, adminUserId: user.id });
   console.log(`Diez casos de paciente demo (ficticios) listos: ${JSON.stringify(cases)} (elementos nuevos en esta ejecución).`);
+  const history = await seedDemoClinicHistory(db, { clinicId: clinic.id, branchId: branch.id, dentistId: demo.users['dentist']!, receptionId: demo.users['reception']!, adminUserId: user.id, password: demoPassword });
+  console.log(`Odontólogos, citas e historias demo (ficticios) listos: ${JSON.stringify(history)} (elementos nuevos en esta ejecución).`);
   console.log(`Atención clínica demo (ficticia) lista: ${Object.keys(demo.users).length} usuarios, ${Object.keys(demo.patients).length} pacientes con visita (cerrada/corregida, borrador y consentimiento faltante).`);
 }
 
