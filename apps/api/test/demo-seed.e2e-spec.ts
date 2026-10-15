@@ -1,3 +1,4 @@
+import { seedDemoAgenda } from '../prisma/demo-agenda.js';
 import {
   DEMO_CATALOG,
   DEMO_STAFF,
@@ -520,5 +521,80 @@ describe('Datos de demostración de Clínica Demo (ficticios) y flujo completo',
       .get(`/v1/patients/${w.lucia}`)
       .set(bearer(reception))
       .expect(200);
+  });
+
+  it('agenda demo: consultorios, servicios y citas ficticias; idempotente; la cita de hoy lleva a la atención sin dar acceso a recepción', async () => {
+    const w = await demoWorld();
+    await createPatient(ctx, w.reception.token, {
+      firstName: 'Camila',
+      lastName: 'Demo',
+      birthDate: '1995-06-18',
+      identifier: { type: 'DNI', number: '90000006' },
+    });
+    const agendaCtx = {
+      clinicId: w.clinic.id,
+      branchId: w.branch.id,
+      dentistId: w.first.users['dentist']!,
+      receptionId: w.first.users['reception']!,
+      adminUserId: w.admin.id,
+    };
+    const first = await seedDemoAgenda(ctx.db, agendaCtx);
+    expect(first).toEqual({ rooms: 2, services: 4, appointments: 6 });
+    const count = () =>
+      ctx.db.appointment.count({ where: { clinicId: w.clinic.id } });
+    expect(await count()).toBe(6);
+    expect((await seedDemoAgenda(ctx.db, agendaCtx)).appointments).toBe(0);
+    expect(await count()).toBe(6);
+    // todo es ficticio y marcado
+    const appts = await ctx.db.appointment.findMany({
+      where: { clinicId: w.clinic.id },
+    });
+    for (const a of appts) expect(a.notes).toMatch(/^Demo:/);
+    const names = [
+      ...(await ctx.db.room.findMany({ where: { clinicId: w.clinic.id } })),
+      ...(await ctx.db.agendaService.findMany({
+        where: { clinicId: w.clinic.id },
+      })),
+    ].map((x) => x.name);
+    for (const n of names) expect(n).toMatch(/demo/i);
+
+    const dentist = await demoLogin(
+      'odontologa.demo@apidental.test',
+      w.clinic.id,
+      w.branch.id,
+    );
+    const camila = await ctx.db.patientIdentifier.findFirstOrThrow({
+      where: { clinicId: w.clinic.id, number: '90000006' },
+    });
+    const today = await ctx.db.appointment.findFirstOrThrow({
+      where: { patientId: camila.patientId, status: 'RESERVED' },
+    });
+    // recepción: ve la cita, no la atiende ni ve lo clínico
+    await ctx
+      .http()
+      .post(`/v1/appointments/${today.id}/start-attention`)
+      .set(bearer(w.reception.token))
+      .expect(403);
+    const started = await ctx
+      .http()
+      .post(`/v1/appointments/${today.id}/start-attention`)
+      .set(bearer(dentist))
+      .expect(200);
+    expect(started.body.appointment.status).toBe('ATTENDED');
+    expect(started.body.visit.number).toBe(1);
+    await ctx
+      .http()
+      .get(
+        `/v1/patients/${camila.patientId}/clinical/visits/${started.body.visit.id}/sheet`,
+      )
+      .set(bearer(dentist))
+      .expect(200);
+    await ctx
+      .http()
+      .get(
+        `/v1/patients/${camila.patientId}/clinical/visits/${started.body.visit.id}/sheet`,
+      )
+      .set(bearer(w.reception.token))
+      .expect(403);
   });
 });
