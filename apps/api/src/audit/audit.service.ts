@@ -18,6 +18,29 @@ export const AuditAction = {
   AssignmentCreated: 'ASSIGNMENT_CREATED',
   AssignmentReactivated: 'ASSIGNMENT_REACTIVATED',
   AssignmentRevoked: 'ASSIGNMENT_REVOKED',
+  // --- Pacientes (lecturas incluidas: son datos personales) ---
+  PatientCreated: 'PATIENT_CREATED',
+  PatientViewed: 'PATIENT_VIEWED',
+  PatientSearched: 'PATIENT_SEARCHED',
+  PatientUpdated: 'PATIENT_UPDATED',
+  PatientDeactivated: 'PATIENT_DEACTIVATED',
+  PatientReactivated: 'PATIENT_REACTIVATED',
+  IdentifierChanged: 'PATIENT_IDENTIFIER_CHANGED',
+  ContactAdded: 'PATIENT_CONTACT_ADDED',
+  ContactChanged: 'PATIENT_CONTACT_CHANGED',
+  ContactRetired: 'PATIENT_CONTACT_RETIRED',
+  GuardianLinked: 'PATIENT_GUARDIAN_LINKED',
+  GuardianUnlinked: 'PATIENT_GUARDIAN_UNLINKED',
+  GuardiansViewed: 'PATIENT_GUARDIANS_VIEWED',
+  DuplicatesViewed: 'PATIENT_DUPLICATES_VIEWED',
+  DuplicateReportViewed: 'PATIENT_DUPLICATE_REPORT_VIEWED',
+  ConsentGranted: 'CONSENT_GRANTED',
+  ConsentRevoked: 'CONSENT_REVOKED',
+  ConsentListed: 'CONSENT_LISTED',
+  AttachmentUploaded: 'ATTACHMENT_UPLOADED',
+  AttachmentListed: 'ATTACHMENT_LISTED',
+  AttachmentDownloaded: 'ATTACHMENT_DOWNLOADED',
+  AttachmentRemoved: 'ATTACHMENT_REMOVED',
 } as const;
 
 export interface AuditEntry {
@@ -27,6 +50,8 @@ export interface AuditEntry {
   userId?: string | null;
   clinicId?: string | null;
   branchId?: string | null;
+  /** Paciente involucrado, si aplica. */
+  patientId?: string | null;
   meta?: RequestMeta | null;
   /** Resumen seguro: se filtran claves sensibles. Nunca incluir datos clínicos. */
   summary?: Record<string, unknown> | null;
@@ -52,6 +77,7 @@ export class AuditService {
         userId: entry.userId ?? null,
         clinicId: entry.clinicId ?? null,
         branchId: entry.branchId ?? null,
+        patientId: entry.patientId ?? null,
         ip: entry.meta?.ip ?? null,
         userAgent: entry.meta?.userAgent ?? null,
         summary: entry.summary ? (redact(entry.summary) as Prisma.InputJsonValue) : undefined,
@@ -74,6 +100,7 @@ export class AuditService {
     clinicId?: string | null;
     action?: string;
     userId?: string;
+    patientId?: string;
     limit: number;
     offset: number;
   }) {
@@ -82,6 +109,7 @@ export class AuditService {
         ...(params.clinicId ? { clinicId: params.clinicId } : {}),
         ...(params.action ? { action: params.action } : {}),
         ...(params.userId ? { userId: params.userId } : {}),
+        ...(params.patientId ? { patientId: params.patientId } : {}),
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: params.limit,

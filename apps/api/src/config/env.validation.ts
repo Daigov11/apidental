@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import { plainToInstance, Transform } from 'class-transformer';
 import {
   IsEnum,
@@ -87,6 +88,22 @@ export class EnvironmentVariables {
   @Max(1440)
   LOGIN_LOCK_MINUTES: number = 15;
 
+  /**
+   * Directorio PRIVADO de adjuntos (fuera del webroot y de cualquier ruta servida por Nginx).
+   * En producción debe ser absoluto, p. ej. /var/lib/apidental/files.
+   */
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  ATTACHMENTS_DIR: string = './storage/attachments';
+
+  @IsOptional()
+  @Transform(toInt)
+  @IsInt()
+  @Min(1024)
+  @Max(52_428_800)
+  ATTACHMENT_MAX_BYTES: number = 10_485_760;
+
   @IsOptional()
   @Transform(toInt)
   @IsInt()
@@ -117,6 +134,9 @@ export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables 
       throw new Error(
         'Configuración de entorno inválida: JWT_ACCESS_SECRET usa el valor de ejemplo en producción',
       );
+    }
+    if (!isAbsolute(env.ATTACHMENTS_DIR)) {
+      throw new Error('Configuración de entorno inválida: ATTACHMENTS_DIR debe ser una ruta absoluta en producción');
     }
     if (env.CORS_ORIGINS.includes('*')) {
       throw new Error('Configuración de entorno inválida: CORS_ORIGINS no admite "*" en producción');

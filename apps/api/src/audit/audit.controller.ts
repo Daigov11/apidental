@@ -15,6 +15,10 @@ class AuditQuery extends PaginationQuery {
   @IsOptional()
   @IsUUID()
   userId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  patientId?: string;
 }
 
 @Controller('audit-logs')
@@ -30,6 +34,7 @@ export class AuditController {
       clinicId,
       action: query.action,
       userId: query.userId,
+      patientId: query.patientId,
       limit: query.limit,
       offset: query.offset,
     });

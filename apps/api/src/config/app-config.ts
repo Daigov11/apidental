@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { NodeEnv, validateEnv } from './env.validation.js';
 
 /** Configuración tipada de la aplicación, construida una sola vez desde el entorno. */
@@ -14,6 +15,7 @@ export class AppConfig {
     audience: string;
     accessTtlSeconds: number;
   };
+  readonly attachments: { dir: string; maxBytes: number };
   readonly corsOrigins: string[];
   readonly trustProxy: number;
   readonly login: { maxAttempts: number; lockMinutes: number };
@@ -33,6 +35,7 @@ export class AppConfig {
       audience: env.JWT_AUDIENCE,
       accessTtlSeconds: env.JWT_ACCESS_TTL_SECONDS,
     };
+    this.attachments = { dir: resolve(env.ATTACHMENTS_DIR), maxBytes: env.ATTACHMENT_MAX_BYTES };
     this.corsOrigins = env.CORS_ORIGINS.split(',')
       .map((o) => o.trim())
       .filter(Boolean);

@@ -37,7 +37,8 @@ const ASSIGNMENT_VIEW = {
  *  2. Rol CLINIC   => clínica obligatoria; sede opcional (sin sede = toda la clínica).
  *  3. Una clínica solo asigna dentro de su clínica; si su contexto está fijado a una sede,
  *     solo dentro de esa sede.
- *  4. Anti-escalada: nadie otorga un rol con permisos que no posee en su contexto.
+ *  4. Anti-escalada: nadie otorga un rol con permisos que no posee en su contexto
+ *     (salvo la plataforma al incorporar clínicas con roles de clínica; ver validateGrant).
  *  5. La sede debe pertenecer a la clínica y ambas deben estar activas.
  */
 @Injectable()
@@ -57,7 +58,12 @@ export class AssignmentsService {
     });
     if (!role) throw new BadRequestException('Rol desconocido');
 
-    if (!role.permissions.every((rp) => actor.permissions.has(rp.permission.code))) {
+    // Anti-escalada: no se otorga un rol con permisos que el otorgante no posee. Excepción deliberada:
+    // la plataforma incorpora clínicas otorgando roles de CLÍNICA (que incluyen permisos sobre pacientes
+    // que la plataforma no tiene). Es una vía indirecta de acceso: queda auditada (USER_CREATED /
+    // ASSIGNMENT_CREATED) y debe cerrarse con un flujo de invitación donde el usuario fije su clave.
+    const platformOnboarding = actorIsPlatform && role.scope === 'CLINIC';
+    if (!platformOnboarding && !role.permissions.every((rp) => actor.permissions.has(rp.permission.code))) {
       throw new ForbiddenException('No puede otorgar un rol con más permisos que los suyos');
     }
 

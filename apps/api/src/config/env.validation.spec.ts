@@ -29,8 +29,16 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...base, NODE_ENV: 'staging' })).toThrow(/NODE_ENV/);
   });
 
+  it('valida el almacenamiento de adjuntos: absoluto en producción y tamaño acotado', () => {
+    const prod = { ...base, NODE_ENV: 'production', JWT_ACCESS_SECRET: 'x'.repeat(40) };
+    expect(() => validateEnv({ ...prod, ATTACHMENTS_DIR: './storage' })).toThrow(/ATTACHMENTS_DIR/);
+    expect(() => validateEnv({ ...prod, ATTACHMENTS_DIR: '/var/lib/apidental/files' })).not.toThrow();
+    expect(validateEnv(base).ATTACHMENT_MAX_BYTES).toBe(10_485_760);
+    expect(() => validateEnv({ ...base, ATTACHMENT_MAX_BYTES: '999999999' })).toThrow(/ATTACHMENT_MAX_BYTES/);
+  });
+
   it('en producción rechaza el secreto de ejemplo y CORS comodín', () => {
-    const prod = { ...base, NODE_ENV: 'production' };
+    const prod = { ...base, NODE_ENV: 'production', ATTACHMENTS_DIR: '/var/lib/apidental/files' };
     expect(() => validateEnv({ ...prod, JWT_ACCESS_SECRET: 'change_me_'.repeat(5) })).toThrow(/ejemplo/);
     expect(() => validateEnv({ ...prod, CORS_ORIGINS: '*' })).toThrow(/CORS/);
     expect(() => validateEnv({ ...prod, CORS_ORIGINS: 'https://dental.apiworking.com.pe' })).not.toThrow();
