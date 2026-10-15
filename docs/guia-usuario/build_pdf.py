@@ -97,7 +97,7 @@ MATRIX = [
 RECEPCION = [
     task('Reservar una cita', [
         'En **Agenda** pulse **Nueva cita** (también está en la ficha del paciente).',
-        'En **Paciente**, escriba su DNI, nombre o celular (mínimo 2 caracteres) y elíjalo de la lista.',
+        'En **Paciente**, haga clic: aparecen pacientes para elegir. O escriba su DNI, nombre o celular (desde 2 caracteres) para filtrar, y elíjalo.',
         'Elija el **servicio** y el **odontólogo**.',
         'Elija la **fecha**. Aparecen los **horarios disponibles**; pulse uno.',
         'Si hace falta, escriba una nota administrativa (sin datos clínicos).',
@@ -142,12 +142,14 @@ RECEPCION = [
         [fig('recepcion-04-cita.jpg', 'Detalle de la cita y sus acciones.', left=980, right=18, top=80, bottom=240)],
         tip='una cita pasa por Reservado → Confirmado → Atendido. También puede terminar en Cancelado o Ausente.'),
     task('Buscar o crear pacientes y ver su ficha', [
-        'Entre a **Pacientes**.',
-        'Escriba el DNI, el nombre o el celular y pulse **Buscar**. Pulse el nombre para abrir la ficha.',
-        'Si no existe, pulse **Nuevo paciente** (arriba a la derecha) o **Crear a «texto»**.',
-        'En la ficha vea los datos, las **citas** y la tarjeta de **fidelización** con su saldo de puntos.'],
-        [fig('recepcion-05b-pacientes-sin-resultados.jpg', 'Sin resultados: se puede crear desde aquí.', top=96, bottom=300),
+        'Entre a **Pacientes**. La lista aparece sola, ordenada por apellido, sin escribir nada.',
+        'Para buscar, escriba el DNI, el nombre o el celular. **Desde 2 caracteres** la lista se filtra mientras escribe.',
+        'Con **Estado** puede ver los pacientes **Activos** o **Inactivos**.',
+        'Pulse el nombre para abrir la ficha: datos, **citas** y tarjeta de **fidelización** con su saldo de puntos.',
+        'Si no existe, pulse **Nuevo paciente** (arriba a la derecha) o **Crear a «texto»**.'],
+        [fig('recepcion-05-pacientes.jpg', 'Lista de pacientes: aparece al abrir y se filtra al escribir.', top=96, bottom=140),
          fig('recepcion-06-ficha-paciente.jpg', 'Ficha del paciente.', top=100, bottom=0)],
+        tip='al reservar una cita, el cuadro **Paciente** también muestra pacientes apenas hace clic en él, sin escribir; desde 2 caracteres filtra.',
         note='aún no hay pantalla para **editar** los datos de un paciente ya creado, ni para consentimientos y adjuntos (se hacen por la API). La historia clínica no es visible para recepción.'),
     task('Cobrar una atención', [
         'Cuando el odontólogo atendió la cita, ábrala en **Agenda** y pulse **Registrar cobro**. También puede entrar por **Caja**.',
@@ -270,7 +272,7 @@ ADMIN = [
 FAQ = [
     ('Un paciente pidió cita por la web: ¿qué hago?', 'Entre a Solicitudes, pulse Atender y elija paciente, odontólogo y horario. La cita queda Reservado; confírmela desde la agenda. Si no hay horario, rechácela con un motivo y contacte al paciente.'),
     ('No veo «Iniciar atención».', 'Solo aparece al odontólogo de la cita, desde 30 min antes y hasta 6 h después de terminar, y si no está cancelada ni marcada como ausente.'),
-    ('No encuentro al paciente.', 'Busque por DNI, nombre o celular (mínimo 2 caracteres). Si no existe, recepción lo crea desde Pacientes o desde la cita.'),
+    ('No encuentro al paciente.', 'La lista de Pacientes aparece sola; para filtrar escriba desde 2 caracteres (DNI, nombre o celular). Revise también el filtro Estado: puede estar Inactivo. Si no existe, recepción lo crea desde Pacientes o desde la cita.'),
     ('Me dice que el paciente ya existe.', 'Otra ficha tiene el mismo documento o se parece. Use «Usar a este paciente»; el sistema nunca fusiona fichas.'),
     ('Aparece «Acceso denegado».', 'Su rol no incluye esa pantalla. Pida el acceso a su administrador.'),
     ('Mi sesión se cerró sola.', 'Por seguridad la sesión caduca. Ingrese de nuevo.'),
