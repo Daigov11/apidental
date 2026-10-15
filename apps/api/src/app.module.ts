@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { PermissionsGuard } from './auth/permissions.guard.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor.js';
+import { CryptoModule } from './common/crypto/crypto.module.js';
 import { ClinicalModule } from './clinical/clinical.module.js';
 import { AppConfig } from './config/app-config.js';
 import { ConfigModule } from './config/config.module.js';
@@ -37,6 +38,7 @@ const isLoginRoute = (req: Request): boolean => STRICT_ROUTES.some((r) => req.pa
   imports: [
     ConfigModule,
     PrismaModule,
+    CryptoModule,
     ThrottlerModule.forRootAsync({
       inject: [AppConfig],
       useFactory: (config: AppConfig) => ({

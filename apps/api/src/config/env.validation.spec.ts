@@ -111,6 +111,15 @@ describe('validateEnv', () => {
       expect(() => validateEnv({ ...base, MAINTENANCE_BATCH_SIZE: '1' })).toThrow(/MAINTENANCE_BATCH_SIZE/);
     });
 
+    it('el cifrado de campos está apagado por defecto y, si se enciende, exige una clave de 32 bytes', () => {
+      expect(new AppConfig(base).fieldEncryption).toMatchObject({ mode: 'off', key: null });
+      const key = Buffer.alloc(32, 7).toString('base64');
+      expect(new AppConfig({ ...base, FIELD_ENCRYPTION_MODE: 'aes-gcm', FIELD_ENCRYPTION_KEY: key }).fieldEncryption.mode).toBe('aes-gcm');
+      expect(() => validateEnv({ ...base, FIELD_ENCRYPTION_MODE: 'aes-gcm' })).toThrow(/FIELD_ENCRYPTION_KEY/);
+      expect(() => validateEnv({ ...base, FIELD_ENCRYPTION_MODE: 'aes-gcm', FIELD_ENCRYPTION_KEY: 'corta' })).toThrow(/32 bytes/);
+      expect(() => validateEnv({ ...base, FIELD_ENCRYPTION_MODE: 'rot13' })).toThrow(/FIELD_ENCRYPTION_MODE/);
+    });
+
     it('en desarrollo el canal "dev" es el valor por defecto', () => {
       expect(new AppConfig(base).invitations.mode).toBe('dev');
     });

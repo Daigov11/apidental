@@ -10,6 +10,7 @@ import { ageOn, formatDateOnly, isMinor } from '../patients/util/lima-date.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { ClinicalAccessService } from './clinical-access.service.js';
+import { ClinicalAlertsService } from './clinical-alerts.service.js';
 
 /**
  * Resumen clínico del paciente: la ÚNICA superficie clínica de 3.1. Aún no hay antecedentes, alergias,
@@ -26,6 +27,7 @@ export class ClinicalSummaryService {
   constructor(
     @Inject(PRISMA) private readonly db: PrismaDb,
     private readonly access: ClinicalAccessService,
+    private readonly clinicalAlerts: ClinicalAlertsService,
   ) {}
 
   async get(actor: AuthPrincipal, patientId: string, meta: RequestMeta) {
@@ -56,6 +58,11 @@ export class ClinicalSummaryService {
       patientId,
     );
     const alerts = consentAlerts(consent);
+    const clinicalAlerts = await this.clinicalAlerts.activeAlerts(
+      decision.clinicId,
+      patientId,
+      decision.level,
+    );
     const access = {
       level: decision.level,
       via: decision.via,
@@ -80,6 +87,7 @@ export class ClinicalSummaryService {
           isMinor: isMinor(patient.birthDate),
         },
         alerts,
+        clinicalAlerts,
         supportData: { clinicalConsent: consent.state },
       };
     }
@@ -95,10 +103,11 @@ export class ClinicalSummaryService {
         status: patient.status,
       },
       alerts,
+      clinicalAlerts,
       clinicalConsent: { state: consent.state, grantedAt: consent.grantedAt },
       sections: {
         status: 'NOT_AVAILABLE',
-        note: 'Antecedentes, alergias, diagnósticos, evoluciones y odontograma llegan en incrementos posteriores.',
+        note: 'Antecedentes, alergias y alertas están en /clinical/history y /clinical/alerts; diagnósticos, evoluciones y odontograma llegan en incrementos posteriores.',
       },
     };
   }

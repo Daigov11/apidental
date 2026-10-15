@@ -37,6 +37,7 @@ export class AppConfig {
     batchSize: number;
     maxBatches: number;
   };
+  readonly fieldEncryption: { mode: 'off' | 'aes-gcm'; keyId: string; key: string | null; oldKeys: string | null };
   readonly corsOrigins: string[];
   readonly trustProxy: number;
   readonly login: { maxAttempts: number; lockMinutes: number };
@@ -89,6 +90,12 @@ export class AppConfig {
       },
       batchSize: env.MAINTENANCE_BATCH_SIZE,
       maxBatches: env.MAINTENANCE_MAX_BATCHES,
+    };
+    this.fieldEncryption = {
+      mode: env.FIELD_ENCRYPTION_MODE as 'off' | 'aes-gcm',
+      keyId: env.FIELD_ENCRYPTION_KEY_ID,
+      key: env.FIELD_ENCRYPTION_KEY ?? null,
+      oldKeys: env.FIELD_ENCRYPTION_OLD_KEYS ?? null,
     };
     this.corsOrigins = env.CORS_ORIGINS.split(',')
       .map((o) => o.trim())

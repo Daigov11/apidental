@@ -198,6 +198,23 @@ export class EnvironmentVariables {
   @IsOptional() @Transform(toInt) @IsInt() @Min(1) @Max(1000)
   MAINTENANCE_MAX_BATCHES: number = 20;
 
+  // ---------------- cifrado de campos (PREPARADO, no se aplica a ninguna columna en 3.2) ----------------
+
+  /** off = sin transformación (por defecto). aes-gcm solo habilita la capa; los servicios aún no la usan. */
+  @IsOptional() @IsIn(['off', 'aes-gcm'])
+  FIELD_ENCRYPTION_MODE: string = 'off';
+
+  @IsOptional() @IsString()
+  FIELD_ENCRYPTION_KEY_ID: string = 'k1';
+
+  /** Clave activa: 32 bytes en base64 (openssl rand -base64 32). Nunca en el repositorio. */
+  @IsOptional() @IsString()
+  FIELD_ENCRYPTION_KEY?: string;
+
+  /** Claves anteriores para descifrar tras una rotación: "id:base64,id:base64". */
+  @IsOptional() @IsString()
+  FIELD_ENCRYPTION_OLD_KEYS?: string;
+
   @IsOptional()
   @Transform(toInt)
   @IsInt()
@@ -247,6 +264,11 @@ export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables 
   }
   if (production && mode !== 'disabled' && !/^https:\/\//i.test(env.PASSWORD_RECOVERY_BASE_URL)) {
     throw new Error('Configuración de entorno inválida: PASSWORD_RECOVERY_BASE_URL debe usar https en producción');
+  }
+  if (env.FIELD_ENCRYPTION_MODE === 'aes-gcm') {
+    if (!env.FIELD_ENCRYPTION_KEY || Buffer.from(env.FIELD_ENCRYPTION_KEY, 'base64').length !== 32) {
+      throw new Error('Configuración de entorno inválida: FIELD_ENCRYPTION_KEY debe ser una clave de 32 bytes en base64');
+    }
   }
   if (production && env.COOKIE_SECURE === 'false') {
     throw new Error('Configuración de entorno inválida: COOKIE_SECURE no puede ser false en producción');

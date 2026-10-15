@@ -1,3 +1,4 @@
+import { Prisma } from '../generated/prisma/client.js';
 import {
   Inject,
   Injectable,
@@ -5,6 +6,7 @@ import {
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import type { DbTx } from '../prisma/client.js';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { ReauthService } from '../auth/reauth.service.js';
@@ -62,6 +64,12 @@ const DENIALS = {
     message:
       'La relación asistencial corresponde a otra sede; seleccione esa sede para registrar información clínica',
   },
+  limitedView: {
+    reason: 'limited_view_only',
+    code: 'CLINICAL_LIMITED_VIEW',
+    message:
+      'Su perfil solo accede a la vista de apoyo (alertas); este contenido clínico no está disponible',
+  },
   justification: {
     reason: 'justification_required',
     code: 'CLINICAL_JUSTIFICATION_REQUIRED',
@@ -97,7 +105,10 @@ export class ClinicalAccessService {
     intent: ClinicalIntent,
     sections: readonly string[],
     meta: RequestMeta,
+    /** `false`: el contenido exige el nivel completo; la vista de apoyo (asistente) se deniega y se audita. */
+    opts: { allowLimited?: boolean } = {},
   ): Promise<ClinicalAccessDecision> {
+    const allowLimited = opts.allowLimited ?? true;
     const ctx = actor.context;
     if (!ctx || ctx.clinicId === null)
       return this.deny(actor, null, intent, meta, DENIALS.noClinic);
@@ -196,7 +207,9 @@ export class ClinicalAccessService {
           (r) =>
             r.branchId === null || branchId === null || r.branchId === branchId,
         );
-        if (inBranch.length > 0) {
+        if (inBranch.length > 0 && !allowLimited) {
+          denial = DENIALS.limitedView;
+        } else if (inBranch.length > 0) {
           return this.allow(
             actor,
             {
@@ -212,11 +225,41 @@ export class ClinicalAccessService {
             sections,
             meta,
           );
+        } else {
+          denial = DENIALS.noRelationship;
         }
-        denial = DENIALS.noRelationship;
       }
     }
     return this.deny(actor, patientId, intent, meta, denial);
+  }
+
+  /**
+   * Revalida DENTRO de la transacción de una escritura que la relación asistencial sigue vigente. El bloqueo
+   * compartido (FOR SHARE) hace que una revocación concurrente espere a que la escritura confirme: o se revoca
+   * ANTES (la escritura se deniega) o DESPUÉS (la escritura ya era válida). Nunca queda una escritura posterior a una
+   * revocación ya confirmada.
+   */
+  async assertStillAuthorized(
+    tx: DbTx,
+    actor: AuthPrincipal,
+    decision: ClinicalAccessDecision,
+    meta: RequestMeta,
+  ): Promise<void> {
+    if (decision.relationshipIds.length === 0) return; // read_all no escribe; el resto exige relación
+    const live = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM patient_care_relationships
+      WHERE id IN (${Prisma.join(decision.relationshipIds)}) AND status = 'ACTIVE'
+        AND (valid_until IS NULL OR valid_until > UTC_TIMESTAMP(3))
+      FOR SHARE`;
+    if (live.length === 0) {
+      await this.auditDenied(actor, decision.patientId, 'write', meta, {
+        reason: 'relationship_revoked_during_write',
+      });
+      throw new ClinicalAccessDeniedException(
+        DENIALS.noRelationship.message,
+        DENIALS.noRelationship.code,
+      );
+    }
   }
 
   /** Auditoría PREVIA a la entrega. Si no se puede registrar, el acceso se deniega (falla cerrada). */
