@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="es-PE"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ApiDental · Vista previa del sistema de diseño</title>
+<style>
+
+:root {
+  --color-brand-50: #ECFAFB;
+  --color-brand-100: #D3F1F4;
+  --color-brand-200: #A6E2E9;
+  --color-brand-300: #6FCBD7;
+  --color-brand-400: #37B0C0;
+  --color-brand-500: #1796A8;
+  --color-brand-600: #0F7889;
+  --color-brand-700: #0D6070;
+  --color-brand-800: #104E5B;
+  --color-brand-900: #123F4A;
+  --color-accent-50: #FFF8EA;
+  --color-accent-100: #FDEBC8;
+  --color-accent-300: #F6C566;
+  --color-accent-500: #EE9F1F;
+  --color-accent-700: #8F5A06;
+  --color-accent-800: #6F4504;
+  --color-neutral-0: #FFFFFF;
+  --color-neutral-25: #F7F9FA;
+  --color-neutral-50: #EFF3F5;
+  --color-neutral-100: #E3E9ED;
+  --color-neutral-200: #CFD8DE;
+  --color-neutral-300: #AFBDC6;
+  --color-neutral-400: #8696A3;
+  --color-neutral-500: #5F7280;
+  --color-neutral-600: #475965;
+  --color-neutral-700: #344550;
+  --color-neutral-800: #222F39;
+  --color-neutral-900: #141E26;
+  --color-success-50: #E8F6EE;
+  --color-success-500: #1E8A4C;
+  --color-success-700: #14633A;
+  --color-warning-50: #FFF4DB;
+  --color-warning-500: #C27803;
+  --color-warning-700: #7A4B00;
+  --color-danger-50: #FDECEA;
+  --color-danger-500: #CC3B32;
+  --color-danger-700: #992820;
+  --color-info-50: #E8F1FB;
+  --color-info-500: #2B6CB0;
+  --color-info-700: #1E4E85;
+  --bg-app: #F7F9FA;
+  --bg-surface: #FFFFFF;
+  --bg-subtle: #EFF3F5;
+  --bg-sidebar: #141E26;
+  --bg-overlay: rgba(20, 30, 38, 0.55);
+  --text-default: #141E26;
+  --text-muted: #475965;
+  --text-subtle: #5F7280;
+  --text-on-brand: #FFFFFF;
+  --text-on-sidebar: #FFFFFF;
+  --text-on-sidebar-muted: #AFBDC6;
+  --border-default: #CFD8DE;
+  --border-strong: #8696A3;
+  --border-subtle: #E3E9ED;
+  --action-primary: #0F7889;
+  --action-primary-hover: #0D6070;
+  --action-primary-active: #104E5B;
+  --action-danger: #CC3B32;
+  --action-danger-hover: #992820;
+  --link: #0D6070;
+  --focus-ring: #0F7889;
+  --selection-bg: #D3F1F4;
+  --state-success-bg: #E8F6EE;
+  --state-success-fg: #14633A;
+  --state-success-icon: #1E8A4C;
+  --state-warning-bg: #FFF4DB;
+  --state-warning-fg: #7A4B00;
+  --state-warning-icon: #C27803;
+  --state-danger-bg: #FDECEA;
+  --state-danger-fg: #992820;
+  --state-danger-icon: #CC3B32;
+  --state-info-bg: #E8F1FB;
+  --state-info-fg: #1E4E85;
+  --state-info-icon: #2B6CB0;
+  --state-neutral-bg: #EFF3F5;
+  --state-neutral-fg: #344550;
+  --state-brand-bg: #D3F1F4;
+  --state-brand-fg: #104E5B;
+  --state-accent-bg: #FDEBC8;
+  --state-accent-fg: #6F4504;
+  --font-ui: 'Inter', 'Segoe UI', system-ui, -apple-system, Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Manrope', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-display-size: 3rem;
+  --text-display-line: 1.1;
+  --text-display-weight: 800;
+  --text-h1-size: 1.75rem;
+  --text-h1-line: 1.25;
+  --text-h1-weight: 700;
+  --text-h2-size: 1.375rem;
+  --text-h2-line: 1.3;
+  --text-h2-weight: 700;
+  --text-h3-size: 1.125rem;
+  --text-h3-line: 1.35;
+  --text-h3-weight: 600;
+  --text-body-size: 0.9375rem;
+  --text-body-line: 1.5;
+  --text-body-weight: 400;
+  --text-body-strong-size: 0.9375rem;
+  --text-body-strong-line: 1.5;
+  --text-body-strong-weight: 600;
+  --text-table-size: 0.875rem;
+  --text-table-line: 1.4;
+  --text-table-weight: 400;
+  --text-caption-size: 0.8125rem;
+  --text-caption-line: 1.4;
+  --text-caption-weight: 400;
+  --text-overline-size: 0.75rem;
+  --text-overline-line: 1.3;
+  --text-overline-weight: 600;
+  --space-0: 0;
+  --space-1: 0.125rem;
+  --space-2: 0.25rem;
+  --space-3: 0.5rem;
+  --space-4: 0.75rem;
+  --space-5: 1rem;
+  --space-6: 1.25rem;
+  --space-7: 1.5rem;
+  --space-8: 2rem;
+  --space-9: 2.5rem;
+  --space-10: 3rem;
+  --space-11: 4rem;
+  --space-12: 5rem;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 999px;
+  --shadow-none: none;
+  --shadow-sm: 0 1px 2px rgba(20, 30, 38, 0.06);
+  --shadow-md: 0 4px 12px rgba(20, 30, 38, 0.08);
+  --shadow-lg: 0 12px 32px rgba(20, 30, 38, 0.16);
+  --shadow-focus: 0 0 0 2px #FFFFFF, 0 0 0 4px #0F7889;
+  --motion-fast: 100ms;
+  --motion-base: 160ms;
+  --motion-slow: 240ms;
+  --motion-easing: cubic-bezier(0.2, 0, 0, 1);
+  --sidebar-width: 248px;
+  --sidebar-width-collapsed: 72px;
+  --topbar-height: 56px;
+  --content-max: 1280px;
+  --form-max: 720px;
+  --touch-target: 44px;
+  --control-height-md: 40px;
+  --control-height-sm: 32px;
+  --row-height-comfortable: 48px;
+  --row-height-compact: 36px;
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-dropdown: 20;
+  --z-drawer: 30;
+  --z-modal: 40;
+  --z-toast: 50;
+  --odonto-pendiente: #CC3B32;
+  --odonto-realizado: #2B6CB0;
+  --odonto-ausente: #475965;
+  --odonto-sano: #AFBDC6;
+  --odonto-seleccion: #0F7889;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --motion-fast: 0ms; --motion-base: 0ms; --motion-slow: 0ms; }
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-app);color:var(--text-default);font:400 var(--text-body-size)/1.5 var(--font-ui)}
+h1,h2,h3{font-family:var(--font-display);margin:0}
+main{max-width:1180px;margin:0 auto;padding:var(--space-8) var(--space-5) var(--space-12)}
+section{margin-top:var(--space-10)}
+h2{font-size:var(--text-h2-size);margin-bottom:var(--space-5);padding-bottom:var(--space-3);border-bottom:1px solid var(--border-default)}
+h3{font-size:var(--text-h3-size);font-family:var(--font-ui);margin:var(--space-6) 0 var(--space-3)}
+.brand{display:flex;align-items:center;gap:var(--space-4)}
+.brand b{font:800 1.5rem var(--font-display);letter-spacing:-.01em}.brand small{display:block;color:var(--text-muted)}
+.note{background:var(--state-info-bg);color:var(--state-info-fg);border-radius:var(--radius-md);padding:var(--space-4) var(--space-5);margin:var(--space-5) 0}
+.sw-row{display:flex;gap:var(--space-2);align-items:stretch;margin-bottom:var(--space-3);flex-wrap:wrap}
+.sw-name{width:90px;font-weight:600;align-self:center}
+.sw{flex:1;min-width:84px;border-radius:var(--radius-sm);padding:var(--space-3);display:flex;flex-direction:column;font-size:.75rem;border:1px solid rgba(0,0,0,.06)}
+.sw span{opacity:.9}
+.ty{display:grid;grid-template-columns:110px 1fr;gap:var(--space-2) var(--space-5);align-items:baseline;padding:var(--space-3) 0;border-bottom:1px solid var(--border-subtle)}
+.ty small{grid-column:2;color:var(--text-muted);font-size:var(--text-caption-size)}.ty code{color:var(--text-muted)}
+.grid{display:grid;gap:var(--space-5);grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.card{background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--radius-lg);padding:var(--space-6)}
+.card.elevated{box-shadow:var(--shadow-md);border-color:var(--border-subtle)}
+.btn{display:inline-flex;align-items:center;gap:var(--space-3);height:var(--control-height-md);padding:0 var(--space-5);border-radius:var(--radius-md);font:600 var(--text-body-size)/1 var(--font-ui);border:1px solid transparent;cursor:pointer;transition:background var(--motion-base) var(--motion-easing)}
+.btn:focus-visible,.field:focus-visible,a:focus-visible{outline:none;box-shadow:var(--shadow-focus)}
+.btn-primary{background:var(--action-primary);color:var(--text-on-brand)}.btn-primary:hover{background:var(--action-primary-hover)}
+.btn-secondary{background:var(--bg-surface);color:var(--text-default);border-color:var(--border-strong)}.btn-secondary:hover{background:var(--bg-subtle)}
+.btn-ghost{background:transparent;color:var(--link)}.btn-ghost:hover{background:var(--state-brand-bg)}
+.btn-danger{background:var(--action-danger);color:var(--text-on-brand)}
+.btn[disabled]{background:var(--bg-subtle);color:var(--text-subtle);border-color:var(--border-default);cursor:not-allowed}
+.btn-sm{height:var(--control-height-sm);padding:0 var(--space-4)}
+.row{display:flex;gap:var(--space-3);flex-wrap:wrap;align-items:center}
+label{display:block;font-weight:600;margin-bottom:var(--space-2)}.hint{color:var(--text-muted);font-size:var(--text-caption-size);margin-top:var(--space-2)}
+.field{width:100%;height:var(--control-height-md);padding:0 var(--space-4);border:1px solid var(--border-strong);border-radius:var(--radius-md);font:inherit;background:var(--bg-surface);color:inherit}
+.field.err{border-color:var(--state-danger-icon);border-width:2px}.err-msg{color:var(--state-danger-fg);font-size:var(--text-caption-size);margin-top:var(--space-2);display:flex;gap:var(--space-2)}
+.badge{display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 10px;border-radius:var(--radius-full);font:600 var(--text-caption-size)/1 var(--font-ui);margin:2px 4px 2px 0}
+.badge i{font-style:normal;font-size:.75rem}
+.b-success{background:var(--state-success-bg);color:var(--state-success-fg)}.b-warning{background:var(--state-warning-bg);color:var(--state-warning-fg)}
+.b-danger{background:var(--state-danger-bg);color:var(--state-danger-fg)}.b-info{background:var(--state-info-bg);color:var(--state-info-fg)}
+.b-neutral{background:var(--state-neutral-bg);color:var(--state-neutral-fg)}.b-brand{background:var(--state-brand-bg);color:var(--state-brand-fg)}.b-accent{background:var(--state-accent-bg);color:var(--state-accent-fg)}
+table{width:100%;border-collapse:collapse;font-size:var(--text-table-size)}
+th{position:sticky;top:0;background:var(--bg-subtle);text-align:left;font-weight:600;color:var(--text-muted);padding:var(--space-3) var(--space-4);border-bottom:1px solid var(--border-default)}
+td{padding:0 var(--space-4);height:var(--row-height-comfortable);border-bottom:1px solid var(--border-subtle)}tbody tr:hover{background:var(--bg-app)}
+.tablewrap{background:var(--bg-surface);border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:auto}
+.alert{display:flex;gap:var(--space-4);padding:var(--space-4) var(--space-5);border-radius:var(--radius-md);border-left:4px solid;margin-bottom:var(--space-3)}
+.alert b{display:block}.a-warning{background:var(--state-warning-bg);color:var(--state-warning-fg);border-color:var(--state-warning-icon)}
+.a-danger{background:var(--state-danger-bg);color:var(--state-danger-fg);border-color:var(--state-danger-icon)}.a-success{background:var(--state-success-bg);color:var(--state-success-fg);border-color:var(--state-success-icon)}.a-info{background:var(--state-info-bg);color:var(--state-info-fg);border-color:var(--state-info-icon)}
+.chip{display:inline-block;padding:2px 10px;border-radius:var(--radius-xs);font-weight:700;border:1px solid rgba(0,0,0,.08)}
+.app{display:grid;grid-template-columns:var(--sidebar-width) 1fr;border:1px solid var(--border-default);border-radius:var(--radius-lg);overflow:hidden;min-height:420px}
+.side{background:var(--bg-sidebar);color:var(--text-on-sidebar);padding:var(--space-5);display:flex;flex-direction:column;gap:var(--space-2)}
+.ctx{background:rgba(255,255,255,.08);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);margin-bottom:var(--space-4);font-size:var(--text-caption-size)}.ctx small{display:block;color:var(--text-on-sidebar-muted)}
+.nav a{display:flex;gap:var(--space-3);align-items:center;height:40px;padding:0 var(--space-4);border-radius:var(--radius-md);color:var(--text-on-sidebar-muted);text-decoration:none}
+.nav a.on{background:var(--color-brand-600);color:#fff}.nav a:hover:not(.on){background:rgba(255,255,255,.08);color:#fff}
+.main{background:var(--bg-app);padding:var(--space-6)}.top{display:flex;gap:var(--space-4);margin-bottom:var(--space-5)}.top .field{max-width:420px}
+.tabs{display:flex;gap:var(--space-5);border-bottom:1px solid var(--border-default);margin:var(--space-5) 0}.tabs a{padding:var(--space-3) 0;color:var(--text-muted);text-decoration:none;font-weight:600}.tabs a.on{color:var(--link);border-bottom:3px solid var(--action-primary)}
+.od{display:inline-flex;align-items:center;gap:var(--space-3);margin-right:var(--space-5)}.od i{width:14px;height:14px;border-radius:3px;display:inline-block}
+.bars{display:flex;gap:var(--space-6);flex-wrap:wrap}.bar{background:var(--color-brand-600);height:20px;border-radius:var(--radius-full)}
+@media(max-width:760px){.app{grid-template-columns:1fr}.side{display:none}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style></head><body><main>
+<div class="brand"><svg viewBox="0 0 40 40" width="40" height="40" role="img" aria-label="Marca provisional de ApiDental"><rect width="40" height="40" rx="11" fill="#0F7889"/><path d="M12 14.5c0-2.5 2-4.5 4.6-4.5 1.4 0 2.4.5 3.4 1 1-.5 2-1 3.4-1 2.6 0 4.6 2 4.6 4.5 0 2.2-.8 3.6-1.4 5.3-.7 2-.9 4.4-1.6 6.2-.4 1.1-1.2 1.5-2 1.5s-1.4-.7-1.8-2.2c-.3-1.1-.5-2.6-1.2-2.6s-.9 1.5-1.2 2.6c-.4 1.5-1 2.2-1.8 2.2s-1.6-.4-2-1.5c-.7-1.8-.9-4.2-1.6-6.2-.6-1.7-1.4-3.100-1.4-5.300Z" fill="#fff"/><circle cx="30.500" cy="10" r="3" fill="#EE9F1F"/></svg><div><b>ApiDental</b><small>by Apiworking · Vista previa del sistema de diseño (v0.1)</small></div></div>
+<div class="note"><b>Propuesta propia, no definitiva.</b> Marca provisional (a validar con un diseñador). Los colores, la composición y los componentes son originales de ApiDental; esta página usa fuentes del sistema porque Inter y Manrope se autoalojarán al construir el panel. Generada por <code>tools/build.mjs</code>.</div>
+
+<section><h2>1 · Paleta</h2>
+<div class="sw-row"><div class="sw-name">Laguna (marca)</div><div class="sw" style="background:#ECFAFB;color:#141E26"><b>50</b><span>#ECFAFB</span></div><div class="sw" style="background:#D3F1F4;color:#141E26"><b>100</b><span>#D3F1F4</span></div><div class="sw" style="background:#A6E2E9;color:#141E26"><b>200</b><span>#A6E2E9</span></div><div class="sw" style="background:#6FCBD7;color:#141E26"><b>300</b><span>#6FCBD7</span></div><div class="sw" style="background:#37B0C0;color:#141E26"><b>400</b><span>#37B0C0</span></div><div class="sw" style="background:#1796A8;color:#141E26"><b>500</b><span>#1796A8</span></div><div class="sw" style="background:#0F7889;color:#fff"><b>600</b><span>#0F7889</span></div><div class="sw" style="background:#0D6070;color:#fff"><b>700</b><span>#0D6070</span></div><div class="sw" style="background:#104E5B;color:#fff"><b>800</b><span>#104E5B</span></div><div class="sw" style="background:#123F4A;color:#fff"><b>900</b><span>#123F4A</span></div></div><div class="sw-row"><div class="sw-name">Ámbar (acento)</div><div class="sw" style="background:#FFF8EA;color:#141E26"><b>50</b><span>#FFF8EA</span></div><div class="sw" style="background:#FDEBC8;color:#141E26"><b>100</b><span>#FDEBC8</span></div><div class="sw" style="background:#F6C566;color:#141E26"><b>300</b><span>#F6C566</span></div><div class="sw" style="background:#EE9F1F;color:#141E26"><b>500</b><span>#EE9F1F</span></div><div class="sw" style="background:#8F5A06;color:#fff"><b>700</b><span>#8F5A06</span></div><div class="sw" style="background:#6F4504;color:#fff"><b>800</b><span>#6F4504</span></div></div><div class="sw-row"><div class="sw-name">Pizarra</div><div class="sw" style="background:#FFFFFF;color:#141E26"><b>0</b><span>#FFFFFF</span></div><div class="sw" style="background:#F7F9FA;color:#141E26"><b>25</b><span>#F7F9FA</span></div><div class="sw" style="background:#EFF3F5;color:#141E26"><b>50</b><span>#EFF3F5</span></div><div class="sw" style="background:#E3E9ED;color:#141E26"><b>100</b><span>#E3E9ED</span></div><div class="sw" style="background:#CFD8DE;color:#141E26"><b>200</b><span>#CFD8DE</span></div><div class="sw" style="background:#AFBDC6;color:#141E26"><b>300</b><span>#AFBDC6</span></div><div class="sw" style="background:#8696A3;color:#141E26"><b>400</b><span>#8696A3</span></div><div class="sw" style="background:#5F7280;color:#fff"><b>500</b><span>#5F7280</span></div><div class="sw" style="background:#475965;color:#fff"><b>600</b><span>#475965</span></div><div class="sw" style="background:#344550;color:#fff"><b>700</b><span>#344550</span></div><div class="sw" style="background:#222F39;color:#fff"><b>800</b><span>#222F39</span></div><div class="sw" style="background:#141E26;color:#fff"><b>900</b><span>#141E26</span></div></div>
+<div class="sw-row"><div class="sw-name">Éxito</div><div class="sw" style="background:#E8F6EE;color:#141E26"><b>50</b><span>#E8F6EE</span></div><div class="sw" style="background:#1E8A4C;color:#141E26"><b>500</b><span>#1E8A4C</span></div><div class="sw" style="background:#14633A;color:#fff"><b>700</b><span>#14633A</span></div></div><div class="sw-row"><div class="sw-name">Advertencia</div><div class="sw" style="background:#FFF4DB;color:#141E26"><b>50</b><span>#FFF4DB</span></div><div class="sw" style="background:#C27803;color:#141E26"><b>500</b><span>#C27803</span></div><div class="sw" style="background:#7A4B00;color:#fff"><b>700</b><span>#7A4B00</span></div></div><div class="sw-row"><div class="sw-name">Peligro</div><div class="sw" style="background:#FDECEA;color:#141E26"><b>50</b><span>#FDECEA</span></div><div class="sw" style="background:#CC3B32;color:#fff"><b>500</b><span>#CC3B32</span></div><div class="sw" style="background:#992820;color:#fff"><b>700</b><span>#992820</span></div></div><div class="sw-row"><div class="sw-name">Información</div><div class="sw" style="background:#E8F1FB;color:#141E26"><b>50</b><span>#E8F1FB</span></div><div class="sw" style="background:#2B6CB0;color:#fff"><b>500</b><span>#2B6CB0</span></div><div class="sw" style="background:#1E4E85;color:#fff"><b>700</b><span>#1E4E85</span></div></div>
+<h3>Contraste verificado (WCAG 2.2 AA)</h3>
+<div class="tablewrap"><table><thead><tr><th>Combinación</th><th>Muestra</th><th>Ratio</th><th>Mínimo</th><th>Resultado</th></tr></thead><tbody><tr><td>Texto principal sobre fondo de la app</td><td><span class="chip" style="background:#F7F9FA;color:#141E26">Aa</span></td><td>15.99 : 1</td><td>≥ 7</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Texto principal sobre tarjeta</td><td><span class="chip" style="background:#FFFFFF;color:#141E26">Aa</span></td><td>16.89 : 1</td><td>≥ 7</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Texto secundario sobre tarjeta</td><td><span class="chip" style="background:#FFFFFF;color:#475965">Aa</span></td><td>7.28 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Texto secundario sobre fondo de la app</td><td><span class="chip" style="background:#F7F9FA;color:#475965">Aa</span></td><td>6.89 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Texto de apoyo / placeholder sobre blanco</td><td><span class="chip" style="background:#FFFFFF;color:#5F7280">Aa</span></td><td>4.99 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Botón primario (texto blanco)</td><td><span class="chip" style="background:#0F7889;color:#FFFFFF">Aa</span></td><td>5.16 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Botón primario, hover</td><td><span class="chip" style="background:#0D6070;color:#FFFFFF">Aa</span></td><td>7.18 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Botón peligro (texto blanco)</td><td><span class="chip" style="background:#CC3B32;color:#FFFFFF">Aa</span></td><td>4.95 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Enlace sobre blanco</td><td><span class="chip" style="background:#FFFFFF;color:#0D6070">Aa</span></td><td>7.18 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Texto de marca sobre tinte de marca</td><td><span class="chip" style="background:#D3F1F4;color:#104E5B">Aa</span></td><td>7.80 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Badge éxito</td><td><span class="chip" style="background:#E8F6EE;color:#14633A">Aa</span></td><td>6.55 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Badge advertencia</td><td><span class="chip" style="background:#FFF4DB;color:#7A4B00">Aa</span></td><td>6.78 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Badge peligro</td><td><span class="chip" style="background:#FDECEA;color:#992820">Aa</span></td><td>6.85 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Badge información</td><td><span class="chip" style="background:#E8F1FB;color:#1E4E85">Aa</span></td><td>7.41 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Badge neutro</td><td><span class="chip" style="background:#EFF3F5;color:#344550">Aa</span></td><td>8.90 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Badge fidelización (acento)</td><td><span class="chip" style="background:#FDEBC8;color:#6F4504">Aa</span></td><td>7.08 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Anillo de foco sobre blanco (UI ≥ 3:1)</td><td><span class="chip" style="background:#FFFFFF;color:#0F7889">Aa</span></td><td>5.16 : 1</td><td>≥ 3</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Borde de campo sobre blanco (UI ≥ 3:1)</td><td><span class="chip" style="background:#FFFFFF;color:#8696A3">Aa</span></td><td>3.04 : 1</td><td>≥ 3</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Icono de éxito sobre blanco (UI ≥ 3:1)</td><td><span class="chip" style="background:#FFFFFF;color:#1E8A4C">Aa</span></td><td>4.38 : 1</td><td>≥ 3</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Icono de advertencia sobre blanco (UI ≥ 3:1)</td><td><span class="chip" style="background:#FFFFFF;color:#C27803">Aa</span></td><td>3.51 : 1</td><td>≥ 3</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Icono de peligro sobre blanco (UI ≥ 3:1)</td><td><span class="chip" style="background:#FFFFFF;color:#CC3B32">Aa</span></td><td>4.95 : 1</td><td>≥ 3</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Icono de información sobre blanco (UI ≥ 3:1)</td><td><span class="chip" style="background:#FFFFFF;color:#2B6CB0">Aa</span></td><td>5.42 : 1</td><td>≥ 3</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Texto sobre barra lateral</td><td><span class="chip" style="background:#141E26;color:#FFFFFF">Aa</span></td><td>16.89 : 1</td><td>≥ 7</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Texto secundario sobre barra lateral</td><td><span class="chip" style="background:#141E26;color:#AFBDC6">Aa</span></td><td>8.78 : 1</td><td>≥ 4.5</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Odontograma: patología sobre blanco (UI ≥ 3:1)</td><td><span class="chip" style="background:#FFFFFF;color:#CC3B32">Aa</span></td><td>4.95 : 1</td><td>≥ 3</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Odontograma: realizado sobre blanco (UI ≥ 3:1)</td><td><span class="chip" style="background:#FFFFFF;color:#2B6CB0">Aa</span></td><td>5.42 : 1</td><td>≥ 3</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr><tr><td>Odontograma: pieza ausente sobre blanco (UI ≥ 3:1)</td><td><span class="chip" style="background:#FFFFFF;color:#475965">Aa</span></td><td>7.28 : 1</td><td>≥ 3</td><td><span class="badge b-success"><i aria-hidden="true">✓</i>Cumple</span></td></tr></tbody></table></div>
+</section>
+
+<section><h2>2 · Tipografía</h2><div class="ty"><code>display</code><span style="font-family:var(--font-display);font-size:3rem;font-weight:800;line-height:1.1">Atención odontológica clara y a tiempo</span><small>3rem · 800 · Solo sitio comercial (hero)</small></div><div class="ty"><code>h1</code><span style="font-family:var(--font-display);font-size:1.75rem;font-weight:700;line-height:1.25">Atención odontológica clara y a tiempo</span><small>1.75rem · 700 · Título de pantalla</small></div><div class="ty"><code>h2</code><span style="font-family:var(--font-display);font-size:1.375rem;font-weight:700;line-height:1.3">Atención odontológica clara y a tiempo</span><small>1.375rem · 700 · Sección dentro de una pantalla</small></div><div class="ty"><code>h3</code><span style="font-family:var(--font-ui);font-size:1.125rem;font-weight:600;line-height:1.35">Atención odontológica clara y a tiempo</span><small>1.125rem · 600 · Título de tarjeta</small></div><div class="ty"><code>body</code><span style="font-family:var(--font-ui);font-size:0.9375rem;font-weight:400;line-height:1.5">Atención odontológica clara y a tiempo</span><small>0.9375rem · 400 · Texto base del panel (15 px)</small></div><div class="ty"><code>body-strong</code><span style="font-family:var(--font-ui);font-size:0.9375rem;font-weight:600;line-height:1.5">Atención odontológica clara y a tiempo</span><small>0.9375rem · 600 · Etiquetas y datos clave</small></div><div class="ty"><code>table</code><span style="font-family:var(--font-ui);font-size:0.875rem;font-weight:400;line-height:1.4">Atención odontológica clara y a tiempo</span><small>0.875rem · 400 · Celdas de tabla (14 px)</small></div><div class="ty"><code>caption</code><span style="font-family:var(--font-ui);font-size:0.8125rem;font-weight:400;line-height:1.4">Atención odontológica clara y a tiempo</span><small>0.8125rem · 400 · Ayudas y metadatos (13 px, mínimo permitido)</small></div><div class="ty"><code>overline</code><span style="font-family:var(--font-ui);font-size:0.75rem;font-weight:600;line-height:1.3">Atención odontológica clara y a tiempo</span><small>0.75rem · 600 · Encabezados de grupo en mayúsculas (12 px, solo decorativo)</small></div></section>
+
+<section><h2>3 · Espaciado, bordes y sombras</h2>
+<div class="bars"><div><div class="bar" style="width:0.125rem"></div><small>space-1 · 0.125rem</small></div><div><div class="bar" style="width:0.25rem"></div><small>space-2 · 0.25rem</small></div><div><div class="bar" style="width:0.5rem"></div><small>space-3 · 0.5rem</small></div><div><div class="bar" style="width:0.75rem"></div><small>space-4 · 0.75rem</small></div><div><div class="bar" style="width:1rem"></div><small>space-5 · 1rem</small></div><div><div class="bar" style="width:1.25rem"></div><small>space-6 · 1.25rem</small></div><div><div class="bar" style="width:1.5rem"></div><small>space-7 · 1.5rem</small></div><div><div class="bar" style="width:2rem"></div><small>space-8 · 2rem</small></div><div><div class="bar" style="width:2.5rem"></div><small>space-9 · 2.5rem</small></div><div><div class="bar" style="width:3rem"></div><small>space-10 · 3rem</small></div><div><div class="bar" style="width:4rem"></div><small>space-11 · 4rem</small></div><div><div class="bar" style="width:5rem"></div><small>space-12 · 5rem</small></div></div>
+<h3>Radios y elevación</h3><div class="grid"><div class="card" style="border-radius:4px">radius-xs<br><small>4px</small></div><div class="card" style="border-radius:6px">radius-sm<br><small>6px</small></div><div class="card" style="border-radius:8px">radius-md<br><small>8px</small></div><div class="card" style="border-radius:12px">radius-lg<br><small>12px</small></div><div class="card" style="border-radius:16px">radius-xl<br><small>16px</small></div><div class="card" style="border-radius:999px">radius-full<br><small>999px</small></div></div>
+<div class="grid" style="margin-top:16px"><div class="card" style="box-shadow:var(--shadow-sm);border-color:var(--border-subtle)">shadow-sm<br><small>0 1px 2px rgba(20, 30, 38, 0.06)</small></div><div class="card" style="box-shadow:var(--shadow-md);border-color:var(--border-subtle)">shadow-md<br><small>0 4px 12px rgba(20, 30, 38, 0.08)</small></div><div class="card" style="box-shadow:var(--shadow-lg);border-color:var(--border-subtle)">shadow-lg<br><small>0 12px 32px rgba(20, 30, 38, 0.16)</small></div></div>
+</section>
+
+<section><h2>4 · Componentes base</h2>
+<h3>Botones</h3><div class="row"><button class="btn btn-primary">Cobrar</button><button class="btn btn-secondary">Reprogramar</button><button class="btn btn-ghost">Ver historial</button><button class="btn btn-danger">Dar de baja</button><button class="btn btn-primary" disabled>Deshabilitado</button><button class="btn btn-secondary btn-sm">Pequeño</button></div>
+<h3>Campos</h3><div class="grid">
+<div><label for="a">DNI</label><input id="a" class="field" inputmode="numeric" maxlength="8" placeholder="8 dígitos"><div class="hint">Solo números. Se valida al salir del campo.</div></div>
+<div><label for="b">Correo</label><input id="b" class="field err" value="ana@correo" aria-invalid="true" aria-describedby="e"><div id="e" class="err-msg"><span aria-hidden="true">✕</span>Escriba un correo completo, por ejemplo ana@correo.pe</div></div></div>
+<h3>Estados (siempre icono + texto)</h3>
+<p><b>Cita</b><br><span class="badge b-info"><i aria-hidden="true">●</i>Reservado</span> <span class="badge b-brand"><i aria-hidden="true">◆</i>Confirmado</span> <span class="badge b-success"><i aria-hidden="true">✓</i>Atendido</span> <span class="badge b-neutral"><i aria-hidden="true">–</i>Cancelado</span> <span class="badge b-danger"><i aria-hidden="true">✕</i>Ausente</span></p><p><b>Pago</b><br><span class="badge b-success"><i aria-hidden="true">✓</i>Pagado</span> <span class="badge b-warning"><i aria-hidden="true">!</i>Parcial</span> <span class="badge b-neutral"><i aria-hidden="true">–</i>Pendiente</span> <span class="badge b-accent"><i aria-hidden="true">★</i>Crédito</span> <span class="badge b-neutral"><i aria-hidden="true">–</i>Anulado</span></p><p><b>Comprobante</b> <small>(estados locales; mapeo con Apiworking/SUNAT por validar)</small><br><span class="badge b-neutral"><i aria-hidden="true">–</i>Pendiente de envío</span> <span class="badge b-info"><i aria-hidden="true">●</i>Enviado</span> <span class="badge b-success"><i aria-hidden="true">✓</i>Emitido</span> <span class="badge b-danger"><i aria-hidden="true">✕</i>Rechazado</span> <span class="badge b-warning"><i aria-hidden="true">!</i>Error reintentable</span> <span class="badge b-warning"><i aria-hidden="true">!</i>Requiere conciliación</span> <span class="badge b-warning"><i aria-hidden="true">!</i>Anulación pendiente</span> <span class="badge b-neutral"><i aria-hidden="true">–</i>Anulado</span></p>
+<p><b>Consentimiento / paciente / stock</b><br><span class="badge b-success"><i aria-hidden="true">✓</i>Vigente</span> <span class="badge b-neutral"><i aria-hidden="true">–</i>Revocado</span> <span class="badge b-warning"><i aria-hidden="true">!</i>Sin registro</span> <span class="badge b-success"><i aria-hidden="true">✓</i>Activo</span> <span class="badge b-neutral"><i aria-hidden="true">–</i>Inactivo</span> <span class="badge b-warning"><i aria-hidden="true">!</i>Menor sin representante</span> <span class="badge b-warning"><i aria-hidden="true">!</i>Posible duplicado</span> <span class="badge b-success"><i aria-hidden="true">✓</i>Stock suficiente</span> <span class="badge b-warning"><i aria-hidden="true">!</i>Stock bajo</span> <span class="badge b-danger"><i aria-hidden="true">✕</i>Agotado</span></p>
+<h3>Alertas</h3>
+<div class="alert a-warning"><span aria-hidden="true">!</span><div><b>Posible paciente duplicado</b>Existe una ficha con el mismo nombre y fecha de nacimiento. Revísela antes de continuar.</div></div>
+<div class="alert a-danger" role="alert"><span aria-hidden="true">✕</span><div><b>Comprobante rechazado</b>Corrija los datos del cliente y vuelva a enviarlo.</div></div>
+<div class="alert a-success"><span aria-hidden="true">✓</span><div><b>Cobro registrado</b>El comprobante se enviará automáticamente.</div></div>
+<div class="alert a-info"><span aria-hidden="true">i</span><div><b>Sincronizando con Apiworking</b>Su cobro ya está guardado; el comprobante quedará pendiente si hay un corte.</div></div>
+<h3>Tabla</h3><div class="tablewrap"><table><thead><tr><th>Hora</th><th>Paciente</th><th>Servicio</th><th>Odontólogo</th><th>Estado</th></tr></thead><tbody>
+<tr><td>09:00</td><td><b>Lucía Demo</b></td><td>Control</td><td>Dr. Ríos</td><td><span class="badge b-brand"><i aria-hidden="true">◆</i>Confirmado</span></td></tr>
+<tr><td>09:30</td><td><b>Mateo Demo</b> <span class="badge b-warning"><i aria-hidden="true">!</i>Menor sin representante</span></td><td>Limpieza</td><td>Dra. Soto</td><td><span class="badge b-info"><i aria-hidden="true">●</i>Reservado</span></td></tr>
+<tr><td>10:15</td><td><b>Jorge Demo</b></td><td>Endodoncia</td><td>Dr. Ríos</td><td><span class="badge b-danger"><i aria-hidden="true">✕</i>Ausente</span></td></tr></tbody></table></div>
+<h3>Tarjeta y modal (reautenticación / motivo)</h3>
+<div class="grid"><div class="card elevated"><h3 style="margin-top:0">Saldo por cobrar</h3><p style="font:700 1.75rem var(--font-display);margin:8px 0">S/ 1,240.50</p><small class="hint">4 pacientes con saldo</small></div>
+<div class="card elevated" role="dialog" aria-label="Ejemplo de modal"><h3 style="margin-top:0">Dar de baja el adjunto</h3><p>El archivo se conserva; solo dejará de estar disponible.</p><label for="m">Motivo (obligatorio)</label><input id="m" class="field" placeholder="Ej.: se cargó al paciente equivocado"><div class="row" style="margin-top:16px;justify-content:flex-end"><button class="btn btn-secondary">Cancelar</button><button class="btn btn-danger">Dar de baja</button></div></div></div>
+<h3>Odontograma (convención provisional; formato MINSA por validar)</h3><p><span class="od"><i style="background:#CC3B32"></i>Patología / por tratar</span><span class="od"><i style="background:#2B6CB0"></i>Tratamiento realizado</span><span class="od"><i style="background:#475965"></i>Pieza ausente</span><span class="od"><i style="background:#AFBDC6"></i>Sano / sin registro</span><span class="od"><i style="background:#0F7889"></i>Selección actual</span></p>
+</section>
+
+<section><h2>5 · Composición del panel</h2>
+<div class="app"><aside class="side"><div class="brand" style="margin-bottom:16px"><svg viewBox="0 0 40 40" width="32" height="32" role="img" aria-label="Marca provisional de ApiDental"><rect width="40" height="40" rx="11" fill="#0F7889"/><path d="M12 14.5c0-2.5 2-4.5 4.6-4.5 1.4 0 2.4.5 3.4 1 1-.5 2-1 3.4-1 2.6 0 4.6 2 4.6 4.5 0 2.2-.8 3.6-1.4 5.3-.7 2-.9 4.4-1.6 6.2-.4 1.1-1.2 1.5-2 1.5s-1.4-.7-1.8-2.2c-.3-1.1-.5-2.6-1.2-2.6s-.9 1.5-1.2 2.6c-.4 1.5-1 2.2-1.8 2.2s-1.6-.4-2-1.5c-.7-1.8-.9-4.2-1.6-6.2-.6-1.7-1.4-3.100-1.4-5.300Z" fill="#fff"/><circle cx="30.500" cy="10" r="3" fill="#EE9F1F"/></svg><b style="font-size:1.1rem">ApiDental</b></div>
+<div class="ctx"><small>Clínica · Sede</small><b>Clínica Demo</b> · Sede Demo</div>
+<nav class="nav" aria-label="Principal"><a class="on" href="#">▣ Hoy</a><a href="#">▤ Agenda</a><a href="#">☺ Pacientes</a><a href="#">S/ Caja</a><a href="#">▥ Comprobantes</a><a href="#">▦ Inventario</a><a href="#">▧ Reportes</a></nav></aside>
+<div class="main"><div class="top"><input class="field" placeholder="Buscar paciente por DNI, nombre o celular  ( / )" aria-label="Buscar paciente"><button class="btn btn-primary">+ Nuevo paciente</button></div>
+<div class="card"><div class="row" style="justify-content:space-between"><div><h3 style="margin:0">Lucía Demo Adulta</h3><small class="hint">DNI 90000001 · 38 años · Cel. 900 000 001</small></div><div><span class="badge b-success"><i aria-hidden="true">✓</i>Activo</span><span class="badge b-success"><i aria-hidden="true">✓</i>Vigente</span></div></div>
+<div class="tabs" role="tablist"><a class="on" role="tab" aria-selected="true" href="#">Resumen</a><a role="tab" href="#">Contacto</a><a role="tab" href="#">Representantes</a><a role="tab" href="#">Consentimientos</a><a role="tab" href="#">Adjuntos</a></div>
+<div class="alert a-info" style="margin:0"><span aria-hidden="true">i</span><div>Historia clínica y odontograma estarán disponibles en una próxima versión.</div></div></div></div></div>
+</section>
+</main></body></html>
