@@ -55,11 +55,12 @@ model Clinic {
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
 
-  branches            Branch[]
-  assignments         UserAssignment[]
-  patients            Patient[]
-  invitations         Invitation[]
-  provisioningRecords ProvisioningRecord[]
+  branches             Branch[]
+  assignments          UserAssignment[]
+  patients             Patient[]
+  invitations          Invitation[]
+  provisioningRecords  ProvisioningRecord[]
+  procedureDefinitions ProcedureDefinition[]
 
   @@map("clinics")
 }
@@ -77,6 +78,7 @@ model Branch {
   assignments       UserAssignment[]
   invitations       Invitation[]
   careRelationships PatientCareRelationship[]
+  visits            ClinicalVisit[]
 
   @@unique([clinicId, name])
   // Permite la clave foránea compuesta (branch_id, clinic_id) desde user_assignments,
@@ -111,6 +113,7 @@ model User {
   passwordRecoveries PasswordRecovery[]
   careRelationships  PatientCareRelationship[]
   clinicalGrants     ClinicalAccessGrant[]
+  visitsAsDentist    ClinicalVisit[]
 
   @@map("users")
 }
@@ -320,6 +323,9 @@ model Patient {
   clinicalGrants     ClinicalAccessGrant[]
   historyEntries     ClinicalHistoryEntry[]
   allergyAssessments ClinicalAllergyAssessment[]
+  visits             ClinicalVisit[]
+  diagnoses          ClinicalDiagnosis[]
+  procedures         ClinicalProcedure[]
   clinicalAlerts     ClinicalAlert[]
 
   @@unique([id, clinicId])
@@ -985,4 +991,184 @@ model ClinicalAllergyAssessment {
   @@unique([patientId, version])
   @@index([clinicId, patientId])
   @@map("clinical_allergy_assessments")
+}
+
+// ---------------------------------------------------------------------------
+// Sub-incremento 3.3: visitas clínicas, diagnósticos y procedimientos realizados.
+// Registros de lo que el profesional DECLARA: no son recomendación, protocolo ni decisión clínica automática.
+// Diagnósticos y procedimientos son versionados (como los antecedentes): sin DELETE ni reescritura.
+// Sin evoluciones narrativas, odontograma, planes, presupuestos, agenda ni facturación.
+// ---------------------------------------------------------------------------
+
+enum ProcedureDefinitionStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum VisitStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+}
+
+enum DiagnosisCertainty {
+  PRESUMPTIVE
+  DEFINITIVE
+}
+
+enum ProcedureStatus {
+  OPEN
+  CLOSED
+  CANCELLED
+  ENTERED_IN_ERROR
+}
+
+enum ProcedureChangeKind {
+  CREATED
+  CORRECTED
+  RECTIFIED
+  CLOSED
+  CANCELLED
+  MARKED_IN_ERROR
+}
+
+/// Consentimiento clínico verificado al cerrar el procedimiento (evidencia).
+enum ProcedureClosureConsent {
+  NOT_REQUIRED
+  GRANTED
+}
+
+/// Catálogo de procedimientos CONFIGURABLE por clínica. No es un nomenclador ni una guía clínica: cada clínica define los
+/// suyos. `requires_clinical_consent` hace que cerrar un procedimiento de este tipo exija consentimiento clínico vigente.
+model ProcedureDefinition {
+  id                      String                    @id @default(uuid()) @db.Char(36)
+  clinicId                String                    @map("clinic_id") @db.Char(36)
+  /// Código interno de la clínica (mayúsculas), único dentro de la clínica.
+  code                    String                    @db.VarChar(40)
+  name                    String                    @db.VarChar(160)
+  description             String?                   @db.VarChar(300)
+  requiresClinicalConsent Boolean                   @default(false) @map("requires_clinical_consent")
+  status                  ProcedureDefinitionStatus @default(ACTIVE)
+  /// Versión optimista de la definición (cada cambio la incrementa y queda en la auditoría).
+  version                 Int                       @default(1)
+  createdById             String                    @map("created_by_id") @db.Char(36)
+  updatedById             String?                   @map("updated_by_id") @db.Char(36)
+  createdAt               DateTime                  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt               DateTime                  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  clinic     Clinic              @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  procedures ClinicalProcedure[]
+
+  @@unique([clinicId, code])
+  @@unique([id, clinicId])
+  @@map("procedure_definitions")
+}
+
+/// Visita clínica: atención de un paciente por su odontólogo responsable en una sede, amparada por una relación
+/// asistencial vigente. Su núcleo es inmutable; solo cambia de OPEN a CLOSED o CANCELLED, una vez.
+model ClinicalVisit {
+  id                 String      @id @default(uuid()) @db.Char(36)
+  clinicId           String      @map("clinic_id") @db.Char(36)
+  patientId          String      @map("patient_id") @db.Char(36)
+  branchId           String      @map("branch_id") @db.Char(36)
+  /// Odontólogo responsable (el que abre la visita).
+  dentistUserId      String      @map("dentist_user_id") @db.Char(36)
+  /// Relación asistencial que amparó la apertura.
+  careRelationshipId String      @map("care_relationship_id") @db.Char(36)
+  /// Correlativo por paciente.
+  visitNumber        Int         @map("visit_number")
+  status             VisitStatus @default(OPEN)
+  /// "paciente|odontólogo" mientras esté abierta: una visita abierta por paciente y odontólogo.
+  openKey            String?     @unique @map("open_key") @db.VarChar(80)
+  /// Motivo ADMINISTRATIVO (p. ej. "control"); no debe contener datos clínicos.
+  reason             String?     @db.VarChar(300)
+  startedAt          DateTime    @default(now()) @map("started_at") @db.DateTime(3)
+  closedAt           DateTime?   @map("closed_at") @db.DateTime(3)
+  cancelReason       String?     @map("cancel_reason") @db.VarChar(300)
+  /// Reservado para la agenda (todavía no existe).
+  appointmentId      String?     @map("appointment_id") @db.Char(36)
+  /// Versión optimista: 1 al abrir, 2 al cerrar o cancelar.
+  version            Int         @default(1)
+  createdById        String      @map("created_by_id") @db.Char(36)
+
+  patient    Patient             @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  branch     Branch              @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  dentist    User                @relation(fields: [dentistUserId], references: [id], onDelete: Restrict)
+  diagnoses  ClinicalDiagnosis[]
+  procedures ClinicalProcedure[]
+
+  @@unique([patientId, visitNumber])
+  @@unique([id, clinicId, patientId])
+  @@index([clinicId, patientId, status])
+  @@index([dentistUserId, status])
+  @@map("clinical_visits")
+}
+
+/// Diagnóstico declarado por el profesional (una versión). Texto libre; el código es opcional y no valida contra ningún sistema.
+model ClinicalDiagnosis {
+  id            String               @id @default(uuid()) @db.Char(36)
+  clinicId      String               @map("clinic_id") @db.Char(36)
+  patientId     String               @map("patient_id") @db.Char(36)
+  visitId       String               @map("visit_id") @db.Char(36)
+  itemId        String               @map("item_id") @db.Char(36)
+  version       Int
+  supersedesId  String?              @map("supersedes_id") @db.Char(36)
+  currentKey    String?              @unique @map("current_key") @db.Char(36)
+  description   String               @db.VarChar(500)
+  /// Código opcional de la clínica o de un sistema de codificación [por validar]; texto libre.
+  code          String?              @db.VarChar(40)
+  certainty     DiagnosisCertainty
+  status        ClinicalRecordStatus @default(ACTIVE)
+  changeKind    ClinicalChangeKind   @map("change_kind")
+  /// Opcional en el alta; obligatorio desde la versión 2.
+  changeReason  String?              @map("change_reason") @db.VarChar(300)
+  changedFields Json?                @map("changed_fields")
+  createdById   String               @map("created_by_id") @db.Char(36)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+
+  patient Patient       @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  visit   ClinicalVisit @relation(fields: [visitId, clinicId, patientId], references: [id, clinicId, patientId], onDelete: Restrict)
+
+  @@unique([itemId, version])
+  @@index([clinicId, patientId, currentKey])
+  @@index([visitId, currentKey])
+  @@map("clinical_diagnoses")
+}
+
+/// Procedimiento realizado (una versión): tipo del catálogo de la clínica, odontólogo responsable, fecha y estado.
+/// Cerrarlo exige consentimiento clínico vigente solo si su definición lo requiere.
+model ClinicalProcedure {
+  id             String                   @id @default(uuid()) @db.Char(36)
+  clinicId       String                   @map("clinic_id") @db.Char(36)
+  patientId      String                   @map("patient_id") @db.Char(36)
+  visitId        String                   @map("visit_id") @db.Char(36)
+  itemId         String                   @map("item_id") @db.Char(36)
+  version        Int
+  supersedesId   String?                  @map("supersedes_id") @db.Char(36)
+  currentKey     String?                  @unique @map("current_key") @db.Char(36)
+  definitionId   String                   @map("definition_id") @db.Char(36)
+  /// Copias del catálogo al registrarlo: el historial no cambia si el catálogo se edita después.
+  definitionCode String                   @map("definition_code") @db.VarChar(40)
+  definitionName String                   @map("definition_name") @db.VarChar(160)
+  /// Odontólogo responsable (el de la visita).
+  dentistUserId  String                   @map("dentist_user_id") @db.Char(36)
+  notes          String?                  @db.VarChar(1000)
+  performedAt    DateTime                 @map("performed_at") @db.DateTime(3)
+  status         ProcedureStatus          @default(OPEN)
+  closedAt       DateTime?                @map("closed_at") @db.DateTime(3)
+  closureConsent ProcedureClosureConsent? @map("closure_consent")
+  changeKind     ProcedureChangeKind      @map("change_kind")
+  changeReason   String?                  @map("change_reason") @db.VarChar(300)
+  changedFields  Json?                    @map("changed_fields")
+  createdById    String                   @map("created_by_id") @db.Char(36)
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.DateTime(3)
+
+  patient    Patient             @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  visit      ClinicalVisit       @relation(fields: [visitId, clinicId, patientId], references: [id, clinicId, patientId], onDelete: Restrict)
+  definition ProcedureDefinition @relation(fields: [definitionId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@unique([itemId, version])
+  @@index([clinicId, patientId, currentKey])
+  @@index([visitId, currentKey])
+  @@map("clinical_procedures")
 }
