@@ -40,6 +40,19 @@ export const AuditAction = {
   ProvisioningRevoked: 'PROVISIONING_REVOKED',
   ProvisioningExpired: 'PROVISIONING_EXPIRED',
   LastAuthorityBlocked: 'LAST_AUTHORITY_BLOCKED',
+  // --- Recuperación de contraseña ---
+  PasswordRecoveryRequested: 'PASSWORD_RECOVERY_REQUESTED',
+  PasswordRecoverySent: 'PASSWORD_RECOVERY_SENT',
+  PasswordRecoveryDeliveryFailed: 'PASSWORD_RECOVERY_DELIVERY_FAILED',
+  PasswordRecoveryCompleted: 'PASSWORD_RECOVERY_COMPLETED',
+  PasswordRecoveryRejected: 'PASSWORD_RECOVERY_REJECTED',
+  PasswordRecoveryExpired: 'PASSWORD_RECOVERY_EXPIRED',
+  // --- Estado de usuarios, accesos denegados y mantenimiento ---
+  UserDisabled: 'USER_DISABLED',
+  UserReactivated: 'USER_REACTIVATED',
+  AccessDenied: 'ACCESS_DENIED',
+  ReauthRejected: 'REAUTH_REJECTED',
+  MaintenancePurge: 'MAINTENANCE_PURGE',
   // --- Pacientes (lecturas incluidas: son datos personales) ---
   PatientCreated: 'PATIENT_CREATED',
   PatientViewed: 'PATIENT_VIEWED',

@@ -158,6 +158,46 @@ export class EnvironmentVariables {
   @IsOptional() @IsString()
   INVITATION_ACCEPT_BASE_URL: string = 'http://localhost:5173/admin/aceptar-invitacion';
 
+  // ---------------- recuperación de contraseña ----------------
+
+  @IsOptional() @Transform(toInt) @IsInt() @Min(5) @Max(120)
+  PASSWORD_RECOVERY_TTL_MINUTES: number = 30;
+
+  /** Tiempo mínimo entre dos solicitudes para la misma cuenta (las demás se ignoran en silencio). */
+  @IsOptional() @Transform(toInt) @IsInt() @Min(0) @Max(3600)
+  PASSWORD_RECOVERY_COOLDOWN_SECONDS: number = 60;
+
+  /** Tope de recuperaciones por cuenta en 24 h (las demás se ignoran en silencio). */
+  @IsOptional() @Transform(toInt) @IsInt() @Min(1) @Max(50)
+  PASSWORD_RECOVERY_MAX_PER_DAY: number = 5;
+
+  /** Pantalla de restablecimiento del panel; el token se agrega como fragmento (#token=…). */
+  @IsOptional() @IsString()
+  PASSWORD_RECOVERY_BASE_URL: string = 'http://localhost:5173/admin/restablecer-contrasena';
+
+  // ---------------- mantenimiento (depuración) ----------------
+
+  /** Días que se conservan las sesiones revocadas o vencidas antes de depurarlas. */
+  @IsOptional() @Transform(toInt) @IsInt() @Min(1) @Max(3650)
+  RETENTION_SESSIONS_DAYS: number = 30;
+
+  @IsOptional() @Transform(toInt) @IsInt() @Min(1) @Max(3650)
+  RETENTION_REAUTH_DAYS: number = 7;
+
+  /** Mínimo 30: la base de datos impide depurar invitaciones o recuperaciones más recientes. */
+  @IsOptional() @Transform(toInt) @IsInt() @Min(30) @Max(3650)
+  RETENTION_INVITATIONS_DAYS: number = 90;
+
+  @IsOptional() @Transform(toInt) @IsInt() @Min(30) @Max(3650)
+  RETENTION_RECOVERIES_DAYS: number = 30;
+
+  @IsOptional() @Transform(toInt) @IsInt() @Min(10) @Max(5000)
+  MAINTENANCE_BATCH_SIZE: number = 500;
+
+  /** Tope de lotes por tabla en cada ejecución (acota la duración del trabajo). */
+  @IsOptional() @Transform(toInt) @IsInt() @Min(1) @Max(1000)
+  MAINTENANCE_MAX_BATCHES: number = 20;
+
   @IsOptional()
   @Transform(toInt)
   @IsInt()
@@ -204,6 +244,9 @@ export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables 
   }
   if (production && mode !== 'disabled' && !/^https:\/\//i.test(env.INVITATION_ACCEPT_BASE_URL)) {
     throw new Error('Configuración de entorno inválida: INVITATION_ACCEPT_BASE_URL debe usar https en producción');
+  }
+  if (production && mode !== 'disabled' && !/^https:\/\//i.test(env.PASSWORD_RECOVERY_BASE_URL)) {
+    throw new Error('Configuración de entorno inválida: PASSWORD_RECOVERY_BASE_URL debe usar https en producción');
   }
   if (production && env.COOKIE_SECURE === 'false') {
     throw new Error('Configuración de entorno inválida: COOKIE_SECURE no puede ser false en producción');

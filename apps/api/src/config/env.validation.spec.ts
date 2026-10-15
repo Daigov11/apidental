@@ -80,7 +80,7 @@ describe('validateEnv', () => {
     });
 
     it('el canal webhook exige URL, secreto largo y https en producción', () => {
-      const webhook = { ...prod, INVITATION_DELIVERY_MODE: 'webhook', INVITATION_ACCEPT_BASE_URL: 'https://dental.apiworking.com.pe/admin/aceptar-invitacion' };
+      const webhook = { ...prod, INVITATION_DELIVERY_MODE: 'webhook', INVITATION_ACCEPT_BASE_URL: 'https://dental.apiworking.com.pe/admin/aceptar-invitacion', PASSWORD_RECOVERY_BASE_URL: 'https://dental.apiworking.com.pe/admin/restablecer-contrasena' };
       expect(() => validateEnv(webhook)).toThrow(/INVITATION_WEBHOOK_URL/);
       expect(() => validateEnv({ ...webhook, INVITATION_WEBHOOK_URL: 'https://mail.interno/hook', INVITATION_WEBHOOK_SECRET: 'corto' })).toThrow(/32 caracteres/);
       expect(() => validateEnv({ ...webhook, INVITATION_WEBHOOK_URL: 'http://mail.interno/hook', INVITATION_WEBHOOK_SECRET: 'x'.repeat(40) })).toThrow(/https/);
@@ -88,9 +88,27 @@ describe('validateEnv', () => {
     });
 
     it('en producción la URL de aceptación debe ser https y la cookie no puede ser insegura', () => {
-      const webhook = { ...prod, INVITATION_DELIVERY_MODE: 'webhook', INVITATION_WEBHOOK_URL: 'https://mail.interno/hook', INVITATION_WEBHOOK_SECRET: 'x'.repeat(40) };
+      const webhook = { ...prod, INVITATION_DELIVERY_MODE: 'webhook', INVITATION_WEBHOOK_URL: 'https://mail.interno/hook', INVITATION_WEBHOOK_SECRET: 'x'.repeat(40), PASSWORD_RECOVERY_BASE_URL: 'https://dental.apiworking.com.pe/admin/restablecer-contrasena' };
       expect(() => validateEnv({ ...webhook, INVITATION_ACCEPT_BASE_URL: 'http://dental.apiworking.com.pe/x' })).toThrow(/INVITATION_ACCEPT_BASE_URL/);
+      expect(() => validateEnv({ ...webhook, INVITATION_ACCEPT_BASE_URL: 'https://dental.apiworking.com.pe/x', PASSWORD_RECOVERY_BASE_URL: 'http://dental.apiworking.com.pe/y' })).toThrow(/PASSWORD_RECOVERY_BASE_URL/);
       expect(() => validateEnv({ ...prod, COOKIE_SECURE: 'false' })).toThrow(/COOKIE_SECURE/);
+    });
+
+    it('recuperación de contraseña y retención: valores por defecto y límites', () => {
+      expect(validateEnv(base)).toMatchObject({
+        PASSWORD_RECOVERY_TTL_MINUTES: 30,
+        PASSWORD_RECOVERY_COOLDOWN_SECONDS: 60,
+        PASSWORD_RECOVERY_MAX_PER_DAY: 5,
+        RETENTION_SESSIONS_DAYS: 30,
+        RETENTION_INVITATIONS_DAYS: 90,
+        MAINTENANCE_BATCH_SIZE: 500,
+      });
+      expect(() => validateEnv({ ...base, PASSWORD_RECOVERY_TTL_MINUTES: '1' })).toThrow(/PASSWORD_RECOVERY_TTL_MINUTES/);
+      expect(() => validateEnv({ ...base, PASSWORD_RECOVERY_TTL_MINUTES: '600' })).toThrow(/PASSWORD_RECOVERY_TTL_MINUTES/);
+      // la base de datos exige 30 días como mínimo para invitaciones y recuperaciones
+      expect(() => validateEnv({ ...base, RETENTION_INVITATIONS_DAYS: '10' })).toThrow(/RETENTION_INVITATIONS_DAYS/);
+      expect(() => validateEnv({ ...base, RETENTION_RECOVERIES_DAYS: '29' })).toThrow(/RETENTION_RECOVERIES_DAYS/);
+      expect(() => validateEnv({ ...base, MAINTENANCE_BATCH_SIZE: '1' })).toThrow(/MAINTENANCE_BATCH_SIZE/);
     });
 
     it('en desarrollo el canal "dev" es el valor por defecto', () => {

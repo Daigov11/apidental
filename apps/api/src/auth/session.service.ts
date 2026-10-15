@@ -185,7 +185,7 @@ export class SessionService {
   /** Revoca la sesión y todos sus refresh tokens. Idempotente. */
   async revokeSession(
     sessionId: string,
-    reason: 'LOGOUT' | 'LOGOUT_ALL' | 'REUSE_DETECTED' | 'EXPIRED' | 'USER_DISABLED',
+    reason: 'LOGOUT' | 'LOGOUT_ALL' | 'REUSE_DETECTED' | 'EXPIRED' | 'USER_DISABLED' | 'PASSWORD_RESET',
     tx?: DbTx,
   ): Promise<boolean> {
     const db = tx ?? this.db;
@@ -198,12 +198,24 @@ export class SessionService {
   }
 
   /** Cierra todas las sesiones del usuario (incluida la actual). Devuelve cuántas estaban activas. */
-  async revokeAllForUser(userId: string, reason: 'LOGOUT_ALL' | 'USER_DISABLED', tx?: DbTx): Promise<number> {
+  async revokeAllForUser(userId: string, reason: 'LOGOUT_ALL' | 'USER_DISABLED' | 'PASSWORD_RESET', tx?: DbTx): Promise<number> {
     const db = tx ?? this.db;
     const active = await db.authSession.findMany({ where: { userId, revokedAt: null }, select: { id: true } });
     let count = 0;
     for (const s of active) if (await this.revokeSession(s.id, reason, tx)) count += 1;
     return count;
+  }
+
+  /**
+   * Invalida las pruebas de reautenticación pendientes del usuario (marcándolas como usadas): al cambiar
+   * la contraseña o deshabilitar la cuenta, ninguna prueba emitida antes puede seguir sirviendo.
+   */
+  async invalidateReauthProofs(userId: string, tx?: DbTx): Promise<number> {
+    const res = await (tx ?? this.db).reauthProof.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: new Date() },
+    });
+    return res.count;
   }
 
   /** Para el logout con solo cookie: a qué sesión pertenece un refresh token (sin importar su estado). */

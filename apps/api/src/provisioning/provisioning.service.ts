@@ -39,7 +39,7 @@ export class ProvisioningService {
   ) {}
 
   /** Vence los registros cuyo plazo terminó (auditado una sola vez por registro). */
-  async expireDue(): Promise<void> {
+  async expireDue(): Promise<number> {
     const now = new Date();
     const due = await this.db.provisioningRecord.findMany({
       where: { status: 'ACTIVE', expiresAt: { lte: now } },
@@ -52,6 +52,7 @@ export class ProvisioningService {
         await this.audit.recordSafely({ action: AuditAction.ProvisioningExpired, entity: 'ProvisioningRecord', entityId: r.id, clinicId: r.clinicId });
       }
     }
+    return due.length;
   }
 
   async record(actor: AuthPrincipal, dto: CreateProvisioningRecordDto, meta: RequestMeta) {

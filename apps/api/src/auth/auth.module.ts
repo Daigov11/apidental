@@ -6,6 +6,8 @@ import { AuthService } from './auth.service.js';
 import { CookieCsrfGuard } from './csrf.guard.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { LoginAttemptsService } from './login-attempts.service.js';
+import { PasswordRecoveryController } from './password-recovery.controller.js';
+import { PasswordRecoveryService } from './password-recovery.service.js';
 import { PermissionsGuard } from './permissions.guard.js';
 import { ReauthService } from './reauth.service.js';
 import { SessionService } from './session.service.js';
@@ -14,7 +16,7 @@ import { TokenService } from './token.service.js';
 @Global()
 @Module({
   imports: [JwtModule.register({})],
-  controllers: [AuthController],
+  controllers: [AuthController, PasswordRecoveryController],
   providers: [
     AuthService,
     AccessService,
@@ -22,10 +24,11 @@ import { TokenService } from './token.service.js';
     SessionService,
     ReauthService,
     LoginAttemptsService,
+    PasswordRecoveryService,
     CookieCsrfGuard,
     JwtAuthGuard,
     PermissionsGuard,
   ],
-  exports: [AccessService, TokenService, SessionService, ReauthService, LoginAttemptsService, JwtAuthGuard, PermissionsGuard],
+  exports: [AccessService, TokenService, SessionService, ReauthService, LoginAttemptsService, PasswordRecoveryService, JwtAuthGuard, PermissionsGuard],
 })
 export class AuthModule {}

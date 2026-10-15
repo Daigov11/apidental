@@ -13,6 +13,7 @@ import type { AuthPrincipal } from '../auth/auth.types.js';
 import { LoginAttemptsService } from '../auth/login-attempts.service.js';
 import { ReauthService } from '../auth/reauth.service.js';
 import { hashPassword, verifyPassword } from '../common/utils/password.js';
+import { passwordPolicyErrors } from '../common/utils/password-policy.js';
 import type { RequestMeta } from '../common/utils/request-meta.js';
 import { generateToken, hashToken, looksLikeToken } from '../common/utils/secret-token.js';
 import { AppConfig } from '../config/app-config.js';
@@ -28,7 +29,6 @@ import { INVITATION_DELIVERY, type InvitationDelivery } from './delivery/invitat
 export const INVITATION_PREFIX = 'inv';
 /** Mensaje ÚNICO para cualquier fallo de token (inexistente, vencido, revocado, usado, manipulado). */
 const INVALID_INVITATION = 'Invitación inválida o vencida';
-const PASSWORD_MIN = 12;
 const PLATFORM_MANAGED_ROLES = ['PLATFORM_ADMIN', 'CLINIC_ADMIN'];
 
 class InvitationUnavailableError extends Error {
@@ -359,8 +359,7 @@ export class InvitationsService {
         throw new UnauthorizedException('No se pudo aceptar la invitación');
       }
     } else {
-      const errors: string[] = [];
-      if (dto.password.length < PASSWORD_MIN) errors.push(`La contraseña debe tener al menos ${PASSWORD_MIN} caracteres`);
+      const errors: string[] = passwordPolicyErrors(dto.password, { email: inv.email });
       if (!dto.firstName) errors.push('firstName es obligatorio para crear la cuenta');
       if (!dto.lastName) errors.push('lastName es obligatorio para crear la cuenta');
       if (errors.length > 0) throw new BadRequestException(errors);
@@ -548,14 +547,15 @@ export class InvitationsService {
     }
   }
 
-  /** Vence en lote las invitaciones cuyo plazo terminó. */
-  async expireDue(): Promise<void> {
+  /** Vence en lote las invitaciones cuyo plazo terminó. Devuelve cuántas procesó. */
+  async expireDue(): Promise<number> {
     const due = await this.db.invitation.findMany({
       where: { status: 'PENDING', expiresAt: { lte: new Date() } },
       select: { id: true, clinicId: true, branchId: true },
       take: 200,
     });
     for (const inv of due) await this.markExpired(inv.id, inv.clinicId, inv.branchId);
+    return due.length;
   }
 
   /** Entrega por el canal configurado y registra el resultado (sin guardar jamás el enlace ni el token). */
@@ -571,6 +571,7 @@ export class InvitationsService {
       inv.clinicId ? this.db.clinic.findUnique({ where: { id: inv.clinicId }, select: { name: true } }) : null,
     ]);
     const outcome = await this.delivery.deliver({
+      type: 'invitation',
       invitationId: inv.id,
       toEmail: inv.email,
       acceptUrl: `${this.config.invitations.acceptBaseUrl}#token=${token}`,

@@ -10,6 +10,7 @@ const USER_VIEW = {
   lastName: true,
   status: true,
   lastLoginAt: true,
+  disabledAt: true,
   createdAt: true,
 } as const;
 

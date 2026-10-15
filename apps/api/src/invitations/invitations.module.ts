@@ -2,7 +2,6 @@ import { Module, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common'
 import { AppConfig } from '../config/app-config.js';
 import { ProvisioningModule } from '../provisioning/provisioning.module.js';
 import { UsersModule } from '../users/users.module.js';
-import { createDelivery, INVITATION_DELIVERY } from './delivery/invitation-delivery.js';
 import { InvitationsController } from './invitations.controller.js';
 import { InvitationsService } from './invitations.service.js';
 
@@ -11,10 +10,8 @@ const SWEEP_MS = 5 * 60_000;
 @Module({
   imports: [UsersModule, ProvisioningModule],
   controllers: [InvitationsController],
-  providers: [
-    InvitationsService,
-    { provide: INVITATION_DELIVERY, inject: [AppConfig], useFactory: createDelivery },
-  ],
+  providers: [InvitationsService],
+  exports: [InvitationsService],
 })
 export class InvitationsModule implements OnModuleInit, OnModuleDestroy {
   private timer?: NodeJS.Timeout;

@@ -31,6 +31,12 @@ export class AppConfig {
     acceptBaseUrl: string;
   };
   readonly provisioningTtlDays: number;
+  readonly passwordRecovery: { ttlMinutes: number; cooldownSeconds: number; maxPerDay: number; baseUrl: string };
+  readonly maintenance: {
+    retention: { sessionsDays: number; reauthDays: number; invitationsDays: number; recoveriesDays: number };
+    batchSize: number;
+    maxBatches: number;
+  };
   readonly corsOrigins: string[];
   readonly trustProxy: number;
   readonly login: { maxAttempts: number; lockMinutes: number };
@@ -68,6 +74,22 @@ export class AppConfig {
       acceptBaseUrl: env.INVITATION_ACCEPT_BASE_URL,
     };
     this.provisioningTtlDays = env.PROVISIONING_RECORD_TTL_DAYS;
+    this.passwordRecovery = {
+      ttlMinutes: env.PASSWORD_RECOVERY_TTL_MINUTES,
+      cooldownSeconds: env.PASSWORD_RECOVERY_COOLDOWN_SECONDS,
+      maxPerDay: env.PASSWORD_RECOVERY_MAX_PER_DAY,
+      baseUrl: env.PASSWORD_RECOVERY_BASE_URL,
+    };
+    this.maintenance = {
+      retention: {
+        sessionsDays: env.RETENTION_SESSIONS_DAYS,
+        reauthDays: env.RETENTION_REAUTH_DAYS,
+        invitationsDays: env.RETENTION_INVITATIONS_DAYS,
+        recoveriesDays: env.RETENTION_RECOVERIES_DAYS,
+      },
+      batchSize: env.MAINTENANCE_BATCH_SIZE,
+      maxBatches: env.MAINTENANCE_MAX_BATCHES,
+    };
     this.corsOrigins = env.CORS_ORIGINS.split(',')
       .map((o) => o.trim())
       .filter(Boolean);

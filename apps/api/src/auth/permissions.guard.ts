@@ -19,15 +19,18 @@ export class PermissionsGuard implements CanActivate {
     ]);
     if ((!required || required.length === 0) && (!any || any.length === 0)) return true;
 
-    const principal = context.switchToHttp().getRequest<AppRequest>().principal;
+    const req = context.switchToHttp().getRequest<AppRequest>();
+    const principal = req.principal;
+    const needed = [...(required ?? []), ...(any ?? [])];
     if (!principal) throw new ForbiddenException('Acceso denegado');
     if (!principal.context) {
+      req.denial = { reason: 'no_context', required: needed };
       throw new ForbiddenException('Seleccione una clínica/sede activa antes de usar este recurso');
     }
-    if (required && !required.every((p) => principal.permissions.has(p))) {
-      throw new ForbiddenException('No tiene permisos para esta operación');
-    }
-    if (any && any.length > 0 && !any.some((p) => principal.permissions.has(p))) {
+    const missingAll = required && !required.every((p) => principal.permissions.has(p));
+    const missingAny = any && any.length > 0 && !any.some((p) => principal.permissions.has(p));
+    if (missingAll || missingAny) {
+      req.denial = { reason: 'missing_permission', required: needed };
       throw new ForbiddenException('No tiene permisos para esta operación');
     }
     return true;

@@ -33,4 +33,6 @@ export interface AccessTokenPayload {
 export interface AppRequest extends Request {
   requestId?: string;
   principal?: AuthPrincipal;
+  /** Anotado por PermissionsGuard antes de rechazar: alimenta la auditoría de accesos denegados. */
+  denial?: { reason: 'no_context' | 'missing_permission'; required: string[] };
 }

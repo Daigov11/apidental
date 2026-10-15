@@ -94,28 +94,33 @@ export class ReauthService {
     meta: RequestMeta,
     tx: DbTx,
   ): Promise<void> {
-    const deny = (): never => {
+    // Cada rechazo se audita POR SEPARADO (fuera de la transacción de la operación, que se revierte): quién,
+    // para qué propósito y por qué razón general. Nunca el token ni el objeto.
+    const deny = async (reason: string): Promise<never> => {
+      await this.audit.recordSafely({
+        action: AuditAction.ReauthRejected,
+        entity: 'ReauthProof',
+        userId: actor.userId,
+        meta,
+        summary: { purpose, reason },
+      });
       throw new ForbiddenException('Reautenticación inválida, vencida o ya utilizada');
     };
-    if (typeof token !== 'string' || token.length < 10 || token.length > 100) deny();
+    if (typeof token !== 'string' || token.length < 10 || token.length > 100) return deny('malformed');
     const proof = await tx.reauthProof.findUnique({ where: { tokenHash: hashToken(token as string) } });
-    if (
-      !proof ||
-      proof.userId !== actor.userId ||
-      proof.sessionId !== actor.sessionId ||
-      proof.purpose !== purpose ||
-      (proof.targetId ?? null) !== targetId ||
-      proof.usedAt !== null ||
-      proof.expiresAt <= new Date()
-    ) {
-      return deny();
-    }
+    if (!proof) return deny('unknown');
+    if (proof.userId !== actor.userId) return deny('other_user');
+    if (proof.sessionId !== actor.sessionId) return deny('other_session');
+    if (proof.purpose !== purpose) return deny('other_purpose');
+    if ((proof.targetId ?? null) !== targetId) return deny('other_target');
+    if (proof.usedAt !== null) return deny('already_used');
+    if (proof.expiresAt <= new Date()) return deny('expired');
     // Atómico: solo una operación concurrente puede gastar la prueba.
     const spent = await tx.reauthProof.updateMany({
       where: { id: proof.id, usedAt: null },
       data: { usedAt: new Date() },
     });
-    if (spent.count !== 1) deny();
+    if (spent.count !== 1) return deny('already_used');
     await this.audit.record(
       {
         action: AuditAction.ReauthConsumed,
