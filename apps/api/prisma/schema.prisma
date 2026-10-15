@@ -73,9 +73,10 @@ model Branch {
   createdAt DateTime     @default(now()) @map("created_at")
   updatedAt DateTime     @updatedAt @map("updated_at")
 
-  clinic      Clinic           @relation(fields: [clinicId], references: [id], onDelete: Restrict)
-  assignments UserAssignment[]
-  invitations Invitation[]
+  clinic            Clinic                    @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  assignments       UserAssignment[]
+  invitations       Invitation[]
+  careRelationships PatientCareRelationship[]
 
   @@unique([clinicId, name])
   // Permite la clave foránea compuesta (branch_id, clinic_id) desde user_assignments,
@@ -108,6 +109,8 @@ model User {
   sessions           AuthSession[]
   reauthProofs       ReauthProof[]
   passwordRecoveries PasswordRecovery[]
+  careRelationships  PatientCareRelationship[]
+  clinicalGrants     ClinicalAccessGrant[]
 
   @@map("users")
 }
@@ -164,6 +167,9 @@ model UserAssignment {
   branchId      String?          @map("branch_id") @db.Char(36)
   /// Evita duplicados con columnas NULL: "userId|roleId|clinicId-o-*|branchId-o-*".
   assignmentKey String           @unique @map("assignment_key") @db.VarChar(160)
+  /// Quién otorgó el rol (invitó o asignó). Alimenta la separación de funciones: quien otorgó un rol
+  /// clínico a una cuenta no puede además asignarle pacientes. Nulo en datos anteriores a 3.1.
+  grantedById   String?          @map("granted_by_id") @db.Char(36)
   status        AssignmentStatus @default(ACTIVE)
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
@@ -304,12 +310,14 @@ model Patient {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  clinic      Clinic              @relation(fields: [clinicId], references: [id], onDelete: Restrict)
-  identifiers PatientIdentifier[]
-  contacts    PatientContact[]
-  guardians   PatientGuardian[]
-  consents    PatientConsent[]
-  attachments Attachment[]
+  clinic            Clinic                    @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  identifiers       PatientIdentifier[]
+  contacts          PatientContact[]
+  guardians         PatientGuardian[]
+  consents          PatientConsent[]
+  attachments       Attachment[]
+  careRelationships PatientCareRelationship[]
+  clinicalGrants    ClinicalAccessGrant[]
 
   @@unique([id, clinicId])
   @@index([clinicId, lastName, firstName])
@@ -726,4 +734,95 @@ model PasswordRecovery {
   @@index([userId, createdAt])
   @@index([status, expiresAt])
   @@map("password_recoveries")
+}
+
+// ---------------------------------------------------------------------------
+// Sub-incremento 3.1: relación asistencial y autorización de lectura clínica.
+// NO hay datos clínicos todavía (antecedentes, diagnósticos, evoluciones...): solo el control de acceso.
+// ---------------------------------------------------------------------------
+
+/// Origen de la relación. Solo ASSIGNMENT se crea hoy; APPOINTMENT y VISIT se reservan para la agenda y
+/// las visitas (la API rechaza crearlas hasta que existan esos módulos).
+enum CareRelationshipSource {
+  ASSIGNMENT
+  APPOINTMENT
+  VISIT
+}
+
+enum CareRelationshipStatus {
+  ACTIVE
+  ENDED
+}
+
+enum CareRelationshipEndKind {
+  REVOKED
+  EXPIRED
+  SYSTEM
+}
+
+enum ClinicalAccessCategory {
+  CONTINUITY_OF_CARE
+  QUALITY_AUDIT
+  LEGAL_REQUEST
+  OTHER
+}
+
+/// Relación asistencial paciente–odontólogo–clínica. Es explícita: sin una vigente no hay acceso clínico
+/// del odontólogo ni vista de apoyo del asistente. El paciente y la sede se atan a la clínica con FK
+/// compuestas, así que la base de datos impide cruzar clínicas. Nunca se borra; termina (ENDED) con motivo.
+model PatientCareRelationship {
+  id            String                   @id @default(uuid()) @db.Char(36)
+  clinicId      String                   @map("clinic_id") @db.Char(36)
+  patientId     String                   @map("patient_id") @db.Char(36)
+  dentistUserId String                   @map("dentist_user_id") @db.Char(36)
+  /// Alcance: nulo = toda la clínica; con sede = relación originada en esa sede (la escritura clínica exige esa sede).
+  branchId      String?                  @map("branch_id") @db.Char(36)
+  source        CareRelationshipSource
+  /// Id de la cita o visita que la origina (módulos futuros).
+  sourceRef     String?                  @map("source_ref") @db.VarChar(36)
+  status        CareRelationshipStatus   @default(ACTIVE)
+  /// "paciente|odontólogo|sede-o-*" mientras esté ACTIVE (una vigente por combinación); NULL al terminar.
+  activeKey     String?                  @unique @map("active_key") @db.VarChar(120)
+  startedAt     DateTime                 @default(now()) @map("started_at") @db.DateTime(3)
+  /// Vigencia opcional (p. ej. la de una cita); pasada esa fecha deja de otorgar acceso aunque siga ACTIVE.
+  validUntil    DateTime?                @map("valid_until") @db.DateTime(3)
+  reason        String?                  @db.VarChar(300)
+  createdById   String                   @map("created_by_id") @db.Char(36)
+  endedAt       DateTime?                @map("ended_at") @db.DateTime(3)
+  endedById     String?                  @map("ended_by_id") @db.Char(36)
+  endKind       CareRelationshipEndKind? @map("end_kind")
+  endReason     String?                  @map("end_reason") @db.VarChar(300)
+
+  patient Patient @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  branch  Branch? @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  dentist User    @relation(fields: [dentistUserId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId, patientId, status])
+  @@index([dentistUserId, status])
+  @@index([clinicId, status, validUntil])
+  @@map("patient_care_relationships")
+}
+
+/// Autorización de lectura de `clinical:read_all`: UN paciente, 30 minutos, atada a la sesión que la pidió.
+/// Solo se inserta (triggers bloquean UPDATE y DELETE). Es evidencia: la depuración nunca la toca.
+model ClinicalAccessGrant {
+  id        String                 @id @default(uuid()) @db.Char(36)
+  clinicId  String                 @map("clinic_id") @db.Char(36)
+  patientId String                 @map("patient_id") @db.Char(36)
+  userId    String                 @map("user_id") @db.Char(36)
+  /// Sesión que la solicitó (sin FK a propósito: las sesiones se depuran y la evidencia no debe perderse).
+  sessionId String                 @map("session_id") @db.Char(36)
+  category  ClinicalAccessCategory
+  reason    String                 @db.VarChar(500)
+  grantedAt DateTime               @default(now()) @map("granted_at") @db.DateTime(3)
+  expiresAt DateTime               @map("expires_at") @db.DateTime(3)
+  ip        String?                @db.VarChar(64)
+  userAgent String?                @map("user_agent") @db.VarChar(255)
+
+  patient Patient @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, patientId, expiresAt])
+  @@index([clinicId, grantedAt])
+  @@map("clinical_access_grants")
 }
