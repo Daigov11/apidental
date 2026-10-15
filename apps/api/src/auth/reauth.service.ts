@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
 import { generateToken, hashToken } from '../common/utils/secret-token.js';
 import { verifyPassword } from '../common/utils/password.js';
@@ -28,6 +28,23 @@ export class ReauthService {
     private readonly attempts: LoginAttemptsService,
     private readonly config: AppConfig,
   ) {}
+
+  /**
+   * Prueba para una operación protegida: la que el cliente ya emitió (`reauthToken`) o, en un solo paso, la que se emite al
+   * verificar la contraseña (`password`) con el mismo control de intentos que `issue`. La contraseña no se guarda ni se audita.
+   */
+  async proofFor(
+    principal: AuthPrincipal,
+    input: { password?: string; reauthToken?: string },
+    purpose: ReauthenticateDto['purpose'],
+    targetId: string,
+    meta: RequestMeta,
+  ): Promise<string> {
+    if (input.password && input.reauthToken) throw new BadRequestException('Indique la contraseña o la prueba de reautenticación, no ambas');
+    if (input.reauthToken) return input.reauthToken;
+    if (!input.password) throw new BadRequestException('Confirme su identidad con su contraseña');
+    return (await this.issue(principal, { password: input.password, purpose, targetId } as ReauthenticateDto, meta)).reauthToken;
+  }
 
   async issue(principal: AuthPrincipal, dto: ReauthenticateDto, meta: RequestMeta) {
     const user = await this.db.user.findUnique({

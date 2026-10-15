@@ -86,6 +86,30 @@ export class ClinicalSheetService {
           where: { visitId, clinicId: d.clinicId, visitKey: { not: null } },
         }),
       ]);
+    // Resumen del odontograma (sin el detalle): el panel lo abre aparte, con su propia auditoría.
+    const odonto = await this.db.clinicalOdontogram.findMany({
+      where: { clinicId: d.clinicId, patientId },
+      orderBy: { version: 'asc' },
+      select: {
+        id: true,
+        version: true,
+        status: true,
+        supersedesId: true,
+        closedAt: true,
+        createdById: true,
+        changeKind: true,
+      },
+    });
+    const erroredIds = new Set(
+      odonto
+        .filter((o) => o.status === 'ENTERED_IN_ERROR')
+        .map((o) => o.supersedesId),
+    );
+    const officialOdonto =
+      odonto
+        .filter((o) => o.status === 'CLOSED' && !erroredIds.has(o.id))
+        .at(-1) ?? null;
+    const currentOdonto = odonto.at(-1) ?? null;
     const defs = await this.db.procedureDefinition.findMany({
       where: {
         clinicId: d.clinicId,
@@ -175,6 +199,24 @@ export class ClinicalSheetService {
           canClose: responsible && open && p.status === 'OPEN' && !blocked,
         };
       }),
+      odontogram: {
+        savedVersion: officialOdonto
+          ? {
+              version: officialOdonto.version,
+              savedAt: officialOdonto.closedAt,
+              stateLabel:
+                officialOdonto.changeKind === 'CORRECTED' ||
+                officialOdonto.changeKind === 'RECTIFIED'
+                  ? 'Corregida'
+                  : 'Guardada',
+            }
+          : null,
+        hasDraft: currentOdonto?.status === 'DRAFT',
+        draftIsMine:
+          currentOdonto?.status === 'DRAFT' &&
+          currentOdonto.createdById === actor.user.id,
+        formatNotice: 'Formato clínico por validar.',
+      },
       evolution: note
         ? presentNote(note as NoteRow, visit.dentistUserId === actor.user.id)
         : null,

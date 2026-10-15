@@ -7,7 +7,6 @@ import {
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
-import type { ReauthenticateDto } from '../auth/dto/reauth.dto.js';
 import { ReauthPurposeDto } from '../auth/dto/reauth.dto.js';
 import { REAUTH_NOTICE, ReauthService } from '../auth/reauth.service.js';
 import type { RequestMeta } from '../common/utils/request-meta.js';
@@ -658,27 +657,15 @@ export class ClinicalNotesService {
     if (!v) throw recordNotFound();
   }
 
-  /** Contraseña (un paso) o prueba previa. La contraseña se verifica con el mismo control de intentos que `reauthenticate`. */
-  private async obtainProof(
+  /** Contraseña (un paso) o prueba previa; la contraseña se verifica con el mismo control de intentos que `reauthenticate`. */
+  private obtainProof(
     actor: AuthPrincipal,
     dto: ReauthInput,
     purpose: ReauthPurposeDto,
     targetId: string,
     meta: RequestMeta,
   ): Promise<string> {
-    if (dto.password && dto.reauthToken)
-      throw new BadRequestException(
-        'Indique la contraseña o la prueba de reautenticación, no ambas',
-      );
-    if (dto.reauthToken) return dto.reauthToken;
-    if (!dto.password)
-      throw new BadRequestException('Confirme su identidad con su contraseña');
-    const issued = await this.reauth.issue(
-      actor,
-      { password: dto.password, purpose, targetId } as ReauthenticateDto,
-      meta,
-    );
-    return issued.reauthToken;
+    return this.reauth.proofFor(actor, dto, purpose, targetId, meta);
   }
 
   private notDraft() {
