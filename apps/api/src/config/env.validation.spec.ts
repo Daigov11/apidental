@@ -45,6 +45,15 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...prod, CORS_ORIGINS: 'https://dental.apiworking.com.pe' })).not.toThrow();
   });
 
+  it('integraciones: apagadas por defecto; solo existe el modo mock; mock exige confirmación en producción', () => {
+    expect(new AppConfig(base).integrations).toEqual({ mode: 'off', workerIntervalMs: 0 });
+    expect(new AppConfig({ ...base, INTEGRATIONS_MODE: 'mock' }).integrations.mode).toBe('mock');
+    expect(() => validateEnv({ ...base, INTEGRATIONS_MODE: 'real' })).toThrow(/INTEGRATIONS_MODE/);
+    const prod = { ...base, NODE_ENV: 'production', ATTACHMENTS_DIR: '/var/lib/apidental/files', INTEGRATIONS_MODE: 'mock' };
+    expect(() => validateEnv(prod)).toThrow(/mock no se permite en producción/);
+    expect(() => validateEnv({ ...prod, INTEGRATIONS_MOCK_ALLOW_PRODUCTION: 'true' })).not.toThrow();
+  });
+
   describe('sesiones, cookie e invitaciones', () => {
     it('valores por defecto: refresh 8 h, tope 7 días, estricto ante reutilización, reautenticación 2 min, invitación 72 h', () => {
       const env = validateEnv(base);

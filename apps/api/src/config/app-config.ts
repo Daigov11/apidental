@@ -38,6 +38,7 @@ export class AppConfig {
     maxBatches: number;
   };
   readonly fieldEncryption: { mode: 'off' | 'aes-gcm'; keyId: string; key: string | null; oldKeys: string | null };
+  readonly integrations: { mode: 'off' | 'mock'; workerIntervalMs: number };
   readonly corsOrigins: string[];
   readonly trustProxy: number;
   readonly login: { maxAttempts: number; lockMinutes: number };
@@ -97,6 +98,7 @@ export class AppConfig {
       key: env.FIELD_ENCRYPTION_KEY ?? null,
       oldKeys: env.FIELD_ENCRYPTION_OLD_KEYS ?? null,
     };
+    this.integrations = { mode: env.INTEGRATIONS_MODE as 'off' | 'mock', workerIntervalMs: env.INTEGRATIONS_WORKER_INTERVAL_MS };
     this.corsOrigins = env.CORS_ORIGINS.split(',')
       .map((o) => o.trim())
       .filter(Boolean);

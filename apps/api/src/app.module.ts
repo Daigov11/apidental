@@ -11,6 +11,7 @@ import { RequestLoggingInterceptor } from './common/interceptors/request-logging
 import { CryptoModule } from './common/crypto/crypto.module.js';
 import { ClinicalModule } from './clinical/clinical.module.js';
 import { AgendaModule } from './agenda/agenda.module.js';
+import { IntegrationsModule } from './integrations/integrations.module.js';
 import { AppConfig } from './config/app-config.js';
 import { ConfigModule } from './config/config.module.js';
 import { DeliveryModule } from './invitations/delivery/delivery.module.js';
@@ -69,6 +70,7 @@ const isLoginRoute = (req: Request): boolean => STRICT_ROUTES.some((r) => req.pa
     PatientsModule,
     ClinicalModule,
     AgendaModule,
+    IntegrationsModule,
     ProvisioningModule,
     InvitationsModule,
     MaintenanceModule,

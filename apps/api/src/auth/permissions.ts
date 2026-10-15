@@ -51,6 +51,13 @@ export const PERMISSIONS = {
   'appointment:manage': 'Crear, confirmar, reprogramar, cancelar y marcar ausencia en citas; bloquear horarios',
   'appointment:attend': 'Iniciar la atención de las propias citas (abre la visita clínica; exige además permisos clínicos)',
   'agenda:manage': 'Configurar consultorios, especialidades, servicios, horarios y odontólogos de la agenda',
+  // --- Cobros, comprobantes y fidelización (4.1, solo con INTEGRATIONS_MODE=mock). Administrativos: sin datos clínicos ---
+  'charge:read': 'Ver cobros de la clínica',
+  'charge:manage': 'Registrar cobros y pagos de atenciones',
+  'billing:read': 'Ver comprobantes, la cola de integraciones y su conciliación',
+  'billing:manage': 'Emitir, reintentar y conciliar comprobantes; procesar la cola de integraciones',
+  'loyalty:read': 'Ver saldo de fidelización, resumen NFC y reseñas de pacientes con autorización',
+  'loyalty:manage': 'Canjear puntos de fidelización',
   'care:assign': 'Asignar y revocar la relación asistencial paciente–odontólogo (acto administrativo, no clínico)',
 } as const;
 
@@ -122,6 +129,9 @@ const PLATFORM_PERMISSIONS = ALL_PERMISSIONS.filter(
     !p.startsWith('procedure:') &&
     !p.startsWith('appointment:') &&
     !p.startsWith('agenda:') &&
+    !p.startsWith('charge:') &&
+    !p.startsWith('billing:') &&
+    !p.startsWith('loyalty:') &&
     !(CLINIC_GOVERNANCE_PERMISSIONS as readonly string[]).includes(p),
 );
 
@@ -168,6 +178,13 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'appointment:read',
       'appointment:manage',
       'agenda:manage',
+      // Anti-escalada: el administrador debe poder otorgar el rol de Cajero, así que tiene todos sus permisos.
+      'charge:read',
+      'charge:manage',
+      'billing:read',
+      'billing:manage',
+      'loyalty:read',
+      'loyalty:manage',
       ...PATIENT_FULL_ACCESS,
     ],
   },
@@ -200,7 +217,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     name: 'Recepcionista',
     scope: 'CLINIC',
     description: 'Recepción y agenda (permisos de módulos futuros).',
-    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS, 'care:assign', 'appointment:read', 'appointment:manage'],
+    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS, 'care:assign', 'appointment:read', 'appointment:manage', 'charge:read', 'charge:manage', 'billing:read', 'loyalty:read'],
   },
   {
     code: 'DENTIST',
@@ -213,8 +230,8 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     code: 'CASHIER',
     name: 'Cajero',
     scope: 'CLINIC',
-    description: 'Caja y cobros (permisos de módulos futuros).',
-    permissions: [...BASIC_READ, 'patient:read_basic'],
+    description: 'Caja, cobros y comprobantes.',
+    permissions: [...BASIC_READ, 'patient:read_basic', 'appointment:read', 'charge:read', 'charge:manage', 'billing:read', 'billing:manage', 'loyalty:read', 'loyalty:manage'],
   },
   {
     code: 'ASSISTANT',

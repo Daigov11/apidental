@@ -147,7 +147,7 @@ export class AgendaConfigService {
   async listServices(actor: AuthPrincipal) {
     const scope = agendaScope(actor);
     const rows = await this.db.agendaService.findMany({ where: { clinicId: scope.clinicId }, include: { specialty: { select: { id: true, name: true } } }, orderBy: { name: 'asc' } });
-    return rows.map((s) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, specialty: s.specialty, active: s.status === 'ACTIVE' }));
+    return rows.map((s) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, priceCents: s.priceCents, specialty: s.specialty, active: s.status === 'ACTIVE' }));
   }
 
   async createService(actor: AuthPrincipal, dto: CreateServiceDto, meta: RequestMeta) {
@@ -156,8 +156,8 @@ export class AgendaConfigService {
     if (dto.specialtyId) await this.requireSpecialty(scope.clinicId, dto.specialtyId);
     try {
       const s = await this.db.$transaction(async (tx) => {
-        const row = await tx.agendaService.create({ data: { clinicId: scope.clinicId, name: dto.name, durationMinutes: dto.durationMinutes, specialtyId: dto.specialtyId ?? null } });
-        await this.rec(actor, scope, meta, 'AGENDA_SERVICE_CREATED', 'AgendaService', row.id, { fields: ['name', 'durationMinutes', 'specialtyId'] }, tx);
+        const row = await tx.agendaService.create({ data: { clinicId: scope.clinicId, name: dto.name, durationMinutes: dto.durationMinutes, priceCents: dto.priceCents ?? null, specialtyId: dto.specialtyId ?? null } });
+        await this.rec(actor, scope, meta, 'AGENDA_SERVICE_CREATED', 'AgendaService', row.id, { fields: ['name', 'durationMinutes', 'priceCents', 'specialtyId'] }, tx);
         return row;
       });
       return { id: s.id, name: s.name, durationMinutes: s.durationMinutes, active: true };
@@ -178,6 +178,7 @@ export class AgendaConfigService {
       if (dto.durationMinutes % 5 !== 0) throw new BadRequestException('La duración debe ser múltiplo de 5 minutos');
       data['durationMinutes'] = dto.durationMinutes; fields.push('durationMinutes');
     }
+    if (dto.priceCents !== undefined && dto.priceCents !== cur.priceCents) { data['priceCents'] = dto.priceCents; fields.push('priceCents'); }
     if (dto.specialtyId !== undefined && (dto.specialtyId ?? null) !== cur.specialtyId) {
       if (dto.specialtyId) await this.requireSpecialty(scope.clinicId, dto.specialtyId);
       data['specialtyId'] = dto.specialtyId ?? null; fields.push('specialtyId');

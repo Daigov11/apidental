@@ -90,6 +90,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
     );
     expect(tables.map((t) => t.name).sort()).toEqual(
       [
+        'billing_counters', 'billing_documents', 'charges', 'integration_outbox', 'mock_loyalty_entries', 'mock_provider_records', 'mock_review_requests',
         'agenda_services', 'appointment_slots', 'appointments', 'dentist_specialties', 'rooms', 'schedule_blocks', 'schedule_rules', 'specialties',
         'attachments', 'audit_logs', 'auth_sessions', 'branches', 'clinical_access_grants', 'clinical_alerts', 'clinical_allergy_assessments', 'clinical_diagnoses', 'clinical_history_entries', 'clinical_notes', 'clinical_odontograms', 'clinical_procedures', 'clinical_visits', 'clinics', 'guardians', 'invitations',
         'password_recoveries', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers', 'patients',
@@ -126,6 +127,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
         'clinical_history_entries:INSERT', 'clinical_history_entries:UPDATE', 'clinical_history_entries:DELETE',
         'clinical_access_grants:INSERT', 'clinical_access_grants:UPDATE', 'clinical_access_grants:DELETE',
         'role_permissions:INSERT', 'role_permissions:UPDATE',
+        'charges:UPDATE', 'charges:DELETE', 'billing_documents:UPDATE', 'billing_documents:DELETE',
         'appointments:UPDATE', 'appointments:DELETE', 'schedule_blocks:UPDATE', 'schedule_blocks:DELETE',
       ].sort(),
     );
@@ -139,7 +141,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
         WHERE rc.constraint_schema = DATABASE() AND rc.referenced_table_name = 'patients'`,
     );
     expect(fks.map((f) => f.tableName).sort()).toEqual(
-      ['appointments', 'attachments', 'clinical_access_grants', 'clinical_alerts', 'clinical_allergy_assessments', 'clinical_diagnoses', 'clinical_history_entries', 'clinical_notes', 'clinical_odontograms', 'clinical_procedures', 'clinical_visits', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers'],
+      ['appointments', 'attachments', 'charges', 'clinical_access_grants', 'clinical_alerts', 'clinical_allergy_assessments', 'clinical_diagnoses', 'clinical_history_entries', 'clinical_notes', 'clinical_odontograms', 'clinical_procedures', 'clinical_visits', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers'],
     );
     for (const f of fks) expect(Number(f.cols)).toBe(2);
   });

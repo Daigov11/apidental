@@ -215,6 +215,24 @@ export class EnvironmentVariables {
   @IsOptional() @IsString()
   FIELD_ENCRYPTION_OLD_KEYS?: string;
 
+  /**
+   * off = sin integraciones (por defecto). mock = SIMULADORES de Apiworking para demostración: no hay credenciales, ni
+   * endpoints, ni emisión real. No existe un modo «real» todavía.
+   */
+  @IsOptional() @IsIn(['off', 'mock'])
+  INTEGRATIONS_MODE: string = 'off';
+
+  /** Los simuladores no arrancan con NODE_ENV=production salvo que se confirme aquí (demostraciones en un servidor). */
+  @IsOptional() @IsIn(['true', 'false'])
+  INTEGRATIONS_MOCK_ALLOW_PRODUCTION: string = 'false';
+
+  /** Intervalo del procesador de la cola (outbox) en ms; 0 = solo bajo demanda (por defecto). */
+  @IsOptional()
+  @Transform(toInt)
+  @IsInt()
+  @Min(0)
+  INTEGRATIONS_WORKER_INTERVAL_MS: number = 0;
+
   @IsOptional()
   @Transform(toInt)
   @IsInt()
@@ -264,6 +282,9 @@ export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables 
   }
   if (production && mode !== 'disabled' && !/^https:\/\//i.test(env.PASSWORD_RECOVERY_BASE_URL)) {
     throw new Error('Configuración de entorno inválida: PASSWORD_RECOVERY_BASE_URL debe usar https en producción');
+  }
+  if (env.INTEGRATIONS_MODE === 'mock' && production && env.INTEGRATIONS_MOCK_ALLOW_PRODUCTION !== 'true') {
+    throw new Error('Configuración de entorno inválida: INTEGRATIONS_MODE=mock no se permite en producción (INTEGRATIONS_MOCK_ALLOW_PRODUCTION=true solo para demostraciones)');
   }
   if (env.FIELD_ENCRYPTION_MODE === 'aes-gcm') {
     if (!env.FIELD_ENCRYPTION_KEY || Buffer.from(env.FIELD_ENCRYPTION_KEY, 'base64').length !== 32) {

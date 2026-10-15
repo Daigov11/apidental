@@ -27,11 +27,14 @@ export class CreateServiceDto {
   @Transform(trim) @IsString() @MinLength(2) @MaxLength(120) name!: string;
   @IsOptional() @IsUUID() specialtyId?: string;
   @IsInt() @Min(5) @Max(480) durationMinutes!: number;
+  /// Precio de referencia en céntimos de sol (opcional).
+  @IsOptional() @IsInt() @Min(1) @Max(100_000_000) priceCents?: number;
 }
 export class UpdateServiceDto {
   @IsOptional() @Transform(trim) @IsString() @MinLength(2) @MaxLength(120) name?: string;
   @IsOptional() @IsUUID() specialtyId?: string | null;
   @IsOptional() @IsInt() @Min(5) @Max(480) durationMinutes?: number;
+  @IsOptional() @IsInt() @Min(1) @Max(100_000_000) priceCents?: number;
   @IsOptional() @IsBoolean() active?: boolean;
 }
 export class SetDentistSpecialtiesDto {
