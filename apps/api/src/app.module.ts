@@ -16,7 +16,9 @@ import { PrismaModule } from './prisma/prisma.module.js';
 import { TenancyModule } from './tenancy/tenancy.module.js';
 import { UsersModule } from './users/users.module.js';
 
-const isLoginRoute = (req: Request): boolean => req.path.endsWith('/auth/login');
+/** Rutas públicas o de verificación de contraseña/token: comparten el límite estricto por IP (fuerza bruta). */
+const STRICT_ROUTES = ['/auth/login', '/auth/reauthenticate', '/invitations/accept', '/invitations/preview'];
+const isLoginRoute = (req: Request): boolean => STRICT_ROUTES.some((r) => req.path.endsWith(r));
 
 @Module({
   imports: [

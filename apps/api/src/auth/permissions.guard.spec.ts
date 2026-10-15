@@ -13,6 +13,7 @@ function ctxWith(principal: AuthPrincipal | undefined): ExecutionContext {
 
 const principal = (permissions: string[], withContext = true): AuthPrincipal => ({
   user: { id: 'u', email: 'u@x.pe', firstName: 'U', lastName: 'X' },
+  sessionId: 's',
   context: withContext ? { clinicId: 'c', branchId: null } : null,
   roles: ['R'],
   permissions: new Set(permissions),

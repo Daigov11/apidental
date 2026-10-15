@@ -2,6 +2,7 @@ import { isAbsolute } from 'node:path';
 import { plainToInstance, Transform } from 'class-transformer';
 import {
   IsEnum,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -104,6 +105,59 @@ export class EnvironmentVariables {
   @Max(52_428_800)
   ATTACHMENT_MAX_BYTES: number = 10_485_760;
 
+  // ---------------- sesiones y refresh token ----------------
+
+  /** Inactividad máxima de una sesión (vida del refresh token entre renovaciones). */
+  @IsOptional() @Transform(toInt) @IsInt() @Min(300) @Max(2_592_000)
+  REFRESH_TTL_SECONDS: number = 28_800;
+
+  /** Tope absoluto de una sesión aunque se renueve continuamente. */
+  @IsOptional() @Transform(toInt) @IsInt() @Min(900) @Max(7_776_000)
+  SESSION_MAX_SECONDS: number = 604_800;
+
+  /**
+   * Tolerancia para dos renovaciones simultáneas con el mismo refresh token (varias pestañas).
+   * 0 = estricto: cualquier reutilización revoca la sesión. Un valor > 0 relaja la detección.
+   */
+  @IsOptional() @Transform(toInt) @IsInt() @Min(0) @Max(30)
+  REFRESH_REUSE_GRACE_SECONDS: number = 0;
+
+  /** Cookie `Secure`. Por defecto: true en producción, false en desarrollo/pruebas (http://localhost). */
+  @IsOptional() @IsIn(['true', 'false'])
+  COOKIE_SECURE?: string;
+
+  // ---------------- reautenticación ----------------
+
+  @IsOptional() @Transform(toInt) @IsInt() @Min(30) @Max(300)
+  REAUTH_TTL_SECONDS: number = 120;
+
+  // ---------------- invitaciones y aprovisionamiento ----------------
+
+  @IsOptional() @Transform(toInt) @IsInt() @Min(1) @Max(336)
+  INVITATION_TTL_HOURS: number = 72;
+
+  @IsOptional() @Transform(toInt) @IsInt() @Min(1) @Max(90)
+  PROVISIONING_RECORD_TTL_DAYS: number = 30;
+
+  /**
+   * Canal de entrega del enlace de invitación.
+   *  - dev: el enlace se devuelve en la respuesta (SOLO desarrollo/pruebas; prohibido en producción).
+   *  - webhook: POST firmado (HMAC) a INVITATION_WEBHOOK_URL; el operador lo conecta a su sistema de envío.
+   *  - disabled: no se pueden crear invitaciones (por defecto en producción).
+   */
+  @IsOptional() @IsIn(['dev', 'webhook', 'disabled'])
+  INVITATION_DELIVERY_MODE?: string;
+
+  @IsOptional() @IsString()
+  INVITATION_WEBHOOK_URL?: string;
+
+  @IsOptional() @IsString()
+  INVITATION_WEBHOOK_SECRET?: string;
+
+  /** URL base de la pantalla de aceptación; el token se agrega en el fragmento (#token=…), nunca en la ruta. */
+  @IsOptional() @IsString()
+  INVITATION_ACCEPT_BASE_URL: string = 'http://localhost:5173/admin/aceptar-invitacion';
+
   @IsOptional()
   @Transform(toInt)
   @IsInt()
@@ -128,6 +182,31 @@ export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables 
       .map((e) => `  - ${e.property}: ${Object.values(e.constraints ?? {}).join('; ')}`)
       .join('\n');
     throw new Error(`Configuración de entorno inválida:\n${detail}`);
+  }
+  if (env.SESSION_MAX_SECONDS < env.REFRESH_TTL_SECONDS) {
+    throw new Error('Configuración de entorno inválida: SESSION_MAX_SECONDS debe ser >= REFRESH_TTL_SECONDS');
+  }
+  const production = env.NODE_ENV === NodeEnv.Production;
+  const mode = env.INVITATION_DELIVERY_MODE ?? (production ? 'disabled' : 'dev');
+  if (mode === 'dev' && production) {
+    throw new Error('Configuración de entorno inválida: INVITATION_DELIVERY_MODE=dev no se permite en producción');
+  }
+  if (mode === 'webhook') {
+    if (!env.INVITATION_WEBHOOK_URL || !env.INVITATION_WEBHOOK_SECRET) {
+      throw new Error('Configuración de entorno inválida: el canal webhook requiere INVITATION_WEBHOOK_URL e INVITATION_WEBHOOK_SECRET');
+    }
+    if (env.INVITATION_WEBHOOK_SECRET.length < 32) {
+      throw new Error('Configuración de entorno inválida: INVITATION_WEBHOOK_SECRET debe tener al menos 32 caracteres');
+    }
+    if (production && !/^https:\/\//i.test(env.INVITATION_WEBHOOK_URL)) {
+      throw new Error('Configuración de entorno inválida: INVITATION_WEBHOOK_URL debe usar https en producción');
+    }
+  }
+  if (production && mode !== 'disabled' && !/^https:\/\//i.test(env.INVITATION_ACCEPT_BASE_URL)) {
+    throw new Error('Configuración de entorno inválida: INVITATION_ACCEPT_BASE_URL debe usar https en producción');
+  }
+  if (production && env.COOKIE_SECURE === 'false') {
+    throw new Error('Configuración de entorno inválida: COOKIE_SECURE no puede ser false en producción');
   }
   if (env.NODE_ENV === NodeEnv.Production) {
     if (/change[_-]?me/i.test(env.JWT_ACCESS_SECRET)) {

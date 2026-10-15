@@ -11,6 +11,7 @@ import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { AccessService } from './access.service.js';
+import { SessionService } from './session.service.js';
 import type { AppRequest } from './auth.types.js';
 import { TokenService } from './token.service.js';
 
@@ -25,6 +26,7 @@ export class JwtAuthGuard implements CanActivate {
     private readonly reflector: Reflector,
     private readonly tokens: TokenService,
     private readonly access: AccessService,
+    private readonly sessions: SessionService,
     @Inject(PRISMA) private readonly db: PrismaDb,
   ) {}
 
@@ -46,6 +48,8 @@ export class JwtAuthGuard implements CanActivate {
       select: { id: true, email: true, firstName: true, lastName: true, status: true },
     });
     if (!user || user.status !== 'ACTIVE') throw new UnauthorizedException('Token inválido o expirado');
+    // El logout y la revocación de la sesión invalidan el access token de inmediato.
+    if (!(await this.sessions.isActive(payload.sid, user.id))) throw new UnauthorizedException('Token inválido o expirado');
 
     let roles: string[] = [];
     let permissions = new Set<string>();
@@ -58,6 +62,7 @@ export class JwtAuthGuard implements CanActivate {
 
     req.principal = {
       user: { id: user.id, email: user.email, firstName: user.firstName, lastName: user.lastName },
+      sessionId: payload.sid,
       context: payload.ctx ?? null,
       roles,
       permissions,

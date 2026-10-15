@@ -14,8 +14,8 @@ export class TokenService {
     return this.config.jwt.accessTtlSeconds;
   }
 
-  sign(userId: string, context?: ActiveContext): Promise<string> {
-    const payload: AccessTokenPayload = { sub: userId, ...(context ? { ctx: context } : {}) };
+  sign(userId: string, sessionId: string, context?: ActiveContext): Promise<string> {
+    const payload: AccessTokenPayload = { sub: userId, sid: sessionId, ...(context ? { ctx: context } : {}) };
     return this.jwt.signAsync(payload, {
       secret: this.config.jwt.secret,
       algorithm: 'HS256',
@@ -34,6 +34,7 @@ export class TokenService {
         audience: this.config.jwt.audience,
       });
       if (typeof payload.sub !== 'string') throw new Error('sub inválido');
+      if (typeof payload.sid !== 'string') throw new Error('sid inválido');
       const ctx = payload.ctx;
       if (
         ctx !== undefined &&

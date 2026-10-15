@@ -44,6 +44,7 @@ describe('vistas de paciente', () => {
 describe('clinicScope', () => {
   const principal = (clinicId: string | null): AuthPrincipal => ({
     user: { id: 'u', email: 'u@x.pe', firstName: 'U', lastName: 'X' },
+    sessionId: 's',
     context: { clinicId, branchId: null },
     roles: [],
     permissions: new Set(['patient:read']),

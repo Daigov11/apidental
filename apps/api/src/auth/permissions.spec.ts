@@ -1,12 +1,46 @@
-import { PATIENT_DATA_PERMISSIONS, PERMISSIONS, ROLE_DEFINITIONS } from './permissions.js';
+import { CLINIC_GOVERNANCE_PERMISSIONS, PATIENT_DATA_PERMISSIONS, PERMISSIONS, ROLE_DEFINITIONS } from './permissions.js';
 
 describe('catálogo RBAC', () => {
   const roles = new Map(ROLE_DEFINITIONS.map((r) => [r.code, r]));
 
-  it('define los seis roles iniciales', () => {
+  it('define los seis roles iniciales más el Director Clínico', () => {
     expect([...roles.keys()].sort()).toEqual(
-      ['ASSISTANT', 'CASHIER', 'CLINIC_ADMIN', 'DENTIST', 'PLATFORM_ADMIN', 'RECEPTIONIST'].sort(),
+      ['ASSISTANT', 'CASHIER', 'CLINIC_ADMIN', 'CLINICAL_DIRECTOR', 'DENTIST', 'PLATFORM_ADMIN', 'RECEPTIONIST'].sort(),
     );
+  });
+
+  it('clinical:read_all NO existe todavía en el catálogo (llega en 3.1 con su justificación y auditoría)', () => {
+    expect(PERMISSIONS).not.toHaveProperty('clinical:read_all');
+    for (const role of ROLE_DEFINITIONS) {
+      expect((role.permissions as readonly string[]).some((p) => p.startsWith('clinical:'))).toBe(false);
+    }
+  });
+
+  describe('aprovisionamiento por invitación (3.0)', () => {
+    const perms = (code: string) => roles.get(code)!.permissions as readonly string[];
+
+    it('la plataforma gestiona invitaciones pero NO tiene el gobierno de la clínica', () => {
+      expect(perms('PLATFORM_ADMIN')).toEqual(expect.arrayContaining(['invitation:read', 'invitation:manage']));
+      for (const p of CLINIC_GOVERNANCE_PERMISSIONS) expect(perms('PLATFORM_ADMIN')).not.toContain(p);
+    });
+
+    it('solo el administrador de clínica registra el aprovisionamiento formal', () => {
+      for (const role of ROLE_DEFINITIONS) {
+        expect(role.permissions.includes('provisioning:record')).toBe(role.code === 'CLINIC_ADMIN');
+      }
+    });
+
+    it('solo el Director Clínico puede designar a otro Director', () => {
+      for (const role of ROLE_DEFINITIONS) {
+        expect(role.permissions.includes('director:manage')).toBe(role.code === 'CLINICAL_DIRECTOR');
+      }
+    });
+
+    it('ni el administrador de clínica ni el Director Clínico escriben datos de pacientes por este rol de gobierno', () => {
+      expect(perms('CLINICAL_DIRECTOR')).not.toContain('patient:write');
+      expect(perms('CLINICAL_DIRECTOR')).not.toContain('invitation:manage');
+      expect(perms('CLINIC_ADMIN')).not.toContain('director:manage');
+    });
   });
 
   it('todo permiso referenciado por un rol existe en el catálogo', () => {

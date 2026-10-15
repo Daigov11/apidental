@@ -182,3 +182,45 @@ export async function createPatient(
     .expect(201);
   return { id: res.body.patient.id as string, res };
 }
+
+// ---------------------------------------------------------------------------
+// Helpers de sesiones (refresh token en cookie HttpOnly)
+// ---------------------------------------------------------------------------
+
+export const ORIGIN = 'http://localhost:5173';
+export const COOKIE_NAME = 'apidental_rt'; // en pruebas la cookie no es Secure, así que sin prefijo __Host-
+
+/** Cabeceras que el panel envía en refresh/logout (barreras CSRF). */
+export const csrfHeaders = { Origin: ORIGIN, 'X-Requested-With': 'ApiDental', 'Content-Type': 'application/json' } as const;
+
+export function setCookies(res: request.Response): string[] {
+  const raw = res.headers['set-cookie'] as unknown as string[] | string | undefined;
+  return Array.isArray(raw) ? raw : raw ? [raw] : [];
+}
+
+/** Valor del refresh token entregado en la cookie (null si no se envió o se está borrando). */
+export function refreshTokenFrom(res: request.Response): string | null {
+  const line = setCookies(res).find((c) => c.startsWith(`${COOKIE_NAME}=`));
+  const value = line?.split(';')[0]?.slice(COOKIE_NAME.length + 1) ?? '';
+  return value ? decodeURIComponent(value) : null;
+}
+
+export const cookieHeader = (token: string) => `${COOKIE_NAME}=${encodeURIComponent(token)}`;
+
+/** Inicia sesión y devuelve access token, refresh token (de la cookie) y la respuesta completa. */
+export async function loginFull(ctx: TestContext, email: string, password = PASSWORD) {
+  const res = await ctx.http().post('/v1/auth/login').send({ email, password }).expect(200);
+  const refreshToken = refreshTokenFrom(res);
+  if (!refreshToken) throw new Error('El login no entregó la cookie del refresh token');
+  return { accessToken: res.body.accessToken as string, refreshToken, res };
+}
+
+export const refreshWith = (ctx: TestContext, refreshToken: string | null, headers: Record<string, string> = csrfHeaders) => {
+  let req = ctx.http().post('/v1/auth/refresh').set(headers);
+  if (refreshToken !== null) req = req.set('Cookie', cookieHeader(refreshToken));
+  // Cadena y no objeto: así el cuerpo se envía tal cual aunque el Content-Type de la prueba no sea JSON.
+  return req.send('{}');
+};
+
+export const sessionIdOf = (accessToken: string): string =>
+  JSON.parse(Buffer.from(accessToken.split('.')[1]!, 'base64url').toString()).sid as string;

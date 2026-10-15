@@ -7,13 +7,14 @@ import {
   passwordNeedsRehash,
   verifyPassword,
 } from '../common/utils/password.js';
-import { AppConfig } from '../config/app-config.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { AccessService } from './access.service.js';
 import type { ActiveContext, AuthPrincipal, PublicUser } from './auth.types.js';
 import type { LoginDto } from './dto/login.dto.js';
 import type { SelectContextDto } from './dto/select-context.dto.js';
+import { LoginAttemptsService } from './login-attempts.service.js';
+import { SessionService } from './session.service.js';
 import { TokenService } from './token.service.js';
 
 const INVALID_CREDENTIALS = 'Credenciales inválidas';
@@ -25,9 +26,14 @@ export class AuthService {
     private readonly access: AccessService,
     private readonly tokens: TokenService,
     private readonly audit: AuditService,
-    private readonly config: AppConfig,
+    private readonly attempts: LoginAttemptsService,
+    private readonly sessions: SessionService,
   ) {}
 
+  /**
+   * Devuelve `body` (lo que va en la respuesta JSON) y `refreshToken` (que el controlador entrega
+   * SOLO por cookie HttpOnly). Están separados a propósito para que el token no se filtre al cuerpo.
+   */
   async login(dto: LoginDto, meta: RequestMeta) {
     const user = await this.db.user.findUnique({
       where: { email: dto.email },
@@ -39,25 +45,25 @@ export class AuthService {
     if (!user) throw new UnauthorizedException(INVALID_CREDENTIALS);
 
     const now = new Date();
-    if (user.lockedUntil && user.lockedUntil > now) {
+    if (this.attempts.isLocked(user, now)) {
       await this.audit.recordSafely({
         action: AuditAction.LoginBlocked,
         entity: 'User',
         entityId: user.id,
         userId: user.id,
         meta,
-        summary: { reason: 'account_locked', lockedUntil: user.lockedUntil.toISOString() },
+        summary: { reason: 'account_locked', lockedUntil: user.lockedUntil!.toISOString() },
       });
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
     if (!passwordOk || user.status !== 'ACTIVE') {
-      await this.registerFailure(user.id, user.status, meta);
+      await this.attempts.registerFailure(user.id, user.status === 'ACTIVE' ? 'bad_password' : 'user_disabled', meta);
       throw new UnauthorizedException(INVALID_CREDENTIALS);
     }
 
     const newHash = passwordNeedsRehash(user.passwordHash) ? await hashPassword(dto.password) : null;
-    await this.db.$transaction(async (tx) => {
+    const session = await this.db.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
         data: {
@@ -67,53 +73,84 @@ export class AuthService {
           ...(newHash ? { passwordHash: newHash } : {}),
         },
       });
+      const created = await this.sessions.create(user.id, meta, tx);
       await this.audit.record(
-        { action: AuditAction.LoginSuccess, entity: 'User', entityId: user.id, userId: user.id, meta },
+        {
+          action: AuditAction.LoginSuccess,
+          entity: 'User',
+          entityId: user.id,
+          userId: user.id,
+          meta,
+          summary: { sessionId: created.sessionId },
+        },
         tx,
       );
+      return created;
     });
 
     return {
-      accessToken: await this.tokens.sign(user.id),
-      tokenType: 'Bearer' as const,
-      expiresIn: this.tokens.expiresIn,
-      user: this.toPublic(user),
-      contexts: await this.access.listContexts(user.id),
+      refreshToken: session.refreshToken,
+      body: {
+        accessToken: await this.tokens.sign(user.id, session.sessionId),
+        tokenType: 'Bearer' as const,
+        expiresIn: this.tokens.expiresIn,
+        user: this.toPublic(user),
+        contexts: await this.access.listContexts(user.id),
+      },
     };
   }
 
-  /** Bloqueo progresivo: cada vez que se supera el umbral el bloqueo se alarga (tope 24 h). */
-  private async registerFailure(userId: string, status: string, meta: RequestMeta): Promise<void> {
-    const { maxAttempts, lockMinutes } = this.config.login;
-    const updated = await this.db.user.update({
-      where: { id: userId },
-      data: { failedLoginAttempts: { increment: 1 } },
-      select: { failedLoginAttempts: true },
-    });
-    const attempts = updated.failedLoginAttempts;
-    await this.audit.recordSafely({
-      action: AuditAction.LoginFailed,
-      entity: 'User',
-      entityId: userId,
-      userId,
-      meta,
-      summary: { attempts, reason: status === 'ACTIVE' ? 'bad_password' : 'user_disabled' },
-    });
-
-    if (attempts >= maxAttempts) {
-      const cycles = Math.floor(attempts / maxAttempts);
-      const minutes = Math.min(lockMinutes * cycles, 1440);
-      const lockedUntil = new Date(Date.now() + minutes * 60_000);
-      await this.db.user.update({ where: { id: userId }, data: { lockedUntil } });
-      await this.audit.recordSafely({
-        action: AuditAction.LoginLocked,
-        entity: 'User',
-        entityId: userId,
-        userId,
-        meta,
-        summary: { attempts, lockedMinutes: minutes },
-      });
+  /** Renueva el access token a partir del refresh token (cookie). Restaura el contexto si sigue siendo válido. */
+  async refresh(refreshToken: unknown, meta: RequestMeta) {
+    const rotated = await this.sessions.rotate(refreshToken, meta);
+    let context: ActiveContext | null = rotated.context;
+    if (context && !(await this.access.resolve(rotated.userId, context))) {
+      // El contexto guardado ya no es válido (asignación revocada, sede inactiva…): se vuelve a elegir.
+      await this.sessions.clearContext(rotated.sessionId);
+      context = null;
     }
+    return {
+      refreshToken: rotated.refreshToken,
+      body: {
+        accessToken: await this.tokens.sign(rotated.userId, rotated.sessionId, context ?? undefined),
+        tokenType: 'Bearer' as const,
+        expiresIn: this.tokens.expiresIn,
+        context: context ? await this.describeContext(context) : null,
+      },
+    };
+  }
+
+  /** Cierra la sesión actual (por access token) y/o la del refresh token presentado. */
+  async logout(sessionIds: { sessionId: string; userId: string }[], meta: RequestMeta): Promise<void> {
+    const seen = new Set<string>();
+    for (const s of sessionIds) {
+      if (seen.has(s.sessionId)) continue;
+      seen.add(s.sessionId);
+      const revoked = await this.sessions.revokeSession(s.sessionId, 'LOGOUT');
+      if (revoked) {
+        await this.audit.recordSafely({
+          action: AuditAction.SessionLogout,
+          entity: 'AuthSession',
+          entityId: s.sessionId,
+          userId: s.userId,
+          meta,
+          summary: { sessionId: s.sessionId },
+        });
+      }
+    }
+  }
+
+  async logoutAll(principal: AuthPrincipal, meta: RequestMeta): Promise<number> {
+    const count = await this.sessions.revokeAllForUser(principal.user.id, 'LOGOUT_ALL');
+    await this.audit.recordSafely({
+      action: AuditAction.SessionLogoutAll,
+      entity: 'User',
+      entityId: principal.user.id,
+      userId: principal.user.id,
+      meta,
+      summary: { sessionsRevoked: count },
+    });
+    return count;
   }
 
   async selectContext(principal: AuthPrincipal, dto: SelectContextDto, meta: RequestMeta) {
@@ -147,9 +184,10 @@ export class AuthService {
       meta,
       summary: { roles: resolved.roles },
     });
+    await this.sessions.setContext(principal.sessionId, context);
 
     return {
-      accessToken: await this.tokens.sign(principal.user.id, context),
+      accessToken: await this.tokens.sign(principal.user.id, principal.sessionId, context),
       tokenType: 'Bearer' as const,
       expiresIn: this.tokens.expiresIn,
       context: await this.describeContext(context),

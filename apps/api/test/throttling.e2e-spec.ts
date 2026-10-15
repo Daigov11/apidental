@@ -21,6 +21,15 @@ describe('Límite de solicitudes en el login', () => {
     expect(statuses.slice(4)).toEqual([429, 429]);
   });
 
+  it('la reautenticación comparte el límite estricto por IP del login', async () => {
+    for (const path of ['/v1/auth/reauthenticate']) {
+      const statuses: number[] = [];
+      for (let i = 0; i < 6; i++) statuses.push((await ctx.http().post(path).send({})).status);
+      expect(statuses.slice(0, 4).every((s) => s !== 429), path).toBe(true);
+      expect(statuses.slice(4), path).toEqual([429, 429]);
+    }
+  });
+
   it('el límite del login no afecta al resto de rutas', async () => {
     await ctx.http().get('/v1/health').expect(200);
   });

@@ -94,8 +94,9 @@ describe('Motor MySQL 8.4 y esquema real', () => {
     );
     expect(tables.map((t) => t.name).sort()).toEqual(
       [
-        'attachments', 'audit_logs', 'branches', 'clinics', 'guardians', 'patient_consents', 'patient_contacts',
-        'patient_guardians', 'patient_identifiers', 'patients', 'permissions', 'role_permissions', 'roles',
+        'attachments', 'audit_logs', 'auth_sessions', 'branches', 'clinics', 'guardians', 'invitations',
+        'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers', 'patients',
+        'permissions', 'provisioning_records', 'reauth_proofs', 'refresh_tokens', 'role_permissions', 'roles',
         'user_assignments', 'users',
       ],
     );
@@ -105,7 +106,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
     }
   });
 
-  it('existen los triggers de inmutabilidad y no-borrado del módulo de pacientes', async () => {
+  it('existen los triggers de inmutabilidad y no-borrado (pacientes, invitaciones, aprovisionamiento, reautenticación)', async () => {
     const triggers = await rows<{ name: string; table: string; event: string }>(
       ctx.db.$queryRaw`SELECT TRIGGER_NAME AS name, EVENT_OBJECT_TABLE AS \`table\`, EVENT_MANIPULATION AS event FROM information_schema.triggers WHERE trigger_schema = DATABASE() AND event_object_table <> 'audit_logs'`,
     );
@@ -114,6 +115,8 @@ describe('Motor MySQL 8.4 y esquema real', () => {
       [
         'attachments:DELETE', 'attachments:UPDATE', 'guardians:DELETE', 'patient_consents:DELETE', 'patient_consents:UPDATE',
         'patient_contacts:DELETE', 'patient_guardians:DELETE', 'patient_identifiers:DELETE', 'patients:DELETE', 'patients:UPDATE',
+        'invitations:DELETE', 'invitations:UPDATE', 'provisioning_records:DELETE', 'provisioning_records:UPDATE',
+        'reauth_proofs:UPDATE', 'refresh_tokens:UPDATE',
       ].sort(),
     );
   });

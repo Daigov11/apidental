@@ -16,6 +16,21 @@ export class AppConfig {
     accessTtlSeconds: number;
   };
   readonly attachments: { dir: string; maxBytes: number };
+  readonly session: {
+    refreshTtlSeconds: number;
+    absoluteSeconds: number;
+    reuseGraceSeconds: number;
+    cookie: { name: string; secure: boolean };
+  };
+  readonly reauthTtlSeconds: number;
+  readonly invitations: {
+    ttlHours: number;
+    mode: 'dev' | 'webhook' | 'disabled';
+    webhookUrl: string | null;
+    webhookSecret: string | null;
+    acceptBaseUrl: string;
+  };
+  readonly provisioningTtlDays: number;
   readonly corsOrigins: string[];
   readonly trustProxy: number;
   readonly login: { maxAttempts: number; lockMinutes: number };
@@ -36,6 +51,23 @@ export class AppConfig {
       accessTtlSeconds: env.JWT_ACCESS_TTL_SECONDS,
     };
     this.attachments = { dir: resolve(env.ATTACHMENTS_DIR), maxBytes: env.ATTACHMENT_MAX_BYTES };
+    const secure = env.COOKIE_SECURE ? env.COOKIE_SECURE === 'true' : this.isProduction;
+    this.session = {
+      refreshTtlSeconds: env.REFRESH_TTL_SECONDS,
+      absoluteSeconds: env.SESSION_MAX_SECONDS,
+      reuseGraceSeconds: env.REFRESH_REUSE_GRACE_SECONDS,
+      // El prefijo __Host- exige Secure, Path=/ y ausencia de Domain (cookie ligada a un único host).
+      cookie: { name: secure ? '__Host-apidental_rt' : 'apidental_rt', secure },
+    };
+    this.reauthTtlSeconds = env.REAUTH_TTL_SECONDS;
+    this.invitations = {
+      ttlHours: env.INVITATION_TTL_HOURS,
+      mode: (env.INVITATION_DELIVERY_MODE ?? (this.isProduction ? 'disabled' : 'dev')) as 'dev' | 'webhook' | 'disabled',
+      webhookUrl: env.INVITATION_WEBHOOK_URL ?? null,
+      webhookSecret: env.INVITATION_WEBHOOK_SECRET ?? null,
+      acceptBaseUrl: env.INVITATION_ACCEPT_BASE_URL,
+    };
+    this.provisioningTtlDays = env.PROVISIONING_RECORD_TTL_DAYS;
     this.corsOrigins = env.CORS_ORIGINS.split(',')
       .map((o) => o.trim())
       .filter(Boolean);

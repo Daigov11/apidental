@@ -1,3 +1,4 @@
+import { AppConfig } from './app-config.js';
 import { validateEnv } from './env.validation.js';
 
 const base = {
@@ -42,5 +43,58 @@ describe('validateEnv', () => {
     expect(() => validateEnv({ ...prod, JWT_ACCESS_SECRET: 'change_me_'.repeat(5) })).toThrow(/ejemplo/);
     expect(() => validateEnv({ ...prod, CORS_ORIGINS: '*' })).toThrow(/CORS/);
     expect(() => validateEnv({ ...prod, CORS_ORIGINS: 'https://dental.apiworking.com.pe' })).not.toThrow();
+  });
+
+  describe('sesiones, cookie e invitaciones', () => {
+    it('valores por defecto: refresh 8 h, tope 7 días, estricto ante reutilización, reautenticación 2 min, invitación 72 h', () => {
+      const env = validateEnv(base);
+      expect(env).toMatchObject({
+        REFRESH_TTL_SECONDS: 28_800,
+        SESSION_MAX_SECONDS: 604_800,
+        REFRESH_REUSE_GRACE_SECONDS: 0,
+        REAUTH_TTL_SECONDS: 120,
+        INVITATION_TTL_HOURS: 72,
+      });
+    });
+
+    it('el tope absoluto no puede ser menor que la vida del refresh token', () => {
+      expect(() => validateEnv({ ...base, REFRESH_TTL_SECONDS: '7200', SESSION_MAX_SECONDS: '3600' })).toThrow(/SESSION_MAX_SECONDS/);
+    });
+
+    it('acota la reautenticación y la gracia de reutilización', () => {
+      expect(() => validateEnv({ ...base, REAUTH_TTL_SECONDS: '5000' })).toThrow(/REAUTH_TTL_SECONDS/);
+      expect(() => validateEnv({ ...base, REAUTH_TTL_SECONDS: '10' })).toThrow(/REAUTH_TTL_SECONDS/);
+      expect(() => validateEnv({ ...base, REFRESH_REUSE_GRACE_SECONDS: '600' })).toThrow(/REFRESH_REUSE_GRACE_SECONDS/);
+    });
+
+    const prod = { ...base, NODE_ENV: 'production', ATTACHMENTS_DIR: '/var/lib/apidental/files', CORS_ORIGINS: 'https://dental.apiworking.com.pe' };
+
+    it('en producción el canal "dev" (enlace en la respuesta) está PROHIBIDO', () => {
+      expect(() => validateEnv({ ...prod, INVITATION_DELIVERY_MODE: 'dev' })).toThrow(/dev no se permite en producción/);
+    });
+
+    it('en producción, sin configurar nada, las invitaciones quedan deshabilitadas (falla cerrada)', () => {
+      expect(() => validateEnv(prod)).not.toThrow();
+      const config = new AppConfig(prod);
+      expect(config.invitations.mode).toBe('disabled');
+    });
+
+    it('el canal webhook exige URL, secreto largo y https en producción', () => {
+      const webhook = { ...prod, INVITATION_DELIVERY_MODE: 'webhook', INVITATION_ACCEPT_BASE_URL: 'https://dental.apiworking.com.pe/admin/aceptar-invitacion' };
+      expect(() => validateEnv(webhook)).toThrow(/INVITATION_WEBHOOK_URL/);
+      expect(() => validateEnv({ ...webhook, INVITATION_WEBHOOK_URL: 'https://mail.interno/hook', INVITATION_WEBHOOK_SECRET: 'corto' })).toThrow(/32 caracteres/);
+      expect(() => validateEnv({ ...webhook, INVITATION_WEBHOOK_URL: 'http://mail.interno/hook', INVITATION_WEBHOOK_SECRET: 'x'.repeat(40) })).toThrow(/https/);
+      expect(() => validateEnv({ ...webhook, INVITATION_WEBHOOK_URL: 'https://mail.interno/hook', INVITATION_WEBHOOK_SECRET: 'x'.repeat(40) })).not.toThrow();
+    });
+
+    it('en producción la URL de aceptación debe ser https y la cookie no puede ser insegura', () => {
+      const webhook = { ...prod, INVITATION_DELIVERY_MODE: 'webhook', INVITATION_WEBHOOK_URL: 'https://mail.interno/hook', INVITATION_WEBHOOK_SECRET: 'x'.repeat(40) };
+      expect(() => validateEnv({ ...webhook, INVITATION_ACCEPT_BASE_URL: 'http://dental.apiworking.com.pe/x' })).toThrow(/INVITATION_ACCEPT_BASE_URL/);
+      expect(() => validateEnv({ ...prod, COOKIE_SECURE: 'false' })).toThrow(/COOKIE_SECURE/);
+    });
+
+    it('en desarrollo el canal "dev" es el valor por defecto', () => {
+      expect(new AppConfig(base).invitations.mode).toBe('dev');
+    });
   });
 });
