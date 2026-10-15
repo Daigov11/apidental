@@ -321,6 +321,16 @@ export class ClinicalAccessService {
     throw new ClinicalAccessDeniedException(denial.message, denial.code);
   }
 
+  /** Negativa por una regla de la operación (p. ej. no ser el responsable de la visita): se audita igual que las demás. */
+  denyBy(
+    actor: AuthPrincipal,
+    patientId: string,
+    meta: RequestMeta,
+    denial: { reason: string; code: string; message: string },
+  ): Promise<never> {
+    return this.deny(actor, patientId, 'write', meta, denial);
+  }
+
   private auditDenied(
     actor: AuthPrincipal,
     patientId: string | null,

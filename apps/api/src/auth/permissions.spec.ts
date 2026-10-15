@@ -51,6 +51,11 @@ describe('catálogo RBAC', () => {
       expect(holders('care:assign')).toEqual(['CLINICAL_DIRECTOR', 'CLINIC_ADMIN', 'RECEPTIONIST']);
     });
 
+    it('el catálogo de procedimientos: lo configuran administración y Director; lo ven además los odontólogos; la plataforma y el asistente no', () => {
+      expect(holders('procedure:manage')).toEqual(['CLINICAL_DIRECTOR', 'CLINIC_ADMIN']);
+      expect(holders('procedure:read')).toEqual(['CLINICAL_DIRECTOR', 'CLINIC_ADMIN', 'DENTIST']);
+    });
+
     it('los permisos de atención que un administrador puede conferir nunca incluyen clinical:read_all', () => {
       expect(CARE_ATTENDANCE_PERMISSIONS as readonly string[]).not.toContain('clinical:read_all');
     });

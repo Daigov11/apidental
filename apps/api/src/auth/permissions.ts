@@ -43,6 +43,9 @@ export const PERMISSIONS = {
   'clinical:read_limited': 'Ver la vista de apoyo (alertas y datos de apoyo, sin diagnósticos ni evoluciones)',
   'clinical:read_all':
     'Leer (nunca escribir) información clínica de un paciente de la clínica con justificación, reautenticación y auditoría previa (solo Director Clínico)',
+  // --- Catálogo de procedimientos de la clínica (3.3). Configuración administrativa, no datos de pacientes ---
+  'procedure:read': 'Ver el catálogo de procedimientos de la clínica',
+  'procedure:manage': 'Configurar el catálogo de procedimientos de la clínica (incluye si requieren consentimiento clínico)',
   'care:assign': 'Asignar y revocar la relación asistencial paciente–odontólogo (acto administrativo, no clínico)',
 } as const;
 
@@ -110,6 +113,7 @@ const PLATFORM_PERMISSIONS = ALL_PERMISSIONS.filter(
     !(PATIENT_DATA_PERMISSIONS as readonly string[]).includes(p) &&
     !(CLINICAL_PERMISSIONS as readonly string[]).includes(p) &&
     p !== 'care:assign' &&
+    !p.startsWith('procedure:') &&
     !(CLINIC_GOVERNANCE_PERMISSIONS as readonly string[]).includes(p),
 );
 
@@ -151,6 +155,8 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'provisioning:record',
       'provisioning:read',
       'care:assign',
+      'procedure:read',
+      'procedure:manage',
       ...PATIENT_FULL_ACCESS,
     ],
   },
@@ -173,6 +179,8 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'attachment:read',
       'clinical:read_all',
       'care:assign',
+      'procedure:read',
+      'procedure:manage',
     ],
   },
   {
@@ -187,7 +195,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     name: 'Odontólogo',
     scope: 'CLINIC',
     description: 'Atención clínica de los pacientes con los que tiene relación asistencial vigente.',
-    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY, 'clinical:read', 'clinical:write'],
+    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY, 'clinical:read', 'clinical:write', 'procedure:read'],
   },
   {
     code: 'CASHIER',
