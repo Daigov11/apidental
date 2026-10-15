@@ -85,12 +85,12 @@ START = [
 ]
 
 MATRIX = [
-    ('Recepción', 'Gestiona citas', 'Datos completos; crea pacientes', '—', 'Cobra', 'Ve', 'Ve'),
+    ('Recepción', 'Gestiona citas y solicitudes web', 'Datos completos; crea pacientes', '—', 'Cobra', 'Ve', 'Ve'),
     ('Odontólogo', 'Ve; inicia la atención', 'Lectura', 'Sí (sus pacientes)', '—', '—', '—'),
     ('Asistente', 'Ve', 'Datos básicos', '—', '—', '—', '—'),
     ('Director clínico', 'Ve', 'Lectura', 'Solo por la API', '—', '—', '—'),
     ('Cajero', 'Ve', 'Datos básicos', '—', 'Cobra', 'Emite y concilia', 'Canjea puntos'),
-    ('Admin. de clínica', 'Gestiona citas', 'Datos completos; crea pacientes', '—', 'Cobra', 'Emite y concilia', 'Canjea puntos'),
+    ('Admin. de clínica', 'Gestiona citas y solicitudes web', 'Datos completos; crea pacientes', '—', 'Cobra', 'Emite y concilia', 'Canjea puntos'),
     ('Admin. de plataforma', '—', '—', '—', '—', '—', '—'),
 ]
 
@@ -113,6 +113,25 @@ RECEPCION = [
         [fig('recepcion-03b-paciente-no-encontrado.jpg', 'La búsqueda no encontró a nadie.', left=980, right=18, top=80, bottom=470),
          fig('recepcion-03c-nuevo-paciente.jpg', 'Formulario de nuevo paciente.', left=488, right=502, top=62, bottom=62)],
         note='antes de crear, el sistema revisa si ya existe. Con el **mismo documento** no crea otra ficha y ofrece **Usar a este paciente**. Si hay nombres, celulares o correos parecidos, elija a la persona o **Crear de todos modos**. Para un menor, registre luego a su representante por la API.'),
+    task('La página pública: así piden cita los pacientes', [
+        'Los pacientes entran a **https://dental.apiworking.com.pe/** (la raíz del sitio; el panel sigue en `/admin/`).',
+        'Ven los servicios con su duración y precio de referencia, y las sedes.',
+        'En **Solicite su cita** eligen sede y servicio, un día y un horario libre, y dejan sus datos: nombres, apellido y celular. Documento y correo son opcionales. Deben aceptar el aviso de privacidad.',
+        'Al enviar reciben una **referencia** («SOL-XXXXXX»). Su pedido **no es una cita confirmada**: la clínica los contactará.'],
+        [fig('publica-01-inicio.jpg', 'Página de inicio de la clínica.', left=200, right=215, top=64, bottom=250),
+         fig('publica-02-horarios.jpg', 'El paciente elige día y horario libre.', left=640, right=215, top=100, bottom=0)],
+        note='enviar el formulario **no reserva** el horario ni crea al paciente. Eso lo hace recepción al atender la solicitud. Dos personas pueden pedir el mismo horario: recepción resuelve.'),
+    task('Atender las solicitudes de la página web', [
+        'Entre a **Solicitudes**. El número naranja indica cuántas hay pendientes.',
+        'Revise los datos del pedido: paciente, celular, servicio y horario pedido.',
+        'Pulse **Atender**. Se abre un panel con el resumen del pedido.',
+        'En **Paciente**, elija a la persona si ya existe, o pulse **Crear paciente nuevo**: el formulario ya trae lo que escribió.',
+        'Elija el **odontólogo**. Si el horario pedido sigue libre, aparece marcado; si no, elija otro.',
+        'Pulse **Confirmar cita**. La cita queda **Reservado**: confírmela desde la **Agenda** cuando hable con el paciente.',
+        'Si no se puede atender, pulse **Rechazar** y escriba el motivo.'],
+        [fig('recepcion-13-solicitudes.jpg', 'Solicitudes pendientes.', left=248, top=96, bottom=340),
+         fig('recepcion-14-atender.jpg', 'Atender: datos del pedido, paciente y odontólogo.', left=990, right=18, top=70, bottom=200)],
+        tip='puede filtrar por **Aceptadas**, **Rechazadas** o **Todas** para ver el historial.'),
     task('Confirmar, reprogramar, cancelar o marcar ausencia', [
         'En **Agenda**, pulse la cita para abrir su detalle.',
         '**Confirmar:** cuando el paciente avisó que viene.',
@@ -249,6 +268,7 @@ ADMIN = [
 ]
 
 FAQ = [
+    ('Un paciente pidió cita por la web: ¿qué hago?', 'Entre a Solicitudes, pulse Atender y elija paciente, odontólogo y horario. La cita queda Reservado; confírmela desde la agenda. Si no hay horario, rechácela con un motivo y contacte al paciente.'),
     ('No veo «Iniciar atención».', 'Solo aparece al odontólogo de la cita, desde 30 min antes y hasta 6 h después de terminar, y si no está cancelada ni marcada como ausente.'),
     ('No encuentro al paciente.', 'Busque por DNI, nombre o celular (mínimo 2 caracteres). Si no existe, recepción lo crea desde Pacientes o desde la cita.'),
     ('Me dice que el paciente ya existe.', 'Otra ficha tiene el mismo documento o se parece. Use «Usar a este paciente»; el sistema nunca fusiona fichas.'),
@@ -264,6 +284,7 @@ PENDING = [
     'Planes de tratamiento, presupuestos, cuotas y saldos; apertura y cierre de caja.',
     'Reportes y tablero; recordatorios por WhatsApp o SMS; letreros NFC y métricas de reseñas.',
     'Administración de usuarios, sedes e invitaciones.',
+    'Aviso automático al paciente (WhatsApp, SMS o correo) cuando recepción acepta o rechaza su solicitud: hoy lo contacta recepción.',
 ]
 
 CSS = """
@@ -316,7 +337,7 @@ ul.pend{margin:2mm 0 0;padding-left:5mm}
 def build():
     logo = data_uri(ROOT / 'brand/logos/apimedical-negro.png')
     mascot = data_uri(ROOT / 'brand/mascota/ardilla-odontologa.png')
-    roles_toc = [('Antes de empezar', 'ingresar y elegir sede'), ('Su pantalla y su rol', 'menú y permisos'), ('Recepción', 'citas, pacientes y cobros'),
+    roles_toc = [('Antes de empezar', 'ingresar y elegir sede'), ('Su pantalla y su rol', 'menú y permisos'), ('Recepción', 'citas, solicitudes web, pacientes y cobros'),
                  ('Odontólogo', 'atención y odontograma'), ('Asistente y director clínico', 'consulta'), ('Cajero', 'pagos, comprobantes y puntos'),
                  ('Administradores', 'clínica y plataforma'), ('Preguntas frecuentes', 'y lo que falta')]
     meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre']
