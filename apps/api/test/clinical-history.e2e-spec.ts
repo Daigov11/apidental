@@ -274,11 +274,10 @@ describe('Antecedentes, alergias y alertas clínicas (3.2)', () => {
       ]);
     });
 
-    it('validación: motivo obligatorio también en el alta, fechas, enumerados y campos desconocidos; los errores no repiten lo enviado', async () => {
+    it('validación: motivo mínimo si se informa, fechas, enumerados y campos desconocidos; los errores no repiten lo enviado', async () => {
       const w = await world();
       const marker = uniq('SECRETO-');
       const cases: Record<string, unknown>[] = [
-        { reason: undefined },
         { reason: 'ab' },
         { label: 'x' },
         { kind: 'DIAGNOSIS' },
