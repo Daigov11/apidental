@@ -1,0 +1,270 @@
+<!doctype html>
+<html lang="es-PE">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clínica Demo — Solicite su cita</title>
+  <meta name="description" content="Elija el servicio y un horario disponible y envíe su solicitud de cita dental en línea. La clínica la confirma y se comunica con usted.">
+  <meta name="theme-color" content="#0f7889">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Clínica Demo — Solicite su cita">
+  <meta property="og:description" content="Solicite su cita dental en línea: elija servicio y horario, y la clínica se comunica para confirmarla.">
+  <meta property="og:image" content="assets/ardilla-odontologa.png">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@700;800&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip" href="#contenido">Saltar al contenido</a>
+
+  <header class="top">
+    <div class="wrap top-in">
+      <a class="brand" href="#inicio" aria-label="Inicio">
+        <img src="assets/favicon.png" alt="" width="36" height="36">
+        <span id="clinic-name">Clínica</span>
+      </a>
+      <nav class="nav" aria-label="Principal">
+        <a href="#servicios">Servicios</a>
+        <a href="#como-funciona">Cómo funciona</a>
+        <a href="#sedes">Sedes</a>
+        <a href="#preguntas">Preguntas</a>
+      </nav>
+      <a class="btn btn-primary btn-sm" href="#solicitar">Solicitar cita</a>
+    </div>
+  </header>
+
+  <main id="contenido">
+    <section class="hero" id="inicio">
+      <div class="wrap hero-in">
+        <div class="hero-copy">
+          <p class="eyebrow">Atención odontológica</p>
+          <h1>Solicite su cita dental en línea</h1>
+          <p class="lead">Elija el servicio y un horario con disponibilidad. La clínica revisa su solicitud y se comunica con usted para confirmarla.</p>
+          <div class="hero-cta">
+            <a class="btn btn-primary" href="#solicitar">Solicitar cita</a>
+            <a class="btn btn-ghost" href="#servicios">Ver servicios</a>
+          </div>
+          <p class="fineprint">Su solicitud no es una cita confirmada hasta que la clínica se lo indique.</p>
+        </div>
+        <div class="hero-art" aria-hidden="true">
+          <div class="ring"><img src="assets/ardilla-odontologa.png" alt="" width="320" height="320"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="servicios" aria-labelledby="h-servicios">
+      <div class="wrap">
+        <h2 id="h-servicios">Servicios</h2>
+        <p class="section-lead">Estos son los servicios que puede solicitar. La duración es la que se reserva en la agenda.</p>
+        <ul class="cards" id="services" aria-live="polite" aria-busy="true">
+          <li class="card skeleton" aria-hidden="true"></li>
+          <li class="card skeleton" aria-hidden="true"></li>
+          <li class="card skeleton" aria-hidden="true"></li>
+        </ul>
+        <p class="notice" id="services-error" role="alert" hidden></p>
+      </div>
+    </section>
+
+    <section class="section band" id="como-funciona" aria-labelledby="h-como">
+      <div class="wrap">
+        <h2 id="h-como">Cómo funciona</h2>
+        <ol class="steps">
+          <li>
+            <span class="num" aria-hidden="true">1</span>
+            <h3>Elige servicio y horario</h3>
+            <p>Seleccione la sede, el servicio y uno de los horarios disponibles, y déjenos sus datos de contacto.</p>
+          </li>
+          <li>
+            <span class="num" aria-hidden="true">2</span>
+            <h3>Recepción confirma</h3>
+            <p>El personal de la clínica revisa su solicitud y la asigna a un odontólogo, o le propone otro horario si hace falta.</p>
+          </li>
+          <li>
+            <span class="num" aria-hidden="true">3</span>
+            <h3>Le contactamos</h3>
+            <p>Nos comunicamos con usted al celular que indique para confirmar su cita.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section" id="sedes" aria-labelledby="h-sedes">
+      <div class="wrap">
+        <h2 id="h-sedes">Sedes</h2>
+        <ul class="branches" id="branches" aria-live="polite"></ul>
+      </div>
+    </section>
+
+    <section class="section band" id="solicitar" aria-labelledby="h-solicitar">
+      <div class="wrap form-wrap">
+        <div class="form-intro">
+          <h2 id="h-solicitar">Solicite su cita</h2>
+          <p class="section-lead">Complete el formulario. Solo le pedimos lo necesario para contactarle.</p>
+          <div class="privacy" id="privacidad">
+            <h3>Aviso de privacidad</h3>
+            <p>Le pedimos su nombre, un celular y, si desea, documento y correo, solo para gestionar su solicitud de cita. Los verá el personal de recepción de la clínica. No escriba datos de salud en la nota. Enviar el formulario no reserva un horario: la cita queda confirmada solo cuando la clínica se comunique con usted.</p>
+          </div>
+        </div>
+
+        <div class="form-panel">
+          <p class="notice" id="demo-banner" hidden>Modo de demostración: los datos son de ejemplo y no se envía nada.</p>
+
+          <form id="booking" novalidate aria-describedby="form-status">
+            <fieldset class="step" id="f-service">
+              <legend><span class="n" aria-hidden="true">1</span> Sede y servicio</legend>
+              <div class="field" id="branch-field" hidden>
+                <label for="branch">Sede</label>
+                <select id="branch" name="branch"></select>
+              </div>
+              <div class="field">
+                <label for="service">Servicio</label>
+                <select id="service" name="service" aria-describedby="service-help service-err" required>
+                  <option value="">Seleccione un servicio…</option>
+                </select>
+                <p class="help" id="service-help"></p>
+                <p class="err" id="service-err" role="alert"></p>
+              </div>
+            </fieldset>
+
+            <fieldset class="step" id="f-when" disabled>
+              <legend><span class="n" aria-hidden="true">2</span> Día y horario</legend>
+              <p class="help" id="when-hint">Elija primero un servicio para ver los horarios.</p>
+              <div id="when-body" hidden>
+                <div class="group" role="radiogroup" aria-labelledby="days-label">
+                  <p class="group-label" id="days-label">Día</p>
+                  <div class="chips" id="days"></div>
+                </div>
+                <div class="group" role="radiogroup" aria-labelledby="times-label">
+                  <p class="group-label" id="times-label">Hora <span class="muted">(hora de Lima)</span></p>
+                  <div class="chips" id="times"></div>
+                </div>
+                <p class="err" id="when-err" role="alert"></p>
+              </div>
+            </fieldset>
+
+            <fieldset class="step" id="f-person">
+              <legend><span class="n" aria-hidden="true">3</span> Sus datos</legend>
+              <div class="row">
+                <div class="field">
+                  <label for="firstName">Nombres</label>
+                  <input id="firstName" name="firstName" autocomplete="given-name" maxlength="100" required aria-describedby="firstName-err">
+                  <p class="err" id="firstName-err" role="alert"></p>
+                </div>
+                <div class="field">
+                  <label for="lastName">Apellido paterno</label>
+                  <input id="lastName" name="lastName" autocomplete="family-name" maxlength="100" required aria-describedby="lastName-err">
+                  <p class="err" id="lastName-err" role="alert"></p>
+                </div>
+              </div>
+              <div class="row">
+                <div class="field">
+                  <label for="secondLastName">Apellido materno <span class="muted">(opcional)</span></label>
+                  <input id="secondLastName" name="secondLastName" maxlength="100" autocomplete="off">
+                </div>
+                <div class="field">
+                  <label for="mobile">Celular</label>
+                  <input id="mobile" name="mobile" inputmode="numeric" autocomplete="tel-national" maxlength="11" placeholder="9XX XXX XXX" required aria-describedby="mobile-help mobile-err">
+                  <p class="help" id="mobile-help">9 dígitos. Le llamaremos o escribiremos a este número.</p>
+                  <p class="err" id="mobile-err" role="alert"></p>
+                </div>
+              </div>
+              <div class="row">
+                <div class="field">
+                  <label for="documentType">Documento <span class="muted">(opcional)</span></label>
+                  <select id="documentType" name="documentType">
+                    <option value="DNI">DNI</option>
+                    <option value="CE">Carné de extranjería</option>
+                    <option value="PASSPORT">Pasaporte</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="documentNumber">Número de documento <span class="muted">(opcional)</span></label>
+                  <input id="documentNumber" name="documentNumber" inputmode="numeric" maxlength="20" autocomplete="off" aria-describedby="documentNumber-err">
+                  <p class="err" id="documentNumber-err" role="alert"></p>
+                </div>
+              </div>
+              <div class="field">
+                <label for="email">Correo <span class="muted">(opcional)</span></label>
+                <input id="email" name="email" type="email" autocomplete="email" maxlength="254" aria-describedby="email-err">
+                <p class="err" id="email-err" role="alert"></p>
+              </div>
+              <div class="field">
+                <label for="notes">Nota <span class="muted">(opcional)</span></label>
+                <textarea id="notes" name="notes" rows="3" maxlength="300" aria-describedby="notes-help"></textarea>
+                <p class="help" id="notes-help">Por ejemplo: «Prefiero la tarde». No escriba aquí datos de salud ni síntomas.</p>
+              </div>
+              <div class="trap" aria-hidden="true">
+                <label for="website">No complete este campo</label>
+                <input id="website" name="website" type="text" tabindex="-1" autocomplete="off">
+              </div>
+            </fieldset>
+
+            <div class="consent">
+              <label class="check">
+                <input type="checkbox" id="acceptPrivacy" name="acceptPrivacy" aria-describedby="acceptPrivacy-err">
+                <span>He leído el <a href="#privacidad">aviso de privacidad</a> y acepto que la clínica use mis datos para gestionar esta solicitud.</span>
+              </label>
+              <p class="err" id="acceptPrivacy-err" role="alert"></p>
+            </div>
+
+            <div class="submit-row">
+              <button class="btn btn-primary btn-lg" type="submit" id="submit">Enviar solicitud</button>
+              <p class="help">Enviar no reserva el horario: la clínica le confirmará por teléfono.</p>
+            </div>
+            <p class="status" id="form-status" role="status" aria-live="polite"></p>
+          </form>
+
+          <div class="success" id="success" tabindex="-1" hidden>
+            <h3>Recibimos su solicitud</h3>
+            <p class="ref">Referencia <strong id="reference"></strong></p>
+            <p>Aún no es una cita confirmada: la clínica le contactará al celular indicado para confirmarla.</p>
+            <button class="btn btn-ghost" type="button" id="another">Hacer otra solicitud</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="preguntas" aria-labelledby="h-preguntas">
+      <div class="wrap narrow">
+        <h2 id="h-preguntas">Preguntas frecuentes</h2>
+        <div class="faq">
+          <details>
+            <summary>¿Mi cita queda reservada al enviar el formulario?</summary>
+            <p>No. Enviar el formulario es una solicitud. La cita queda confirmada cuando recepción se comunica con usted y se lo indica.</p>
+          </details>
+          <details>
+            <summary>¿Qué pasa si el horario que elegí ya no está libre?</summary>
+            <p>Puede ocurrir si otra persona lo pidió antes. Le avisaremos para que elija otro horario, y si ya envió la solicitud, la clínica le propondrá una alternativa.</p>
+          </details>
+          <details>
+            <summary>¿Qué datos necesito?</summary>
+            <p>Sus nombres, su primer apellido y un celular. El documento y el correo son opcionales.</p>
+          </details>
+          <details>
+            <summary>¿Puedo cambiar o cancelar mi solicitud?</summary>
+            <p>Comuníquese con la clínica indicando su referencia. La clínica puede reprogramar o anular la solicitud.</p>
+          </details>
+          <details>
+            <summary>¿Es una urgencia?</summary>
+            <p>Esta página no atiende urgencias. Si tiene dolor intenso, hinchazón o un golpe, comuníquese directamente con la clínica o acuda a un servicio de emergencias.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-in">
+      <div class="foot-brand">
+        <img src="assets/apimedical-blanco.png" alt="APIMedical" width="140" height="29">
+        <p>Tecnología APIMedical · ApiDental by Apiworking</p>
+      </div>
+      <p class="foot-links"><a href="#privacidad">Aviso de privacidad</a> · <a href="/admin/" rel="nofollow">Acceso del personal</a></p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
