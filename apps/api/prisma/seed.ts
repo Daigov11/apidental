@@ -7,6 +7,7 @@ import { contactRow, identifierRow, prepareContacts, prepareIdentifier } from '.
 import { toDateOnly } from '../src/patients/util/lima-date.js';
 import { assignmentKey } from '../src/users/assignment-key.js';
 import { seedDemoClinical } from './demo-data.js';
+import { seedDemoAgenda } from './demo-agenda.js';
 
 loadEnvFile();
 
@@ -65,6 +66,8 @@ async function seedDemo() {
   const demoPassword = process.env['SEED_DEMO_PASSWORD'] ?? password;
   if (demoPassword.length < 12) throw new Error('SEED_DEMO_PASSWORD debe tener al menos 12 caracteres');
   const demo = await seedDemoClinical(db, { clinicId: clinic.id, branchId: branch.id, adminUserId: user.id, password: demoPassword });
+  const agenda = await seedDemoAgenda(db, { clinicId: clinic.id, branchId: branch.id, dentistId: demo.users['dentist']!, receptionId: demo.users['reception']!, adminUserId: user.id });
+  console.log(`Agenda demo (ficticia) lista: ${agenda.rooms} consultorios, ${agenda.services} servicios, ${agenda.appointments} citas nuevas.`);
   console.log(`Atención clínica demo (ficticia) lista: ${Object.keys(demo.users).length} usuarios, ${Object.keys(demo.patients).length} pacientes con visita (cerrada/corregida, borrador y consentimiento faltante).`);
 }
 
@@ -146,6 +149,9 @@ async function seedDemoPatients(clinicId: string, authorId: string) {
   // Par de posibles duplicados (mismo nombre y nacimiento, distinto documento) para probar la advertencia.
   await ensure({ dni: '90000004', firstName: 'Jorge', lastName: 'Demo', secondLastName: 'Repetido', birthDate: '1975-01-20', sex: 'MALE', mobile: '900000004' });
   await ensure({ dni: '90000005', firstName: 'JORGE', lastName: 'DEMO', secondLastName: 'Repetido', birthDate: '1975-01-20', sex: 'MALE', mobile: '900000004' });
+  // Paciente nueva (sin visitas previas) para mostrar el flujo cita → atención desde cero.
+  const newcomer = await ensure({ dni: '90000006', firstName: 'Camila', lastName: 'Demo', secondLastName: 'Nueva', birthDate: '1995-06-18', sex: 'FEMALE', mobile: '900000006' });
+  await consent(newcomer, 'CLINICAL', 'PATIENT');
   console.log('Pacientes demo (ficticios) listos: adulto, menor con representante y un par de posibles duplicados.');
 }
 
