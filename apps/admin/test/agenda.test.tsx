@@ -33,6 +33,19 @@ describe('Agenda', () => {
     expect(document.body.textContent).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
   });
 
+  it('busca citas por nombre, documento o celular y abre la cita elegida', async () => {
+    mockApi({
+      ...base(),
+      'GET /patients': { json: [{ id: 'p-1', fullName: 'Lucía Demo Adulta', status: 'ACTIVE' }] },
+      'GET /appointments': { json: [APPT] },
+    });
+    renderApp('/agenda');
+    await userEvent.type(await screen.findByLabelText('Buscar cita por documento, nombre o celular'), 'Lucía');
+    await userEvent.click(await screen.findByRole('button', { name: 'Lucía Demo Adulta' }));
+    await userEvent.click(await screen.findByRole('button', { name: /10:00 · Control \(demo\)/ }));
+    expect(await screen.findByRole('dialog', { name: 'Cita' })).toBeInTheDocument();
+  });
+
   it('abre la cita con sus acciones; recepción no ve «Iniciar atención»', async () => {
     mockApi(base());
     renderApp('/agenda');

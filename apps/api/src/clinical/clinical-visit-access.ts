@@ -50,7 +50,7 @@ export async function lockVisitShared(
 ): Promise<VisitLock> {
   const rows = await tx.$queryRaw<Row[]>`
     SELECT id, status, branch_id, dentist_user_id, version FROM clinical_visits
-    WHERE id = ${visitId} AND clinic_id = ${clinicId} AND patient_id = ${patientId} FOR SHARE`;
+    WHERE id = ${visitId} AND clinic_id = ${clinicId} AND patient_id = ${patientId} LOCK IN SHARE MODE`;
   if (!rows[0]) throw recordNotFound();
   return toLock(rows[0]);
 }

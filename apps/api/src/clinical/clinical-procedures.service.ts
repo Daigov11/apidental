@@ -475,7 +475,7 @@ export class ClinicalProceduresService {
                 // Bloqueo compartido: una revocación simultánea espera (o ya ganó) y el cierre ve su resultado.
                 const granted = await tx.$queryRaw<{ id: string }[]>`
                   SELECT id FROM patient_consents
-                  WHERE clinic_id = ${d.clinicId} AND patient_id = ${patientId} AND type = 'CLINICAL' AND status = 'GRANTED' FOR SHARE`;
+                  WHERE clinic_id = ${d.clinicId} AND patient_id = ${patientId} AND type = 'CLINICAL' AND status = 'GRANTED' LOCK IN SHARE MODE`;
                 if (granted.length === 0)
                   throw new ConsentBlockedError(prev, d.clinicId);
                 consent = 'GRANTED';

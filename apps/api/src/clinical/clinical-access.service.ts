@@ -258,7 +258,7 @@ export class ClinicalAccessService {
 
   /**
    * Revalida DENTRO de la transacción de una escritura que la relación asistencial sigue vigente. El bloqueo
-   * compartido (FOR SHARE) hace que una revocación concurrente espere a que la escritura confirme: o se revoca
+   * compartido (LOCK IN SHARE MODE) hace que una revocación concurrente espere a que la escritura confirme: o se revoca
    * ANTES (la escritura se deniega) o DESPUÉS (la escritura ya era válida). Nunca queda una escritura posterior a una
    * revocación ya confirmada.
    */
@@ -273,7 +273,7 @@ export class ClinicalAccessService {
       SELECT id FROM patient_care_relationships
       WHERE id IN (${Prisma.join(decision.relationshipIds)}) AND status = 'ACTIVE'
         AND (valid_until IS NULL OR valid_until > UTC_TIMESTAMP(3))
-      FOR SHARE`;
+      LOCK IN SHARE MODE`;
     if (live.length === 0) {
       await this.auditDenied(actor, decision.patientId, 'write', meta, {
         reason: 'relationship_revoked_during_write',

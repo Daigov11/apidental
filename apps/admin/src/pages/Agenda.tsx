@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { get } from '../api/client';
-import type { Calendar, CalendarAppointment } from '../api/types';
+import type { Appointment, Calendar, CalendarAppointment, PatientSummary } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
-import { addDays, dayOf, fmtLongDay, fmtShortDay, limaDate, minuteOfDay, mondayOf, timeOf } from '../lib/format';
+import { addDays, dayOf, fmtDate, fmtLongDay, fmtShortDay, limaDate, minuteOfDay, mondayOf, timeOf } from '../lib/format';
 import { useBranch } from '../lib/branch';
 import { useAsync } from '../lib/useAsync';
 import { Button } from '../ui/Button';
@@ -60,6 +60,7 @@ export function AgendaPage() {
           {cal.data?.dentists.map((d) => <option key={d.userId} value={d.userId}>{d.name}</option>)}
         </SelectField>
       </div>
+      <AppointmentSearch onPick={(a) => { setView('day'); setDate(a.date); setDentistId(''); setOpenId(a.id); }} />
       <h2 className="h3" style={{ marginBottom: 'var(--space-4)' }} aria-live="polite">
         {view === 'day' ? fmtLongDay(date) : `Semana del ${fmtShortDay(from)} al ${fmtShortDay(to)}`}
       </h2>
@@ -75,6 +76,66 @@ export function AgendaPage() {
         <NewAppointmentDrawer branchId={branchId} dentists={cal.data.dentists} defaultDate={date} defaultDentist={dentistId || undefined} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); cal.reload(); }} />
       )}
     </>
+  );
+}
+
+/** Busca citas por documento, nombre o celular del paciente (en cualquier fecha) y abre la elegida en su día. */
+function AppointmentSearch({ onPick }: { onPick: (a: Appointment) => void }) {
+  const [text, setText] = useState('');
+  const [query, setQuery] = useState<string | null>(null);
+  const [patient, setPatient] = useState<PatientSummary | null>(null);
+  useEffect(() => {
+    const q = text.trim();
+    const t = setTimeout(() => { setQuery(q.length >= 2 ? q : null); setPatient(null); }, q.length >= 2 ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [text]);
+  const found = useAsync(
+    (signal) => {
+      if (!query) return Promise.resolve([] as PatientSummary[]);
+      const digits = /^\d+$/.test(query);
+      return get<PatientSummary[]>('/patients', { ...(digits ? (query.length >= 8 ? { identifier: query } : { phone: query }) : { name: query }), limit: 8 }, signal);
+    },
+    [query],
+  );
+  const appts = useAsync(
+    (signal) => (patient ? get<Appointment[]>('/appointments', { patientId: patient.id, limit: 60 }, signal) : Promise.resolve([] as Appointment[])),
+    [patient?.id],
+  );
+  return (
+    <div className="toolbar" role="search" aria-label="Buscar citas de un paciente" style={{ flexDirection: 'column', alignItems: 'stretch' }}>
+      <TextField label="Buscar cita por documento, nombre o celular" value={text} onChange={(e) => setText(e.target.value)} placeholder="Ejemplo: 90000001, Lucía o 900000004" help="Se busca al escribir, desde 2 caracteres; muestra las citas del paciente en cualquier fecha." />
+      {query && !patient && (
+        <div aria-live="polite">
+          {found.loading && <Loading label="Buscando pacientes" rows={1} />}
+          {found.error != null && <ErrorState error={found.error} onRetry={found.reload} />}
+          {found.data && found.data.length === 0 && !found.loading && <p className="muted">No se encontró ningún paciente.</p>}
+          {found.data && found.data.length > 0 && (
+            <ul className="plain-list" style={{ display: 'grid', gap: 'var(--space-2)' }}>
+              {found.data.map((p) => <li key={p.id}><Button size="sm" onClick={() => setPatient(p)}>{p.fullName}</Button></li>)}
+            </ul>
+          )}
+        </div>
+      )}
+      {patient && (
+        <div aria-live="polite">
+          <p><strong>{patient.fullName}</strong> · <Button size="sm" onClick={() => setPatient(null)}>Elegir otro paciente</Button></p>
+          {appts.loading && <Loading label="Cargando citas" rows={1} />}
+          {appts.error != null && <ErrorState error={appts.error} onRetry={appts.reload} />}
+          {appts.data && appts.data.length === 0 && !appts.loading && <p className="muted">Este paciente no tiene citas.</p>}
+          {appts.data && appts.data.length > 0 && (
+            <ul className="plain-list" style={{ display: 'grid', gap: 'var(--space-2)' }}>
+              {[...appts.data].reverse().map((a) => (
+                <li key={a.id}>
+                  <Button size="sm" onClick={() => { setText(''); onPick(a); }}>
+                    {fmtDate(a.startsAt)} {a.time} · {a.service.name} · {a.dentist.name} · {a.statusLabel}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
