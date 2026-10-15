@@ -5,6 +5,9 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 - Arquitectura y decisiones de producto: [`docs/arquitectura/mvp-p0-apidental.md`](docs/arquitectura/mvp-p0-apidental.md)
 - Incremento 1 (fundación: tenancy, JWT, RBAC, auditoría): [`docs/arquitectura/incremento-1-fundacion.md`](docs/arquitectura/incremento-1-fundacion.md)
 - Incremento 2 (pacientes, consentimientos, adjuntos privados): [`docs/arquitectura/incremento-2-pacientes.md`](docs/arquitectura/incremento-2-pacientes.md)
+- **Política de acceso clínico P0** (adoptada): [`docs/arquitectura/politica-acceso-clinico.md`](docs/arquitectura/politica-acceso-clinico.md)
+- Incremento 3 (**propuesta**, historia clínica; sin código): [`docs/arquitectura/incremento-3-historia-clinica.md`](docs/arquitectura/incremento-3-historia-clinica.md)
+- Sistema de diseño (propuesta, previo al frontend): [`docs/diseno/sistema-de-diseno.md`](docs/diseno/sistema-de-diseno.md) · vista previa: [`docs/diseno/vista-previa.html`](docs/diseno/vista-previa.html)
 
 ## Qué incluye (y qué no)
 
