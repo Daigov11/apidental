@@ -8,6 +8,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { PermissionsGuard } from './auth/permissions.guard.js';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor.js';
+import { ClinicalModule } from './clinical/clinical.module.js';
 import { AppConfig } from './config/app-config.js';
 import { ConfigModule } from './config/config.module.js';
 import { DeliveryModule } from './invitations/delivery/delivery.module.js';
@@ -63,6 +64,7 @@ const isLoginRoute = (req: Request): boolean => STRICT_ROUTES.some((r) => req.pa
     TenancyModule,
     UsersModule,
     PatientsModule,
+    ClinicalModule,
     ProvisioningModule,
     InvitationsModule,
     MaintenanceModule,

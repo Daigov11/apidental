@@ -1,4 +1,11 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { clinicalConsentStatus, consentAlerts } from './consent-status.js';
+import {
+  BadRequestException,
+  ConflictException,
+  Inject,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import type { RequestMeta } from '../common/utils/request-meta.js';
@@ -15,7 +22,12 @@ import type {
   UpdatePatientDto,
 } from './dto/patient.dto.js';
 import { DuplicatesService } from './duplicates.service.js';
-import { canReadFull, clinicScope, isUniqueViolation, requirePatient } from './patient-access.js';
+import {
+  canReadFull,
+  clinicScope,
+  isUniqueViolation,
+  requirePatient,
+} from './patient-access.js';
 import {
   contactRow,
   identifierRow,
@@ -37,8 +49,14 @@ import {
 import { normalizeEmail } from '../common/utils/email.js';
 
 const ACTIVE_RELATIONS = {
-  identifiers: { where: { status: 'ACTIVE' as const }, orderBy: { type: 'asc' as const } },
-  contacts: { where: { status: 'ACTIVE' as const }, orderBy: [{ type: 'asc' as const }, { createdAt: 'asc' as const }] },
+  identifiers: {
+    where: { status: 'ACTIVE' as const },
+    orderBy: { type: 'asc' as const },
+  },
+  contacts: {
+    where: { status: 'ACTIVE' as const },
+    orderBy: [{ type: 'asc' as const }, { createdAt: 'asc' as const }],
+  },
 };
 
 /** Contactos cuyo cambio exige motivo (dato de identificación y de comunicación). */
@@ -57,11 +75,18 @@ export class PatientsService {
   async create(actor: AuthPrincipal, dto: CreatePatientDto, meta: RequestMeta) {
     const { clinicId, branchId } = clinicScope(actor);
     const birthDate = parseBirthDate(dto.birthDate);
-    const identifier = dto.identifier ? prepareIdentifier(dto.identifier) : null;
+    const identifier = dto.identifier
+      ? prepareIdentifier(dto.identifier)
+      : null;
     const contacts = prepareContacts(dto.contacts ?? []);
 
     // 1) Identificador repetido en la clínica => conflicto, no se crea el duplicado.
-    if (identifier) await this.duplicates.assertNoIdentifierConflict(this.db, clinicId, identifier);
+    if (identifier)
+      await this.duplicates.assertNoIdentifierConflict(
+        this.db,
+        clinicId,
+        identifier,
+      );
 
     // 2) Coincidencias blandas (nombre, nacimiento, celular, correo) => solo advertencia.
     const candidates = await this.duplicates.findCandidates(this.db, clinicId, {
@@ -69,8 +94,12 @@ export class PatientsService {
       lastName: dto.lastName,
       secondLastName: dto.secondLastName ?? null,
       birthDate,
-      mobiles: contacts.filter((c) => c.type === 'MOBILE').flatMap((c) => (c.valueKey ? [c.valueKey] : [])),
-      emails: contacts.filter((c) => c.type === 'EMAIL').flatMap((c) => (c.valueKey ? [c.valueKey] : [])),
+      mobiles: contacts
+        .filter((c) => c.type === 'MOBILE')
+        .flatMap((c) => (c.valueKey ? [c.valueKey] : [])),
+      emails: contacts
+        .filter((c) => c.type === 'EMAIL')
+        .flatMap((c) => (c.valueKey ? [c.valueKey] : [])),
     });
 
     let patientId: string;
@@ -90,11 +119,18 @@ export class PatientsService {
         });
         if (identifier) {
           await tx.patientIdentifier.create({
-            data: identifierRow(clinicId, patient.id, identifier, actor.user.id),
+            data: identifierRow(
+              clinicId,
+              patient.id,
+              identifier,
+              actor.user.id,
+            ),
           });
         }
         for (const c of contacts) {
-          await tx.patientContact.create({ data: contactRow(clinicId, patient.id, c, actor.user.id) });
+          await tx.patientContact.create({
+            data: contactRow(clinicId, patient.id, c, actor.user.id),
+          });
         }
         await this.audit.record(
           {
@@ -119,7 +155,9 @@ export class PatientsService {
       });
     } catch (error) {
       if (isUniqueViolation(error)) {
-        throw new ConflictException('Conflicto de unicidad al crear el paciente (identificador ya registrado)');
+        throw new ConflictException(
+          'Conflicto de unicidad al crear el paciente (identificador ya registrado)',
+        );
       }
       throw error;
     }
@@ -127,13 +165,18 @@ export class PatientsService {
     return {
       patient: await this.loadView(actor, clinicId, patientId),
       duplicateWarnings: this.duplicates.present(candidates, actor),
-      warnings: isMinor(birthDate) ? ['MINOR_WITHOUT_GUARDIAN'] : [],
+      // Un paciente nuevo no tiene consentimiento clínico: se avisa, pero no impide registrarlo ni agendarlo.
+      warnings: [...(isMinor(birthDate) ? ['MINOR_WITHOUT_GUARDIAN'] : []), 'CLINICAL_CONSENT_MISSING'],
     };
   }
 
   // ------------------------------------------------------------- consultar
 
-  async search(actor: AuthPrincipal, q: SearchPatientsQuery, meta: RequestMeta) {
+  async search(
+    actor: AuthPrincipal,
+    q: SearchPatientsQuery,
+    meta: RequestMeta,
+  ) {
     const { clinicId, branchId } = clinicScope(actor);
     const and: Record<string, unknown>[] = [];
     const used: string[] = [];
@@ -141,10 +184,19 @@ export class PatientsService {
     if (q.identifier) {
       used.push('identifier');
       const number = q.identifierType
-        ? normalizeIdentifier(q.identifierType as IdentifierTypeCode, q.identifier)
+        ? normalizeIdentifier(
+            q.identifierType as IdentifierTypeCode,
+            q.identifier,
+          )
         : q.identifier.replace(/[\s-]/g, '').toUpperCase();
       and.push({
-        identifiers: { some: { status: 'ACTIVE', number, ...(q.identifierType ? { type: q.identifierType } : {}) } },
+        identifiers: {
+          some: {
+            status: 'ACTIVE',
+            number,
+            ...(q.identifierType ? { type: q.identifierType } : {}),
+          },
+        },
       });
     }
     if (q.name) {
@@ -162,12 +214,26 @@ export class PatientsService {
     if (q.phone) {
       used.push('phone');
       and.push({
-        contacts: { some: { status: 'ACTIVE', type: { in: ['MOBILE', 'PHONE'] }, valueKey: normalizePhone(q.phone) } },
+        contacts: {
+          some: {
+            status: 'ACTIVE',
+            type: { in: ['MOBILE', 'PHONE'] },
+            valueKey: normalizePhone(q.phone),
+          },
+        },
       });
     }
     if (q.email) {
       used.push('email');
-      and.push({ contacts: { some: { status: 'ACTIVE', type: 'EMAIL', valueKey: normalizeEmail(q.email) } } });
+      and.push({
+        contacts: {
+          some: {
+            status: 'ACTIVE',
+            type: 'EMAIL',
+            valueKey: normalizeEmail(q.email),
+          },
+        },
+      });
     }
     if (q.birthDate) {
       used.push('birthDate');
@@ -192,7 +258,11 @@ export class PatientsService {
       meta,
       summary: { filters: used, resultCount: rows.length, offset: q.offset },
     });
-    return rows.map((r) => (canReadFull(actor) ? toFullView(r as PatientRow) : toBasicView(r as PatientRow)));
+    return rows.map((r) =>
+      canReadFull(actor)
+        ? toFullView(r as PatientRow)
+        : toBasicView(r as PatientRow),
+    );
   }
 
   async get(actor: AuthPrincipal, patientId: string, meta: RequestMeta) {
@@ -220,45 +290,74 @@ export class PatientsService {
       clinicId,
       branchId,
       meta,
-      summary: { sections: full ? ['demographics', 'contacts', 'guardians'] : ['basic'] },
+      summary: {
+        sections: full ? ['demographics', 'contacts', 'guardians'] : ['basic'],
+      },
     });
 
     if (!full) return toBasicView(row as PatientRow);
     const minor = isMinor(row.birthDate);
+    // Alerta (no bloqueo): sin consentimiento clínico vigente se avisa, pero se puede seguir atendiendo lo administrativo.
+    const consentWarnings = consentAlerts(
+      await clinicalConsentStatus(this.db, clinicId, patientId),
+    ).map((a) => a.code);
     return {
       ...toFullView(row as PatientRow),
       guardianCount: guardians.length,
-      warnings: minor && guardians.length === 0 ? ['MINOR_WITHOUT_GUARDIAN'] : [],
+      warnings: [
+        ...(minor && guardians.length === 0 ? ['MINOR_WITHOUT_GUARDIAN'] : []),
+        ...consentWarnings,
+      ],
     };
   }
 
   // ------------------------------------------------------------- modificar
 
-  async update(actor: AuthPrincipal, patientId: string, dto: UpdatePatientDto, meta: RequestMeta) {
+  async update(
+    actor: AuthPrincipal,
+    patientId: string,
+    dto: UpdatePatientDto,
+    meta: RequestMeta,
+  ) {
     const { clinicId, branchId } = clinicScope(actor);
-    const current = await requirePatient(this.db, clinicId, patientId, { active: true });
+    const current = await requirePatient(this.db, clinicId, patientId, {
+      active: true,
+    });
 
     const data: Record<string, unknown> = {};
     const changed: string[] = [];
     const set = (field: string, next: unknown, prev: unknown) => {
-      const same = next instanceof Date && prev instanceof Date ? next.getTime() === prev.getTime() : next === prev;
+      const same =
+        next instanceof Date && prev instanceof Date
+          ? next.getTime() === prev.getTime()
+          : next === prev;
       if (!same) {
         data[field] = next;
         changed.push(field);
       }
     };
-    if (dto.firstName !== undefined) set('firstName', dto.firstName, current.firstName);
-    if (dto.lastName !== undefined) set('lastName', dto.lastName, current.lastName);
-    if (dto.secondLastName !== undefined) set('secondLastName', dto.secondLastName || null, current.secondLastName);
+    if (dto.firstName !== undefined)
+      set('firstName', dto.firstName, current.firstName);
+    if (dto.lastName !== undefined)
+      set('lastName', dto.lastName, current.lastName);
+    if (dto.secondLastName !== undefined)
+      set('secondLastName', dto.secondLastName || null, current.secondLastName);
     if (dto.sex !== undefined) set('sex', dto.sex, current.sex);
-    if (dto.birthDate !== undefined) set('birthDate', parseBirthDate(dto.birthDate), current.birthDate);
+    if (dto.birthDate !== undefined)
+      set('birthDate', parseBirthDate(dto.birthDate), current.birthDate);
 
     if (changed.length === 0) {
-      return { patient: await this.loadView(actor, clinicId, patientId), duplicateWarnings: [] };
+      return {
+        patient: await this.loadView(actor, clinicId, patientId),
+        duplicateWarnings: [],
+      };
     }
 
     await this.db.$transaction(async (tx) => {
-      await tx.patient.update({ where: { id: patientId }, data: { ...data, updatedById: actor.user.id } });
+      await tx.patient.update({
+        where: { id: patientId },
+        data: { ...data, updatedById: actor.user.id },
+      });
       await this.audit.record(
         {
           action: AuditAction.PatientUpdated,
@@ -276,7 +375,9 @@ export class PatientsService {
       );
     });
 
-    const identityChanged = changed.some((f) => ['firstName', 'lastName', 'secondLastName', 'birthDate'].includes(f));
+    const identityChanged = changed.some((f) =>
+      ['firstName', 'lastName', 'secondLastName', 'birthDate'].includes(f),
+    );
     let duplicateWarnings: unknown[] = [];
     if (identityChanged) {
       const updated = await requirePatient(this.db, clinicId, patientId);
@@ -293,7 +394,10 @@ export class PatientsService {
       );
       duplicateWarnings = this.duplicates.present(found, actor);
     }
-    return { patient: await this.loadView(actor, clinicId, patientId), duplicateWarnings };
+    return {
+      patient: await this.loadView(actor, clinicId, patientId),
+      duplicateWarnings,
+    };
   }
 
   /** Baja/alta lógica del paciente (nunca se elimina físicamente). */
@@ -307,7 +411,11 @@ export class PatientsService {
     const { clinicId, branchId } = clinicScope(actor);
     const current = await requirePatient(this.db, clinicId, patientId);
     if (current.status === status) {
-      throw new ConflictException(status === 'INACTIVE' ? 'El paciente ya está inactivo' : 'El paciente ya está activo');
+      throw new ConflictException(
+        status === 'INACTIVE'
+          ? 'El paciente ya está inactivo'
+          : 'El paciente ya está activo',
+      );
     }
     await this.db.$transaction(async (tx) => {
       await tx.patient.update({
@@ -316,7 +424,10 @@ export class PatientsService {
       });
       await this.audit.record(
         {
-          action: status === 'INACTIVE' ? AuditAction.PatientDeactivated : AuditAction.PatientReactivated,
+          action:
+            status === 'INACTIVE'
+              ? AuditAction.PatientDeactivated
+              : AuditAction.PatientReactivated,
           entity: 'Patient',
           entityId: patientId,
           patientId,
@@ -335,7 +446,12 @@ export class PatientsService {
   // ---------------------------------------------------------- identificadores
 
   /** Alta o reemplazo del identificador vigente de un tipo. El anterior se conserva como historial. */
-  async setIdentifier(actor: AuthPrincipal, patientId: string, dto: SetIdentifierDto, meta: RequestMeta) {
+  async setIdentifier(
+    actor: AuthPrincipal,
+    patientId: string,
+    dto: SetIdentifierDto,
+    meta: RequestMeta,
+  ) {
     const { clinicId, branchId } = clinicScope(actor);
     await requirePatient(this.db, clinicId, patientId, { active: true });
     const next = prepareIdentifier(dto);
@@ -344,12 +460,22 @@ export class PatientsService {
       where: { patientId, clinicId, type: next.type, status: 'ACTIVE' },
     });
     if (current?.number === next.number) {
-      return { identifiers: await this.activeIdentifiers(clinicId, patientId), changed: false };
+      return {
+        identifiers: await this.activeIdentifiers(clinicId, patientId),
+        changed: false,
+      };
     }
     if (current && !dto.reason) {
-      throw new BadRequestException('Reemplazar un identificador requiere un motivo');
+      throw new BadRequestException(
+        'Reemplazar un identificador requiere un motivo',
+      );
     }
-    await this.duplicates.assertNoIdentifierConflict(this.db, clinicId, next, patientId);
+    await this.duplicates.assertNoIdentifierConflict(
+      this.db,
+      clinicId,
+      next,
+      patientId,
+    );
 
     try {
       await this.db.$transaction(async (tx) => {
@@ -366,7 +492,10 @@ export class PatientsService {
           });
         }
         await tx.patientIdentifier.create({
-          data: { ...identifierRow(clinicId, patientId, next, actor.user.id), changeReason: dto.reason ?? null },
+          data: {
+            ...identifierRow(clinicId, patientId, next, actor.user.id),
+            changeReason: dto.reason ?? null,
+          },
         });
         await this.audit.record(
           {
@@ -390,10 +519,16 @@ export class PatientsService {
         );
       });
     } catch (error) {
-      if (isUniqueViolation(error)) throw new ConflictException('Ese identificador ya está registrado en la clínica');
+      if (isUniqueViolation(error))
+        throw new ConflictException(
+          'Ese identificador ya está registrado en la clínica',
+        );
       throw error;
     }
-    return { identifiers: await this.activeIdentifiers(clinicId, patientId), changed: true };
+    return {
+      identifiers: await this.activeIdentifiers(clinicId, patientId),
+      changed: true,
+    };
   }
 
   private async activeIdentifiers(clinicId: string, patientId: string) {
@@ -406,7 +541,12 @@ export class PatientsService {
 
   // ---------------------------------------------------------------- contactos
 
-  async addContact(actor: AuthPrincipal, patientId: string, dto: ContactInput, meta: RequestMeta) {
+  async addContact(
+    actor: AuthPrincipal,
+    patientId: string,
+    dto: ContactInput,
+    meta: RequestMeta,
+  ) {
     const { clinicId, branchId } = clinicScope(actor);
     await requirePatient(this.db, clinicId, patientId, { active: true });
     const type = dto.type as ContactTypeCode;
@@ -416,12 +556,17 @@ export class PatientsService {
       where: { clinicId, patientId, type, status: 'ACTIVE' },
       select: { valueKey: true, isPrimary: true },
     });
-    if (normalized.valueKey && existing.some((c) => c.valueKey === normalized.valueKey)) {
+    if (
+      normalized.valueKey &&
+      existing.some((c) => c.valueKey === normalized.valueKey)
+    ) {
       throw new ConflictException('El paciente ya tiene ese contacto vigente');
     }
     const hasPrimary = existing.some((c) => c.isPrimary);
     if (dto.isPrimary && hasPrimary) {
-      throw new ConflictException('Ya existe un contacto principal de ese tipo; use PATCH para reemplazarlo con un motivo');
+      throw new ConflictException(
+        'Ya existe un contacto principal de ese tipo; use PATCH para reemplazarlo con un motivo',
+      );
     }
     const prepared: PreparedContact = {
       type,
@@ -433,7 +578,9 @@ export class PatientsService {
     let contactId = '';
     try {
       await this.db.$transaction(async (tx) => {
-        const row = await tx.patientContact.create({ data: contactRow(clinicId, patientId, prepared, actor.user.id) });
+        const row = await tx.patientContact.create({
+          data: contactRow(clinicId, patientId, prepared, actor.user.id),
+        });
         contactId = row.id;
         await this.audit.record(
           {
@@ -445,42 +592,82 @@ export class PatientsService {
             clinicId,
             branchId,
             meta,
-            summary: { type, value: maskContact(type, prepared.value), isPrimary: prepared.isPrimary },
+            summary: {
+              type,
+              value: maskContact(type, prepared.value),
+              isPrimary: prepared.isPrimary,
+            },
           },
           tx,
         );
       });
     } catch (error) {
-      if (isUniqueViolation(error)) throw new ConflictException('Contacto duplicado o principal ya existente');
+      if (isUniqueViolation(error))
+        throw new ConflictException(
+          'Contacto duplicado o principal ya existente',
+        );
       throw error;
     }
-    return { contact: await this.contactView(contactId), duplicateWarnings: await this.contactWarnings(actor, clinicId, patientId, prepared) };
+    return {
+      contact: await this.contactView(contactId),
+      duplicateWarnings: await this.contactWarnings(
+        actor,
+        clinicId,
+        patientId,
+        prepared,
+      ),
+    };
   }
 
   /** Reemplaza el valor de un contacto: el anterior queda como historial. */
-  async changeContact(actor: AuthPrincipal, patientId: string, contactId: string, dto: ChangeContactDto, meta: RequestMeta) {
+  async changeContact(
+    actor: AuthPrincipal,
+    patientId: string,
+    contactId: string,
+    dto: ChangeContactDto,
+    meta: RequestMeta,
+  ) {
     const { clinicId, branchId } = clinicScope(actor);
     await requirePatient(this.db, clinicId, patientId, { active: true });
     const current = await this.activeContact(clinicId, patientId, contactId);
     const type = current.type as ContactTypeCode;
     if (REASON_REQUIRED.includes(type) && !dto.reason) {
-      throw new BadRequestException('Cambiar un celular o correo requiere un motivo');
+      throw new BadRequestException(
+        'Cambiar un celular o correo requiere un motivo',
+      );
     }
     const next = normalizeContact(type, dto.value);
     if (next.valueKey === current.valueKey && next.value === current.value) {
-      return { contact: await this.contactView(current.id), duplicateWarnings: [] };
+      return {
+        contact: await this.contactView(current.id),
+        duplicateWarnings: [],
+      };
     }
-    const prepared: PreparedContact = { type, ...next, label: current.label, isPrimary: current.isPrimary };
+    const prepared: PreparedContact = {
+      type,
+      ...next,
+      label: current.label,
+      isPrimary: current.isPrimary,
+    };
 
     let newId = '';
     try {
       await this.db.$transaction(async (tx) => {
         await tx.patientContact.update({
           where: { id: current.id },
-          data: { status: 'SUPERSEDED', primaryKey: null, activeKey: null, supersededAt: new Date(), changeReason: dto.reason ?? null },
+          data: {
+            status: 'SUPERSEDED',
+            primaryKey: null,
+            activeKey: null,
+            supersededAt: new Date(),
+            changeReason: dto.reason ?? null,
+          },
         });
         const row = await tx.patientContact.create({
-          data: { ...contactRow(clinicId, patientId, prepared, actor.user.id), changeReason: dto.reason ?? null },
+          data: {
+            ...contactRow(clinicId, patientId, prepared, actor.user.id),
+            changeReason: dto.reason ?? null,
+          },
         });
         newId = row.id;
         await this.audit.record(
@@ -504,24 +691,49 @@ export class PatientsService {
         );
       });
     } catch (error) {
-      if (isUniqueViolation(error)) throw new ConflictException('El paciente ya tiene ese contacto vigente');
+      if (isUniqueViolation(error))
+        throw new ConflictException(
+          'El paciente ya tiene ese contacto vigente',
+        );
       throw error;
     }
-    return { contact: await this.contactView(newId), duplicateWarnings: await this.contactWarnings(actor, clinicId, patientId, prepared) };
+    return {
+      contact: await this.contactView(newId),
+      duplicateWarnings: await this.contactWarnings(
+        actor,
+        clinicId,
+        patientId,
+        prepared,
+      ),
+    };
   }
 
-  async retireContact(actor: AuthPrincipal, patientId: string, contactId: string, dto: RetireContactDto, meta: RequestMeta) {
+  async retireContact(
+    actor: AuthPrincipal,
+    patientId: string,
+    contactId: string,
+    dto: RetireContactDto,
+    meta: RequestMeta,
+  ) {
     const { clinicId, branchId } = clinicScope(actor);
     await requirePatient(this.db, clinicId, patientId, { active: true });
     const current = await this.activeContact(clinicId, patientId, contactId);
     const type = current.type as ContactTypeCode;
     if (REASON_REQUIRED.includes(type) && !dto.reason) {
-      throw new BadRequestException('Dar de baja un celular o correo requiere un motivo');
+      throw new BadRequestException(
+        'Dar de baja un celular o correo requiere un motivo',
+      );
     }
     await this.db.$transaction(async (tx) => {
       await tx.patientContact.update({
         where: { id: current.id },
-        data: { status: 'SUPERSEDED', primaryKey: null, activeKey: null, supersededAt: new Date(), changeReason: dto.reason ?? null },
+        data: {
+          status: 'SUPERSEDED',
+          primaryKey: null,
+          activeKey: null,
+          supersededAt: new Date(),
+          changeReason: dto.reason ?? null,
+        },
       });
       await this.audit.record(
         {
@@ -533,7 +745,11 @@ export class PatientsService {
           clinicId,
           branchId,
           meta,
-          summary: { type, previous: maskContact(type, current.value), reason: dto.reason ?? null },
+          summary: {
+            type,
+            previous: maskContact(type, current.value),
+            reason: dto.reason ?? null,
+          },
         },
         tx,
       );
@@ -541,7 +757,11 @@ export class PatientsService {
     return { retired: true };
   }
 
-  private async activeContact(clinicId: string, patientId: string, contactId: string) {
+  private async activeContact(
+    clinicId: string,
+    patientId: string,
+    contactId: string,
+  ) {
     const contact = await this.db.patientContact.findFirst({
       where: { id: contactId, patientId, clinicId, status: 'ACTIVE' },
     });
@@ -551,15 +771,28 @@ export class PatientsService {
 
   private async contactView(id: string) {
     const c = await this.db.patientContact.findUniqueOrThrow({ where: { id } });
-    return { id: c.id, type: c.type, value: c.value, label: c.label, isPrimary: c.isPrimary };
+    return {
+      id: c.id,
+      type: c.type,
+      value: c.value,
+      label: c.label,
+      isPrimary: c.isPrimary,
+    };
   }
 
-  private async contactWarnings(actor: AuthPrincipal, clinicId: string, patientId: string, c: PreparedContact) {
+  private async contactWarnings(
+    actor: AuthPrincipal,
+    clinicId: string,
+    patientId: string,
+    c: PreparedContact,
+  ) {
     if (!c.valueKey || (c.type !== 'MOBILE' && c.type !== 'EMAIL')) return [];
     const found = await this.duplicates.findCandidates(
       this.db,
       clinicId,
-      c.type === 'MOBILE' ? { mobiles: [c.valueKey] } : { emails: [c.valueKey] },
+      c.type === 'MOBILE'
+        ? { mobiles: [c.valueKey] }
+        : { emails: [c.valueKey] },
       patientId,
     );
     return this.duplicates.present(found, actor);
@@ -568,10 +801,22 @@ export class PatientsService {
   // --------------------------------------------------------------- duplicados
 
   /** Verificación previa al alta (o al editar): no escribe nada. */
-  async checkDuplicates(actor: AuthPrincipal, dto: DuplicateCheckDto, meta: RequestMeta) {
+  async checkDuplicates(
+    actor: AuthPrincipal,
+    dto: DuplicateCheckDto,
+    meta: RequestMeta,
+  ) {
     const { clinicId, branchId } = clinicScope(actor);
-    const identifier = dto.identifier ? prepareIdentifier(dto.identifier) : null;
-    const conflict = identifier ? await this.duplicates.findIdentifierConflict(this.db, clinicId, identifier) : null;
+    const identifier = dto.identifier
+      ? prepareIdentifier(dto.identifier)
+      : null;
+    const conflict = identifier
+      ? await this.duplicates.findIdentifierConflict(
+          this.db,
+          clinicId,
+          identifier,
+        )
+      : null;
     const found = await this.duplicates.findCandidates(this.db, clinicId, {
       firstName: dto.firstName,
       lastName: dto.lastName,
@@ -587,12 +832,23 @@ export class PatientsService {
       clinicId,
       branchId,
       meta,
-      summary: { mode: 'check', identifierConflict: Boolean(conflict), candidates: found.length },
+      summary: {
+        mode: 'check',
+        identifierConflict: Boolean(conflict),
+        candidates: found.length,
+      },
     });
-    return { identifierConflict: conflict, possibleDuplicates: this.duplicates.present(found, actor) };
+    return {
+      identifierConflict: conflict,
+      possibleDuplicates: this.duplicates.present(found, actor),
+    };
   }
 
-  async duplicatesOf(actor: AuthPrincipal, patientId: string, meta: RequestMeta) {
+  async duplicatesOf(
+    actor: AuthPrincipal,
+    patientId: string,
+    meta: RequestMeta,
+  ) {
     const { clinicId, branchId } = clinicScope(actor);
     const p = await this.db.patient.findFirst({
       where: { id: patientId, clinicId },
@@ -607,8 +863,12 @@ export class PatientsService {
         lastName: p.lastName,
         secondLastName: p.secondLastName,
         birthDate: p.birthDate,
-        mobiles: p.contacts.filter((c) => c.type === 'MOBILE' && c.valueKey).map((c) => c.valueKey!),
-        emails: p.contacts.filter((c) => c.type === 'EMAIL' && c.valueKey).map((c) => c.valueKey!),
+        mobiles: p.contacts
+          .filter((c) => c.type === 'MOBILE' && c.valueKey)
+          .map((c) => c.valueKey!),
+        emails: p.contacts
+          .filter((c) => c.type === 'EMAIL' && c.valueKey)
+          .map((c) => c.valueKey!),
       },
       patientId,
     );
@@ -623,7 +883,10 @@ export class PatientsService {
       meta,
       summary: { mode: 'patient', candidates: found.length },
     });
-    return { patientId, possibleDuplicates: this.duplicates.present(found, actor) };
+    return {
+      patientId,
+      possibleDuplicates: this.duplicates.present(found, actor),
+    };
   }
 
   async duplicateReport(actor: AuthPrincipal, meta: RequestMeta) {
@@ -643,11 +906,17 @@ export class PatientsService {
 
   // ------------------------------------------------------------------ internos
 
-  private async loadView(actor: AuthPrincipal, clinicId: string, patientId: string) {
+  private async loadView(
+    actor: AuthPrincipal,
+    clinicId: string,
+    patientId: string,
+  ) {
     const row = await this.db.patient.findFirstOrThrow({
       where: { id: patientId, clinicId },
       include: ACTIVE_RELATIONS,
     });
-    return canReadFull(actor) ? toFullView(row as PatientRow) : toBasicView(row as PatientRow);
+    return canReadFull(actor)
+      ? toFullView(row as PatientRow)
+      : toBasicView(row as PatientRow);
   }
 }

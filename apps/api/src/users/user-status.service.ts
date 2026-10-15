@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
+import { endCareRelationshipsOf } from '../clinical/care-ending.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { SessionService } from '../auth/session.service.js';
 import { withTxRetry } from '../common/utils/tx-retry.js';
@@ -54,7 +55,16 @@ export class UserStatusService {
               select: { id: true, status: true },
             });
             if (!target) throw new NotFoundException('Usuario no encontrado');
-            await this.assertInScope(tx, actor, targetId, { forDisable: true });
+            // Protección del Director Clínico: solo OTRO Director vigente de su clínica puede deshabilitarlo.
+            const asDirector = await this.assertDirectorProtection(
+              tx,
+              actor,
+              targetId,
+            );
+            await this.assertInScope(tx, actor, targetId, {
+              forDisable: true,
+              asDirector,
+            });
             if (target.status === 'DISABLED')
               throw new ConflictException('La cuenta ya está deshabilitada');
 
@@ -83,6 +93,14 @@ export class UserStatusService {
             );
             const proofsInvalidated =
               await this.sessions.invalidateReauthProofs(targetId, tx);
+            // Sin cuenta activa no hay relaciones asistenciales: se terminan (una reactivación NO las restaura).
+            const careEnded = await endCareRelationshipsOf(tx, this.audit, {
+              dentistUserId: targetId,
+              actorId: actor.user.id,
+              endKind: 'SYSTEM',
+              reason: 'Usuario deshabilitado',
+              meta,
+            });
             const recoveries = await tx.passwordRecovery.updateMany({
               where: { userId: targetId, status: 'PENDING' },
               data: {
@@ -107,6 +125,7 @@ export class UserStatusService {
                   sessionsRevoked,
                   reauthProofsInvalidated: proofsInvalidated,
                   recoveriesRevoked: recoveries.count,
+                  careRelationshipsEnded: careEnded,
                   authoritiesHeld: authorities.map((a) => a.roleCode),
                 },
               },
@@ -123,6 +142,22 @@ export class UserStatusService {
         ),
       );
     } catch (error) {
+      if (error instanceof DirectorProtectedError) {
+        await this.audit.recordSafely({
+          action: AuditAction.DirectorProtectionBlocked,
+          entity: 'User',
+          entityId: targetId,
+          userId: actor.user.id,
+          clinicId: ctx.clinicId,
+          branchId: ctx.branchId,
+          meta,
+          summary: { operation: 'disable_user', actorRoles: actor.roles },
+        });
+        throw new ForbiddenException({
+          message: error.message,
+          code: 'DIRECTOR_PROTECTED',
+        });
+      }
       if (error instanceof LastAuthorityError) {
         await this.audit.recordSafely({
           action: AuditAction.LastAuthorityBlocked,
@@ -150,68 +185,124 @@ export class UserStatusService {
     meta: RequestMeta,
   ) {
     const ctx = actor.context!;
-    return withTxRetry(() =>
-      this.db.$transaction(
-        async (tx) => {
-          const target = await tx.user.findUnique({
-            where: { id: targetId },
-            select: { id: true, status: true, disabledByPlatform: true },
-          });
-          if (!target) throw new NotFoundException('Usuario no encontrado');
-          await this.assertInScope(tx, actor, targetId, { forDisable: false });
-          if (target.status !== 'DISABLED')
-            throw new ConflictException('La cuenta no está deshabilitada');
-          // Una cuenta que deshabilitó la plataforma (p. ej. por un incidente) solo la reactiva la plataforma.
-          if (target.disabledByPlatform && ctx.clinicId !== null) {
-            throw new ForbiddenException(
-              'Esta cuenta la deshabilitó la plataforma; solo la plataforma puede reactivarla',
+    try {
+      return await withTxRetry(() =>
+        this.db.$transaction(
+          async (tx) => {
+            const target = await tx.user.findUnique({
+              where: { id: targetId },
+              select: { id: true, status: true, disabledByPlatform: true },
+            });
+            if (!target) throw new NotFoundException('Usuario no encontrado');
+            const asDirector = await this.assertDirectorProtection(
+              tx,
+              actor,
+              targetId,
             );
-          }
-          // Reactivación explícita: NO se restauran sesiones (las anteriores siguen revocadas); debe iniciar sesión de nuevo.
-          await tx.user.update({
-            where: { id: targetId },
-            data: {
-              status: 'ACTIVE',
-              disabledAt: null,
-              disabledById: null,
-              disabledReason: null,
-              disabledByPlatform: false,
-              failedLoginAttempts: 0,
-              lockedUntil: null,
-            },
-          });
-          await this.audit.record(
-            {
-              action: AuditAction.UserReactivated,
-              entity: 'User',
-              entityId: targetId,
-              userId: actor.user.id,
-              clinicId: ctx.clinicId,
-              branchId: ctx.branchId,
-              meta,
-              summary: { reason, sessionsRestored: 0 },
-            },
-            tx,
-          );
-          return { id: targetId, status: 'ACTIVE' as const };
-        },
-        { isolationLevel: 'ReadCommitted' },
-      ),
-    );
+            await this.assertInScope(tx, actor, targetId, {
+              forDisable: false,
+              asDirector,
+            });
+            if (target.status !== 'DISABLED')
+              throw new ConflictException('La cuenta no está deshabilitada');
+            // Una cuenta que deshabilitó la plataforma (p. ej. por un incidente) solo la reactiva la plataforma.
+            if (target.disabledByPlatform && ctx.clinicId !== null) {
+              throw new ForbiddenException(
+                'Esta cuenta la deshabilitó la plataforma; solo la plataforma puede reactivarla',
+              );
+            }
+            // Reactivación explícita: NO se restauran sesiones (las anteriores siguen revocadas); debe iniciar sesión de nuevo.
+            await tx.user.update({
+              where: { id: targetId },
+              data: {
+                status: 'ACTIVE',
+                disabledAt: null,
+                disabledById: null,
+                disabledReason: null,
+                disabledByPlatform: false,
+                failedLoginAttempts: 0,
+                lockedUntil: null,
+              },
+            });
+            await this.audit.record(
+              {
+                action: AuditAction.UserReactivated,
+                entity: 'User',
+                entityId: targetId,
+                userId: actor.user.id,
+                clinicId: ctx.clinicId,
+                branchId: ctx.branchId,
+                meta,
+                summary: { reason, sessionsRestored: 0 },
+              },
+              tx,
+            );
+            return { id: targetId, status: 'ACTIVE' as const };
+          },
+          { isolationLevel: 'ReadCommitted' },
+        ),
+      );
+    } catch (error) {
+      if (error instanceof DirectorProtectedError) {
+        await this.audit.recordSafely({
+          action: AuditAction.DirectorProtectionBlocked,
+          entity: 'User',
+          entityId: targetId,
+          userId: actor.user.id,
+          clinicId: ctx.clinicId,
+          branchId: ctx.branchId,
+          meta,
+          summary: { operation: 'reactivate_user', actorRoles: actor.roles },
+        });
+        throw new ForbiddenException({
+          message: error.message,
+          code: 'DIRECTOR_PROTECTED',
+        });
+      }
+      throw error;
+    }
   }
 
   /**
-   * - Plataforma: cualquier usuario (la reactivación de lo que ella deshabilitó es solo suya).
-   * - Clínica: solo usuarios con una asignación activa en SU clínica (404 uniforme si no). Para DESHABILITAR,
-   *   además, la cuenta no puede tener accesos fuera de esa clínica (deshabilitar es global: se quitaría
-   *   el acceso a otras clínicas); en ese caso se revoca su asignación en vez de deshabilitarla. Un
-   *   administrador limitado a una sede solo gestiona usuarios que trabajan únicamente en esa sede.
+   * ¿El destino ejerce como Director Clínico? Entonces solo otro Director vigente de ESA clínica (permiso
+   * `director:manage`) puede deshabilitarlo o reactivarlo; administración y plataforma, no. Si no es Director
+   * se exige `user:manage`. Devuelve si la operación se rige por la protección del Director.
    */
+  private async assertDirectorProtection(
+    tx: Parameters<Parameters<PrismaDb['$transaction']>[0]>[0],
+    actor: AuthPrincipal,
+    targetId: string,
+  ): Promise<boolean> {
+    const directorships = await tx.userAssignment.findMany({
+      where: {
+        userId: targetId,
+        status: 'ACTIVE',
+        role: { code: 'CLINICAL_DIRECTOR' },
+      },
+      select: { clinicId: true },
+    });
+    if (directorships.length === 0) {
+      if (!actor.permissions.has('user:manage'))
+        throw new ForbiddenException('No tiene permisos para esta operación');
+      return false;
+    }
+    const clinicId = actor.context!.clinicId;
+    if (
+      !actor.permissions.has('director:manage') ||
+      directorships.some((d) => d.clinicId !== clinicId)
+    ) {
+      throw new DirectorProtectedError(
+        'Solo otro Director Clínico vigente de la clínica puede deshabilitar o reactivar a un Director Clínico',
+      );
+    }
+    return true;
+  }
+
   private async assertInScope(
     tx: Parameters<Parameters<PrismaDb['$transaction']>[0]>[0],
     actor: AuthPrincipal,
     targetId: string,
-    opts: { forDisable: boolean },
+    opts: { forDisable: boolean; asDirector?: boolean },
   ): Promise<void> {
     const ctx = actor.context!;
     if (ctx.clinicId === null) return;
@@ -242,7 +333,7 @@ export class UserStatusService {
         code: 'ACCOUNT_SHARED',
       });
     }
-    if (ctx.branchId) {
+    if (ctx.branchId && !opts.asDirector) {
       const beyondBranch = await tx.userAssignment.count({
         where: {
           userId: targetId,
@@ -258,3 +349,5 @@ export class UserStatusService {
     }
   }
 }
+
+class DirectorProtectedError extends Error {}

@@ -1,4 +1,11 @@
-import { CLINIC_GOVERNANCE_PERMISSIONS, PATIENT_DATA_PERMISSIONS, PERMISSIONS, ROLE_DEFINITIONS } from './permissions.js';
+import {
+  CARE_ATTENDANCE_PERMISSIONS,
+  CLINIC_GOVERNANCE_PERMISSIONS,
+  CLINICAL_PERMISSIONS,
+  PATIENT_DATA_PERMISSIONS,
+  PERMISSIONS,
+  ROLE_DEFINITIONS,
+} from './permissions.js';
 
 describe('catálogo RBAC', () => {
   const roles = new Map(ROLE_DEFINITIONS.map((r) => [r.code, r]));
@@ -9,11 +16,44 @@ describe('catálogo RBAC', () => {
     );
   });
 
-  it('clinical:read_all NO existe todavía en el catálogo (llega en 3.1 con su justificación y auditoría)', () => {
-    expect(PERMISSIONS).not.toHaveProperty('clinical:read_all');
-    for (const role of ROLE_DEFINITIONS) {
-      expect((role.permissions as readonly string[]).some((p) => p.startsWith('clinical:'))).toBe(false);
-    }
+  describe('acceso clínico (3.1)', () => {
+    const perms = (code: string) => roles.get(code)!.permissions as readonly string[];
+    const holders = (p: string) => ROLE_DEFINITIONS.filter((r) => (r.permissions as readonly string[]).includes(p)).map((r) => r.code).sort();
+
+    it('existen los cinco permisos nuevos', () => {
+      for (const p of ['clinical:read', 'clinical:write', 'clinical:read_limited', 'clinical:read_all', 'care:assign']) {
+        expect(PERMISSIONS).toHaveProperty(p);
+      }
+    });
+
+    it('clinical:read_all es exclusivo del Director Clínico', () => {
+      expect(holders('clinical:read_all')).toEqual(['CLINICAL_DIRECTOR']);
+    });
+
+    it('clinical:read y clinical:write son exclusivos del odontólogo; clinical:read_limited, del asistente', () => {
+      expect(holders('clinical:read')).toEqual(['DENTIST']);
+      expect(holders('clinical:write')).toEqual(['DENTIST']);
+      expect(holders('clinical:read_limited')).toEqual(['ASSISTANT']);
+    });
+
+    it('el Director lee pero no escribe información clínica', () => {
+      expect(perms('CLINICAL_DIRECTOR')).not.toContain('clinical:write');
+      expect(perms('CLINICAL_DIRECTOR')).not.toContain('clinical:read');
+    });
+
+    it('plataforma, administración, recepción y caja no tienen NINGÚN permiso clínico', () => {
+      for (const code of ['PLATFORM_ADMIN', 'CLINIC_ADMIN', 'RECEPTIONIST', 'CASHIER']) {
+        for (const p of CLINICAL_PERMISSIONS) expect(perms(code), `${code} ${p}`).not.toContain(p);
+      }
+    });
+
+    it('care:assign (acto administrativo) lo tienen administración, recepción y Director; la plataforma, no', () => {
+      expect(holders('care:assign')).toEqual(['CLINICAL_DIRECTOR', 'CLINIC_ADMIN', 'RECEPTIONIST']);
+    });
+
+    it('los permisos de atención que un administrador puede conferir nunca incluyen clinical:read_all', () => {
+      expect(CARE_ATTENDANCE_PERMISSIONS as readonly string[]).not.toContain('clinical:read_all');
+    });
   });
 
   describe('aprovisionamiento por invitación (3.0)', () => {
@@ -65,8 +105,8 @@ describe('catálogo RBAC', () => {
     }
   });
 
-  it('ningún rol tiene permisos clínicos (aún no existen módulos clínicos)', () => {
-    expect(Object.keys(PERMISSIONS).some((p) => /^(clinical|odontogram|diagnosis|treatment|history)/.test(p))).toBe(false);
+  it('aún no existen permisos de módulos clínicos concretos (odontograma, diagnósticos, tratamientos, historia)', () => {
+    expect(Object.keys(PERMISSIONS).some((p) => /^(odontogram|diagnosis|treatment|history|visit|note)/.test(p))).toBe(false);
   });
 
   it('el administrador de plataforma NO tiene ningún permiso sobre datos de pacientes', () => {

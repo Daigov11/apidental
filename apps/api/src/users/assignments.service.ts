@@ -12,6 +12,8 @@ import type { AuthPrincipal } from '../auth/auth.types.js';
 import type { RequestMeta } from '../common/utils/request-meta.js';
 import type { DbTx, PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
+import { CARE_ATTENDANCE_PERMISSIONS } from '../auth/permissions.js';
+import { endCareRelationshipsOf } from '../clinical/care-ending.js';
 import { assignmentKey } from './assignment-key.js';
 import {
   LastAuthorityError,
@@ -106,10 +108,18 @@ export class AssignmentsService {
     // Anti-escalada: no se otorga un rol con permisos que el otorgante no posee. Excepciones explícitas y
     // acotadas: la invitación del primer administrador por la plataforma y la del Director Clínico (que
     // tiene sus propias exigencias formales).
+    // Excepción acotada: los permisos de atención (clinical:read/write/read_limited) no confieren acceso por sí
+    // solos (exigen relación asistencial, que asigna OTRA persona), así que un administrador puede incorporar
+    // odontólogos y asistentes sin poseerlos. clinical:read_all y el resto siguen sujetos a la regla.
+    const attendance = CARE_ATTENDANCE_PERMISSIONS as readonly string[];
     if (
       !platformInvitesClinicAdmin &&
       !opts.allowDirector &&
-      !role.permissions.every((rp) => actor.permissions.has(rp.permission.code))
+      !role.permissions.every(
+        (rp) =>
+          actor.permissions.has(rp.permission.code) ||
+          attendance.includes(rp.permission.code),
+      )
     ) {
       throw new ForbiddenException(
         'No puede otorgar un rol con más permisos que los suyos',
@@ -180,6 +190,8 @@ export class AssignmentsService {
     grant: ValidatedGrant,
     meta: RequestMeta,
     tx: DbTx,
+    /** Quien OTORGA el rol (en una invitación, quien invitó). Alimenta la separación de funciones. */
+    grantedById: string = actorId,
   ) {
     const key = assignmentKey(userId, grant);
     const existing = await tx.userAssignment.findUnique({
@@ -200,7 +212,7 @@ export class AssignmentsService {
     if (existing) {
       const row = await tx.userAssignment.update({
         where: { id: existing.id },
-        data: { status: 'ACTIVE' },
+        data: { status: 'ACTIVE', grantedById },
         select: ASSIGNMENT_VIEW,
       });
       await this.audit.record(
@@ -209,6 +221,15 @@ export class AssignmentsService {
           action: AuditAction.AssignmentReactivated,
           entityId: row.id,
         },
+        tx,
+      );
+      await this.auditClinicalRole(
+        grant,
+        row.id,
+        userId,
+        grantedById,
+        actorId,
+        meta,
         tx,
       );
       return row;
@@ -220,6 +241,7 @@ export class AssignmentsService {
         clinicId: grant.clinicId,
         branchId: grant.branchId,
         assignmentKey: key,
+        grantedById,
       },
       select: ASSIGNMENT_VIEW,
     });
@@ -227,7 +249,46 @@ export class AssignmentsService {
       { ...auditBase, action: AuditAction.AssignmentCreated, entityId: row.id },
       tx,
     );
+    await this.auditClinicalRole(
+      grant,
+      row.id,
+      userId,
+      grantedById,
+      actorId,
+      meta,
+      tx,
+    );
     return row;
+  }
+
+  /** Otorgar un rol de atención clínica deja un rastro propio (quién lo otorgó y a quién) para revisión del Director. */
+  private async auditClinicalRole(
+    grant: ValidatedGrant,
+    assignmentId: string,
+    userId: string,
+    grantedById: string,
+    actorId: string,
+    meta: RequestMeta,
+    tx: DbTx,
+  ) {
+    if (grant.roleCode !== 'DENTIST' && grant.roleCode !== 'ASSISTANT') return;
+    await this.audit.record(
+      {
+        action: AuditAction.ClinicalRoleGranted,
+        entity: 'UserAssignment',
+        entityId: assignmentId,
+        userId: actorId,
+        clinicId: grant.clinicId,
+        branchId: grant.branchId,
+        meta,
+        summary: {
+          roleCode: grant.roleCode,
+          targetUserId: userId,
+          grantedById,
+        },
+      },
+      tx,
+    );
   }
 
   async create(
@@ -236,6 +297,21 @@ export class AssignmentsService {
     grant: GrantDto,
     meta: RequestMeta,
   ) {
+    // Separación de funciones: nadie se otorga roles a sí mismo (ni un administrador se hace odontólogo).
+    if (userId === actor.user.id) {
+      await this.audit.recordSafely({
+        action: AuditAction.EscalationBlocked,
+        entity: 'UserAssignment',
+        userId: actor.user.id,
+        clinicId: actor.context?.clinicId ?? null,
+        branchId: actor.context?.branchId ?? null,
+        meta,
+        summary: { reason: 'self_grant', roleCode: grant.roleCode },
+      });
+      throw new ForbiddenException(
+        'No puede otorgarse roles a sí mismo; debe hacerlo otra persona autorizada',
+      );
+    }
     const validated = await this.validateGrant(actor, grant);
     const user = await this.db.user.findUnique({
       where: { id: userId },
@@ -275,18 +351,43 @@ export class AssignmentsService {
     }
     if (target.status === 'INACTIVE') return this.view(assignmentId);
 
+    // Protección del Director Clínico: solo OTRO Director vigente de la clínica puede retirarle el rol. Quien tiene
+    // solo `assignment:manage` (administración) o ninguno (plataforma) no. Las demás asignaciones exigen `assignment:manage`.
+    const isDirector = target.role.code === 'CLINICAL_DIRECTOR';
+    if (
+      isDirector
+        ? !actor.permissions.has('director:manage')
+        : !actor.permissions.has('assignment:manage')
+    ) {
+      if (isDirector)
+        await this.directorBlocked(
+          actor,
+          target.clinicId,
+          'revoke_director_role',
+          meta,
+        );
+      throw new ForbiddenException(
+        isDirector
+          ? 'Solo otro Director Clínico vigente de la clínica puede retirar el rol de Director Clínico'
+          : 'No tiene permisos para esta operación',
+      );
+    }
+
     try {
       return await withTxRetry(() =>
-        this.db.$transaction(async (tx) => {
-          // Una clínica nunca puede quedar sin autoridad administrativa ni (si ya hay) clínica.
-          await this.lastAuthority.assertCanRemove(tx, {
-            id: assignmentId,
-            roleCode: target.role.code,
-            clinicId: target.clinicId,
-            branchId: target.branchId,
-          });
-          return this.applyRevoke(tx, actor, target, assignmentId, meta);
-        }),
+        this.db.$transaction(
+          async (tx) => {
+            // Una clínica nunca puede quedar sin autoridad administrativa ni (si ya hay) clínica.
+            await this.lastAuthority.assertCanRemove(tx, {
+              id: assignmentId,
+              roleCode: target.role.code,
+              clinicId: target.clinicId,
+              branchId: target.branchId,
+            });
+            return this.applyRevoke(tx, actor, target, assignmentId, meta);
+          },
+          { isolationLevel: 'ReadCommitted' },
+        ),
       );
     } catch (error) {
       if (error instanceof LastAuthorityError) {
@@ -310,6 +411,22 @@ export class AssignmentsService {
     }
   }
 
+  private directorBlocked(
+    actor: AuthPrincipal,
+    clinicId: string | null,
+    operation: string,
+    meta: RequestMeta,
+  ) {
+    return this.audit.recordSafely({
+      action: AuditAction.DirectorProtectionBlocked,
+      entity: 'UserAssignment',
+      userId: actor.user.id,
+      clinicId,
+      meta,
+      summary: { operation, actorRoles: actor.roles },
+    });
+  }
+
   private async applyRevoke(
     tx: DbTx,
     actor: AuthPrincipal,
@@ -322,6 +439,10 @@ export class AssignmentsService {
     assignmentId: string,
     meta: RequestMeta,
   ) {
+    // El bloqueo de la fila del usuario va ANTES de retirar el rol: la creación de relaciones asistenciales lo toma
+    // igual, así que no puede nacer una relación para un odontólogo que está perdiendo su rol.
+    if (target.role.code === 'DENTIST')
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${target.userId} FOR UPDATE`;
     const row = await tx.userAssignment.update({
       where: { id: assignmentId },
       data: { status: 'INACTIVE' },
@@ -340,6 +461,27 @@ export class AssignmentsService {
       },
       tx,
     );
+    // Sin ningún rol de odontólogo vigente en la clínica, terminan sus relaciones asistenciales de esa clínica.
+    if (target.role.code === 'DENTIST' && target.clinicId) {
+      const remaining = await tx.userAssignment.count({
+        where: {
+          userId: target.userId,
+          clinicId: target.clinicId,
+          status: 'ACTIVE',
+          role: { code: 'DENTIST' },
+        },
+      });
+      if (remaining === 0) {
+        await endCareRelationshipsOf(tx, this.audit, {
+          dentistUserId: target.userId,
+          clinicId: target.clinicId,
+          actorId: actor.user.id,
+          endKind: 'SYSTEM',
+          reason: 'Se retiró el rol de odontólogo',
+          meta,
+        });
+      }
+    }
     return row;
   }
 

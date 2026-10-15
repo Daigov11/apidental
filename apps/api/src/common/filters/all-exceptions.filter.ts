@@ -10,6 +10,7 @@ import {
 import type { Response } from 'express';
 import { AuditAction, AuditService } from '../../audit/audit.service.js';
 import type { AppRequest } from '../../auth/auth.types.js';
+import { ClinicalAccessDeniedException } from '../../clinical/clinical.errors.js';
 import { requestMetaFrom } from '../utils/request-meta.js';
 
 const STATUS_LABEL: Record<number, string> = {
@@ -84,7 +85,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
-    if (statusCode === 403) await this.auditDenial(req);
+    // Las negativas clínicas ya se auditaron con paciente y motivo (CLINICAL_ACCESS_DENIED).
+    if (statusCode === 403 && !(exception instanceof ClinicalAccessDeniedException)) await this.auditDenial(req);
 
     if (statusCode >= 500) {
       this.logger.error({

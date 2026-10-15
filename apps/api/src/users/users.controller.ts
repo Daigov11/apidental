@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { CurrentPrincipal } from '../common/decorators/current-principal.decorator.js';
-import { RequirePermissions } from '../common/decorators/permissions.decorator.js';
+import { RequireAnyPermission, RequirePermissions } from '../common/decorators/permissions.decorator.js';
 import { PaginationQuery } from '../common/dto/pagination.dto.js';
 import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
 import { AssignmentsService } from './assignments.service.js';
@@ -30,7 +30,8 @@ export class UsersController {
    */
   @Post('users/:id/disable')
   @HttpCode(200)
-  @RequirePermissions('user:manage')
+  // `director:manage`: solo para deshabilitar a un Director (el servicio exige el permiso que corresponde al caso).
+  @RequireAnyPermission('user:manage', 'director:manage')
   disable(
     @CurrentPrincipal() actor: AuthPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -43,7 +44,7 @@ export class UsersController {
   /** Reactivación explícita y auditada. No restaura sesiones: la persona debe iniciar sesión de nuevo. */
   @Post('users/:id/reactivate')
   @HttpCode(200)
-  @RequirePermissions('user:manage')
+  @RequireAnyPermission('user:manage', 'director:manage')
   reactivate(
     @CurrentPrincipal() actor: AuthPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,
@@ -68,7 +69,8 @@ export class UsersController {
 
   @Patch('assignments/:id/revoke')
   @HttpCode(200)
-  @RequirePermissions('assignment:manage')
+  // `director:manage`: solo para retirar el rol de Director (el servicio exige el permiso que corresponde al caso).
+  @RequireAnyPermission('assignment:manage', 'director:manage')
   revoke(
     @CurrentPrincipal() actor: AuthPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,

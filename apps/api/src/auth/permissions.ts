@@ -4,12 +4,13 @@
  *
  * Limitaciones del RBAC inicial (documentadas a propósito):
  *  - Los permisos por rol son fijos (no editables por clínica todavía).
- *  - Existen permisos de fundación (clínicas, sedes, usuarios, auditoría) y de datos
+ *  - Existen permisos de fundación (clínicas, sedes, usuarios, auditoría), de datos
  *    DEMOGRÁFICOS de pacientes (identificación, contacto, consentimientos y adjuntos
- *    administrativos). No hay permisos clínicos (historia, odontograma...): ningún rol los
- *    tiene, y esa decisión se debe tomar explícitamente cuando existan.
- *  - La política de acceso a pacientes es TEMPORAL hasta definir la historia clínica.
- *    El administrador de plataforma no tiene ningún permiso sobre datos de pacientes.
+ *    administrativos) y, desde 3.1, de acceso CLÍNICO (clinical:*) y de asignación asistencial.
+ *  - Un permiso clínico por sí solo NO da acceso a ningún paciente: además hace falta relación
+ *    asistencial vigente (odontólogo, asistente) o una autorización de lectura justificada
+ *    (clinical:read_all, solo Director Clínico). Ver ClinicalAccessService.
+ *  - El administrador de plataforma no tiene ningún permiso sobre datos de pacientes ni clínicos.
  *  - Un permiso se evalúa solo dentro del contexto activo (clínica/sede) seleccionado.
  */
 export const PERMISSIONS = {
@@ -36,7 +37,36 @@ export const PERMISSIONS = {
   'consent:write': 'Registrar y revocar consentimientos',
   'attachment:read': 'Listar y descargar adjuntos administrativos de pacientes',
   'attachment:write': 'Cargar adjuntos administrativos y darlos de baja (lógica)',
+  // --- Acceso clínico (sub-incremento 3.1). Ninguno da acceso por sí solo: ver ClinicalAccessService ---
+  'clinical:read': 'Leer información clínica de pacientes con relación asistencial vigente',
+  'clinical:write': 'Registrar información clínica de pacientes con relación asistencial vigente',
+  'clinical:read_limited': 'Ver la vista de apoyo (alertas y datos de apoyo, sin diagnósticos ni evoluciones)',
+  'clinical:read_all':
+    'Leer (nunca escribir) información clínica de un paciente de la clínica con justificación, reautenticación y auditoría previa (solo Director Clínico)',
+  'care:assign': 'Asignar y revocar la relación asistencial paciente–odontólogo (acto administrativo, no clínico)',
 } as const;
+
+/** Permisos de acceso clínico. La plataforma no los tiene por diseño. */
+export const CLINICAL_PERMISSIONS = [
+  'clinical:read',
+  'clinical:write',
+  'clinical:read_limited',
+  'clinical:read_all',
+] as const satisfies readonly PermissionCode[];
+
+/**
+ * Permisos de atención que NO confieren acceso por sí mismos (exigen además relación asistencial vigente):
+ * por eso un administrador puede invitar o asignar a un odontólogo/asistente aunque no los posea, sin que
+ * ello sea una escalada. `clinical:read_all` NUNCA está aquí: solo se obtiene con el rol Director Clínico.
+ */
+export const CARE_ATTENDANCE_PERMISSIONS = [
+  'clinical:read',
+  'clinical:write',
+  'clinical:read_limited',
+] as const satisfies readonly PermissionCode[];
+
+/** Único rol que puede tener `clinical:read_all` (lo impide también un trigger de la base de datos). */
+export const READ_ALL_ROLE_CODE = 'CLINICAL_DIRECTOR';
 
 /** Permisos sobre datos de pacientes. El administrador de plataforma NO los tiene por diseño. */
 export const PATIENT_DATA_PERMISSIONS = [
@@ -78,6 +108,8 @@ export const CLINIC_GOVERNANCE_PERMISSIONS = [
 const PLATFORM_PERMISSIONS = ALL_PERMISSIONS.filter(
   (p) =>
     !(PATIENT_DATA_PERMISSIONS as readonly string[]).includes(p) &&
+    !(CLINICAL_PERMISSIONS as readonly string[]).includes(p) &&
+    p !== 'care:assign' &&
     !(CLINIC_GOVERNANCE_PERMISSIONS as readonly string[]).includes(p),
 );
 
@@ -118,12 +150,13 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'invitation:manage',
       'provisioning:record',
       'provisioning:read',
+      'care:assign',
       ...PATIENT_FULL_ACCESS,
     ],
   },
   {
-    // Autoridad clínica de la clínica. Por ahora SIN permisos clínicos: clinical:read_all se crea en 3.1,
-    // junto con su justificación obligatoria, su auditoría de acceso y el control de relación asistencial.
+    // Autoridad clínica de la clínica. clinical:read_all es lectura excepcional de UN paciente por vez, con
+    // justificación, reautenticación y auditoría previa; no incluye clinical:write.
     code: 'CLINICAL_DIRECTOR',
     name: 'Director Clínico',
     scope: 'CLINIC',
@@ -138,6 +171,8 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'patient:read',
       'consent:read',
       'attachment:read',
+      'clinical:read_all',
+      'care:assign',
     ],
   },
   {
@@ -145,14 +180,14 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     name: 'Recepcionista',
     scope: 'CLINIC',
     description: 'Recepción y agenda (permisos de módulos futuros).',
-    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS],
+    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS, 'care:assign'],
   },
   {
     code: 'DENTIST',
     name: 'Odontólogo',
     scope: 'CLINIC',
-    description: 'Atención clínica (permisos de módulos futuros).',
-    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY],
+    description: 'Atención clínica de los pacientes con los que tiene relación asistencial vigente.',
+    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY, 'clinical:read', 'clinical:write'],
   },
   {
     code: 'CASHIER',
@@ -165,7 +200,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     code: 'ASSISTANT',
     name: 'Asistente',
     scope: 'CLINIC',
-    description: 'Apoyo clínico (permisos de módulos futuros).',
-    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY],
+    description: 'Apoyo clínico: vista limitada (alertas y datos de apoyo) de los pacientes en atención.',
+    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY, 'clinical:read_limited'],
   },
 ];
