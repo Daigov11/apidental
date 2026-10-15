@@ -102,7 +102,7 @@ RECEPCION = [
         'Elija la **fecha**. Aparecen los **horarios disponibles**; pulse uno.',
         'Si hace falta, escriba una nota administrativa (sin datos clínicos).',
         'Pulse **Reservar cita**.'],
-        [fig('recepcion-02-agenda.jpg', 'Agenda del día: elija fecha, vista y odontólogo.', top=96, bottom=250),
+        [fig('recepcion-02-agenda.jpg', 'Agenda del día: elija fecha, vista y odontólogo.', top=96, bottom=0),
          fig('recepcion-03-nueva-cita.jpg', 'Formulario de nueva cita.', left=980, right=18, top=70, bottom=75)],
         tip='solo se ofrecen horarios libres según el horario del odontólogo, su consultorio y la duración del servicio.'),
     task('Si el paciente todavía no existe', [

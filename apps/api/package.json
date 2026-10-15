@@ -22,7 +22,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:create-admin": "tsx prisma/create-admin.ts",
     "maintenance": "node dist/maintenance/cli.js",
-    "maintenance:dry-run": "node dist/maintenance/cli.js --dry-run"
+    "maintenance:dry-run": "node dist/maintenance/cli.js --dry-run",
+    "db:demo-hoy": "tsx prisma/shift-demo-today.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

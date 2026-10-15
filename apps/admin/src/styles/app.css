@@ -171,7 +171,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .context-list button:hover { background: var(--bg-subtle); }
 
 /* ------------------------------------------------------------------- agenda */
-.agenda-grid { display: grid; grid-template-columns: 56px repeat(var(--cols, 1), minmax(180px, 1fr)); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); overflow: auto; }
+.agenda-grid { display: grid; grid-template-columns: 56px repeat(var(--cols, 1), minmax(180px, 1fr)); background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); overflow: auto; max-height: max(420px, calc(100vh - 290px)); align-content: start; }
 .agenda-head { position: sticky; top: 0; z-index: 2; background: var(--bg-subtle); padding: var(--space-4); font-weight: 600; border-bottom: 1px solid var(--border-default); border-left: 1px solid var(--border-subtle); }
 .agenda-hours { position: relative; }
 .agenda-hour { position: absolute; right: var(--space-3); font-size: var(--text-caption-size); color: var(--text-muted); transform: translateY(-50%); font-variant-numeric: tabular-nums; }
@@ -180,6 +180,10 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .agenda-block-off { position: absolute; left: 0; right: 0; background: repeating-linear-gradient(45deg, var(--bg-subtle), var(--bg-subtle) 6px, var(--border-subtle) 6px, var(--border-subtle) 12px); font-size: var(--text-caption-size); color: var(--text-muted); padding: 2px var(--space-3); overflow: hidden; }
 .appt-block { position: absolute; left: 4px; right: 4px; overflow: hidden; text-align: left; background: var(--bg-surface); border: 1px solid var(--border-default); border-left: 4px solid; border-radius: var(--radius-sm); padding: 2px var(--space-3); font: inherit; font-size: var(--text-caption-size); line-height: 1.3; cursor: pointer; min-height: 24px; box-shadow: var(--shadow-sm); }
 .appt-block:hover { box-shadow: var(--shadow-md); }
+.appt-block.is-compact { padding-block: 0; display: flex; align-items: center; }
+.appt-block.is-compact strong { font-weight: 600; }
+.appt-block.is-compact .appt-detail { font-weight: 400; color: var(--text-muted); }
+.appt-block > span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .appt-block strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .appt-RESERVED { border-left-color: var(--state-info-icon); }
 .appt-CONFIRMED { border-left-color: var(--color-brand-500); }

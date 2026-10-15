@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
 import { get } from '../api/client';
 import type { Calendar, CalendarAppointment } from '../api/types';
@@ -11,7 +11,7 @@ import { SelectField, TextField } from '../ui/fields';
 import { EmptyState, ErrorState, Loading, StatusBadge } from '../ui/feedback';
 import { AppointmentDrawer, NewAppointmentDrawer } from './AppointmentPanels';
 
-const HOUR_PX = 64;
+const HOUR_PX = 96;
 const px = (minute: number, start: number) => ((minute - start) / 60) * HOUR_PX;
 
 export function AgendaPage() {
@@ -85,12 +85,18 @@ function DayGrid({ cal, date, onOpen }: { cal: Calendar; date: string; onOpen: (
     const maxs = [...cal.windows.map((w) => minuteOfDay(w.endsAt) || 1440), ...cal.appointments.map((a) => minuteOfDay(a.endsAt) || 1440)];
     return { start: Math.floor(Math.min(8 * 60, ...mins) / 60) * 60, end: Math.ceil(Math.max(18 * 60, ...maxs) / 60) * 60 };
   }, [cal]);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const firstWork = Math.min(...cal.windows.map((w) => minuteOfDay(w.startsAt)), ...cal.appointments.map((a) => minuteOfDay(a.startsAt)), 24 * 60);
+  // Al abrir el día se muestra desde el inicio de la jornada (no desde la hora más temprana del día).
+  useEffect(() => {
+    if (gridRef.current && firstWork < 24 * 60) gridRef.current.scrollTop = Math.max(0, px(firstWork, start) - HOUR_PX / 2);
+  }, [firstWork, start, date]);
   if (dentists.length === 0) return <EmptyState title="No hay horarios de atención este día">Configure el horario de los odontólogos o elija otra fecha.</EmptyState>;
   const hours = Array.from({ length: (end - start) / 60 + 1 }, (_, i) => start + i * 60);
   const height = ((end - start) / 60) * HOUR_PX;
   const room = (id: string) => cal.rooms.find((r) => r.id === id)?.name;
   return (
-    <div className="agenda-grid" style={{ ['--cols' as string]: dentists.length, ['--hour-h' as string]: `${HOUR_PX}px` }} role="group" aria-label={`Agenda del ${fmtLongDay(date)}`}>
+    <div ref={gridRef} className="agenda-grid" style={{ ['--cols' as string]: dentists.length, ['--hour-h' as string]: `${HOUR_PX}px` }} role="group" aria-label={`Agenda del ${fmtLongDay(date)}`}>
       <div className="agenda-head" aria-hidden="true">Hora</div>
       {dentists.map((d) => <div key={d.userId} className="agenda-head">{d.name}</div>)}
       <div className="agenda-hours" style={{ height }} aria-hidden="true">
@@ -117,12 +123,16 @@ function DayGrid({ cal, date, onOpen }: { cal: Calendar; date: string; onOpen: (
 
 function Block({ a, start, room, onOpen }: { a: CalendarAppointment; start: number; room?: string; onOpen: (id: string) => void }) {
   const top = px(minuteOfDay(a.startsAt), start);
-  const height = Math.max(24, px(minuteOfDay(a.endsAt) || 1440, start) - top);
+  const height = Math.max(26, px(minuteOfDay(a.endsAt) || 1440, start) - top);
+  const compact = height < 46; // en bloques cortos todo va en una línea para que no se corte
+  const detail = `${a.service}${room ? ` · ${room}` : ''} · ${a.statusLabel}`;
   return (
-    <button type="button" className={`appt-block appt-${a.status}`} style={{ top, height }} onClick={() => onOpen(a.id)}
+    <button type="button" className={`appt-block appt-${a.status}${compact ? ' is-compact' : ''}`} style={{ top, height }} onClick={() => onOpen(a.id)}
+      title={`${timeOf(a.startsAt)} · ${a.patient.name} — ${detail}`}
       aria-label={`${timeOf(a.startsAt)}, ${a.patient.name}, ${a.service}, ${a.statusLabel}`}>
-      <strong>{timeOf(a.startsAt)} · {a.patient.name}</strong>
-      <span>{a.service}{room ? ` · ${room}` : ''} · {a.statusLabel}</span>
+      {compact
+        ? <strong>{timeOf(a.startsAt)} · {a.patient.name} <span className="appt-detail">— {detail}</span></strong>
+        : <><strong>{timeOf(a.startsAt)} · {a.patient.name}</strong><span>{detail}</span></>}
     </button>
   );
 }
