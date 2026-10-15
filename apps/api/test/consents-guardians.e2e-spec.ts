@@ -53,7 +53,7 @@ describe('Representantes y consentimientos', () => {
       expect(res.body.guardian.identifierNumber).toMatch(/^\d{8}$/);
 
       const get = await ctx.http().get(`/v1/patients/${id}`).set(bearer(w.admin.token)).expect(200);
-      expect(get.body).toMatchObject({ guardianCount: 1, warnings: [] });
+      expect(get.body).toMatchObject({ guardianCount: 1, warnings: ['CLINICAL_CONSENT_MISSING'] });
       const list = await ctx.http().get(`/v1/patients/${id}/guardians`).set(bearer(w.dentist.token)).expect(200);
       expect(list.body).toHaveLength(1);
       expect((await auditOf(id, 'PATIENT_GUARDIAN_LINKED'))).toHaveLength(1);

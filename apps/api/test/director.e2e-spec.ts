@@ -275,13 +275,13 @@ describe('Aprovisionamiento formal y Director Clínico', () => {
       expect(granted.summary).toMatchObject({ invitationId: d.inv.id, grantedBy: w.admin.user.id, provisioningRecordId: d.rec.id });
     });
 
-    it('el Director NO recibe clinical:read_all ni ningún permiso clínico (llegan en 3.1 con su justificación)', async () => {
+    it('el Director recibe clinical:read_all (lectura excepcional) y NINGÚN otro permiso clínico: no escribe ni lee por relación', async () => {
       const w = await world();
       const d = await firstDirector(w);
       const me = await ctx.http().get('/v1/auth/me').set(bearer(d.token)).expect(200);
       expect(me.body.roles).toEqual(['CLINICAL_DIRECTOR']);
       expect(me.body.permissions).toEqual(expect.arrayContaining(['director:manage', 'provisioning:read', 'invitation:read']));
-      expect(me.body.permissions.filter((p: string) => p.startsWith('clinical:'))).toEqual([]);
+      expect(me.body.permissions.filter((p: string) => p.startsWith('clinical:'))).toEqual(['clinical:read_all']);
       expect(me.body.permissions).not.toContain('invitation:manage');
       expect(me.body.permissions).not.toContain('provisioning:record');
       await inviteReq(ctx, d.token, { email: designee(), roleCode: 'DENTIST' }).expect(403); // el Director no invita personal

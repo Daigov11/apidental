@@ -222,7 +222,7 @@ describe('Mantenimiento de seguridad (depuración)', () => {
     }).trim();
     const report = JSON.parse(out.split('\n').at(-1)!);
     expect(report).toMatchObject({ dryRun: true, truncated: expect.any(Boolean) });
-    expect(Object.keys(report.expired).sort()).toEqual(['invitations', 'passwordRecoveries', 'provisioningRecords', 'sessions']);
+    expect(Object.keys(report.expired).sort()).toEqual(['careRelationships', 'invitations', 'passwordRecoveries', 'provisioningRecords', 'sessions']);
     expect(Object.keys(report.purged).sort()).toEqual(['invitations', 'passwordRecoveries', 'reauthProofs', 'sessions']);
     expect(out).not.toMatch(/@|rt_|inv_|pr_|eyJ/);
   });

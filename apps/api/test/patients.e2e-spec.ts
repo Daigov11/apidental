@@ -263,11 +263,11 @@ describe('Pacientes', () => {
     it('un menor aparece con isMinor y la advertencia de falta de representante', async () => {
       const w = await world();
       const { id, res } = await createPatient(ctx, w.reception.token, { birthDate: yearsAgo(8) });
-      expect(res.body.warnings).toEqual(['MINOR_WITHOUT_GUARDIAN']);
+      expect(res.body.warnings).toEqual(['MINOR_WITHOUT_GUARDIAN', 'CLINICAL_CONSENT_MISSING']);
       const get = await ctx.http().get(`/v1/patients/${id}`).set(bearer(w.admin.token)).expect(200);
-      expect(get.body).toMatchObject({ isMinor: true, age: 8, guardianCount: 0, warnings: ['MINOR_WITHOUT_GUARDIAN'] });
+      expect(get.body).toMatchObject({ isMinor: true, age: 8, guardianCount: 0, warnings: ['MINOR_WITHOUT_GUARDIAN', 'CLINICAL_CONSENT_MISSING'] });
       const adult = await createPatient(ctx, w.reception.token, { birthDate: yearsAgo(18) });
-      expect(adult.res.body.warnings).toEqual([]);
+      expect(adult.res.body.warnings).toEqual(['CLINICAL_CONSENT_MISSING']);
     });
 
     it('busca por identificador, nombre (sin tildes, parcial), teléfono, correo y nacimiento', async () => {

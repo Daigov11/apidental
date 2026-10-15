@@ -268,26 +268,50 @@ describe('Deshabilitación y reactivación de usuarios', () => {
       await disable((await platform()).token, whole.user.id).expect(409);
     });
 
-    it('no se deshabilita al último Director Clínico, aunque haya administrador', async () => {
+    it('un Director solo lo deshabilita OTRO Director; el único Director no lo deshabilita nadie', async () => {
       const clinic = await fx.clinic();
-      await fx.userWithRole('CLINIC_ADMIN', { clinicId: clinic.id });
-      const d1 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
+      const admin = await actorIn(ctx, fx, 'CLINIC_ADMIN', { clinicId: clinic.id });
+      const d1 = await actorIn(ctx, fx, 'CLINICAL_DIRECTOR', { clinicId: clinic.id });
       const d2 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
       const p = await platform();
-      await disable(p.token, d1.user.id).expect(200);
-      const res = await disable(p.token, d2.user.id).expect(409);
-      expect(res.body.message).toMatch(/último Director Clínico/);
+      // ni la administración ni la plataforma, aunque haya dos Directores
+      for (const token of [admin.token, p.token]) {
+        const res = await disable(token, d2.user.id).expect(403);
+        expect(res.body).toMatchObject({ code: 'DIRECTOR_PROTECTED' });
+      }
+      expect(await statusOf(d2.user.id)).toBe('ACTIVE');
+      expect(await ctx.db.auditLog.count({ where: { entityId: d2.user.id, action: 'DIRECTOR_PROTECTION_BLOCKED' } })).toBe(2);
+      // el otro Director sí
+      await disable(d1.token, d2.user.id).expect(200);
+      expect(await statusOf(d2.user.id)).toBe('DISABLED');
+      // el único que queda: ni él mismo, ni administración, ni plataforma
+      await disable(d1.token, d1.user.id).expect(403);
+      await disable(admin.token, d1.user.id).expect(403);
+      await disable(p.token, d1.user.id).expect(403);
+      expect(await statusOf(d1.user.id)).toBe('ACTIVE');
     });
 
-    it('quien ejerce dos autoridades se evalúa por cada una y la operación es atómica', async () => {
+    it('un Director deshabilitado solo lo reactiva otro Director', async () => {
+      const clinic = await fx.clinic();
+      const admin = await actorIn(ctx, fx, 'CLINIC_ADMIN', { clinicId: clinic.id });
+      const d1 = await actorIn(ctx, fx, 'CLINICAL_DIRECTOR', { clinicId: clinic.id });
+      const d2 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
+      await disable(d1.token, d2.user.id).expect(200);
+      await reactivate(admin.token, d2.user.id).expect(403);
+      await reactivate((await platform()).token, d2.user.id).expect(403);
+      await reactivate(d1.token, d2.user.id).expect(200);
+      expect(await statusOf(d2.user.id)).toBe('ACTIVE');
+    });
+
+    it('quien ejerce dos autoridades queda protegido como Director y la operación es atómica', async () => {
       const clinic = await fx.clinic();
       const both = await fx.user();
       await fx.assign(both.id, 'CLINIC_ADMIN', { clinicId: clinic.id });
       await fx.assign(both.id, 'CLINICAL_DIRECTOR', { clinicId: clinic.id });
       await fx.userWithRole('CLINIC_ADMIN', { clinicId: clinic.id }); // hay relevo administrativo, NO clínico
       const session = await loginFull(ctx, both.email);
-      const res = await disable((await platform()).token, both.id).expect(409);
-      expect(res.body.message).toMatch(/Director Clínico/);
+      const res = await disable((await platform()).token, both.id).expect(403);
+      expect(res.body).toMatchObject({ code: 'DIRECTOR_PROTECTED' });
       expect(await statusOf(both.id)).toBe('ACTIVE');
       expect(await ctx.db.authSession.count({ where: { userId: both.id, revokedAt: null } })).toBe(1); // nada a medias
       await ctx.http().get('/v1/auth/me').set(bearer(session.accessToken)).expect(200);
@@ -337,15 +361,17 @@ describe('Deshabilitación y reactivación de usuarios', () => {
       expect(await ctx.db.userAssignment.count({ where: { clinicId: clinic.id, status: 'ACTIVE', role: { code: 'CLINIC_ADMIN' }, user: { status: 'ACTIVE' } } })).toBe(1);
     });
 
-    it('dos Directores deshabilitados a la vez: solo uno prospera', async () => {
-      const clinic = await fx.clinic();
-      await fx.userWithRole('CLINIC_ADMIN', { clinicId: clinic.id });
-      const d1 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
-      const d2 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
-      const [t1, t2] = [(await platform()).token, (await platform()).token];
-      const results = await Promise.all([disable(t1, d1.user.id), disable(t2, d2.user.id)]);
-      expect(results.map((r) => r.status).sort((x, y) => x - y)).toEqual([200, 409]);
-      expect(await ctx.db.userAssignment.count({ where: { clinicId: clinic.id, status: 'ACTIVE', role: { code: 'CLINICAL_DIRECTOR' }, user: { status: 'ACTIVE' } } })).toBe(1);
+    it('dos Directores que se deshabilitan mutuamente a la vez: solo uno prospera y siempre queda uno', async () => {
+      for (let round = 0; round < 3; round++) {
+        const clinic = await fx.clinic();
+        const d1 = await actorIn(ctx, fx, 'CLINICAL_DIRECTOR', { clinicId: clinic.id });
+        const d2 = await actorIn(ctx, fx, 'CLINICAL_DIRECTOR', { clinicId: clinic.id });
+        const results = await Promise.all([disable(d1.token, d2.user.id), disable(d2.token, d1.user.id)]);
+        const codes = results.map((r) => r.status).sort((x, y) => x - y);
+        expect(codes[0], `ronda ${round}`).toBe(200);
+        expect([403, 409]).toContain(codes[1]);
+        expect(await ctx.db.userAssignment.count({ where: { clinicId: clinic.id, status: 'ACTIVE', role: { code: 'CLINICAL_DIRECTOR' }, user: { status: 'ACTIVE' } } })).toBe(1);
+      }
     });
 
     it('administradores de dos clínicas deshabilitados en cruce: cada clínica conserva uno (sin deadlocks)', async () => {

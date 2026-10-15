@@ -82,49 +82,61 @@ describe('Regla de último administrador / último Director', () => {
     });
   });
 
-  describe('Director Clínico', () => {
-    it('con dos Directores se puede quitar uno; el último no, aunque haya administrador', async () => {
+  describe('Director Clínico (protegido: solo OTRO Director vigente puede retirarle el rol)', () => {
+    const blockedAudit = (clinicId: string) => ctx.db.auditLog.count({ where: { clinicId, action: 'DIRECTOR_PROTECTION_BLOCKED' } });
+
+    it('ni la plataforma ni la administración retiran el rol de Director, aunque haya dos', async () => {
       const clinic = await fx.clinic();
-      await fx.userWithRole('CLINIC_ADMIN', { clinicId: clinic.id });
+      const admin = await actorIn(ctx, fx, 'CLINIC_ADMIN', { clinicId: clinic.id });
       const d1 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
-      const d2 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
-      const token = await platformToken();
-      await revoke(token, d1.assignment.id).expect(200);
-      const blocked = await revoke(token, d2.assignment.id).expect(409);
-      expect(blocked.body).toMatchObject({ code: 'LAST_AUTHORITY', roleCode: 'CLINICAL_DIRECTOR' });
-      expect(blocked.body.message).toMatch(/último Director Clínico/);
-      expect(await status(d2.assignment.id)).toBe('ACTIVE');
+      await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
+      for (const token of [await platformToken(), admin.token]) {
+        const res = await revoke(token, d1.assignment.id).expect(403);
+        expect(res.body.message).toMatch(/otro Director Clínico vigente/);
+      }
+      expect(await status(d1.assignment.id)).toBe('ACTIVE');
+      expect(await blockedAudit(clinic.id)).toBeGreaterThanOrEqual(1);
     });
 
-    it('una clínica que nunca designó Director no tiene nada que proteger; las reglas son independientes', async () => {
+    it('con dos Directores, uno retira al otro; el único que queda no puede ser retirado por nadie', async () => {
+      const clinic = await fx.clinic();
+      const admin = await actorIn(ctx, fx, 'CLINIC_ADMIN', { clinicId: clinic.id });
+      const d1 = await actorIn(ctx, fx, 'CLINICAL_DIRECTOR', { clinicId: clinic.id });
+      const d2 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
+      const own = await ctx.db.userAssignment.findFirstOrThrow({ where: { userId: d1.user.id, status: 'ACTIVE' } });
+
+      await revoke(d1.token, d2.assignment.id).expect(200);
+      expect(await status(d2.assignment.id)).toBe('INACTIVE');
+      // el último Director: ni él mismo, ni la administración, ni la plataforma
+      await revoke(d1.token, own.id).expect(403);
+      await revoke(admin.token, own.id).expect(403);
+      await revoke(await platformToken(), own.id).expect(403);
+      expect(await status(own.id)).toBe('ACTIVE');
+    });
+
+    it('una clínica sin Director no tiene nada que proteger; la regla de administrador es independiente', async () => {
       const clinic = await fx.clinic();
       const admin1 = await fx.userWithRole('CLINIC_ADMIN', { clinicId: clinic.id });
       await fx.userWithRole('CLINIC_ADMIN', { clinicId: clinic.id });
       const dir = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
       const token = await platformToken();
       await revoke(token, admin1.assignment.id).expect(200); // quedan administrador y Director
-      await revoke(token, dir.assignment.id).expect(409); // el Director es el último
+      await revoke(token, dir.assignment.id).expect(403); // el Director está protegido
     });
 
-    it('un Director deshabilitado no cuenta', async () => {
-      const clinic = await fx.clinic();
-      await fx.userWithRole('CLINIC_ADMIN', { clinicId: clinic.id });
-      const live = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
-      const gone = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
-      await ctx.db.user.update({ where: { id: gone.user.id }, data: { status: 'DISABLED' } });
-      await revoke(await platformToken(), live.assignment.id).expect(409);
-    });
-
-    it('dos revocaciones simultáneas de los dos Directores: solo una prospera', async () => {
-      const clinic = await fx.clinic();
-      await fx.userWithRole('CLINIC_ADMIN', { clinicId: clinic.id });
-      const d1 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
-      const d2 = await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: clinic.id });
-      const t1 = await platformToken();
-      const t2 = await platformToken();
-      const results = await Promise.all([revoke(t1, d1.assignment.id), revoke(t2, d2.assignment.id)]);
-      expect(results.map((r) => r.status).sort((x, y) => x - y)).toEqual([200, 409]);
-      expect(await ctx.db.userAssignment.count({ where: { clinicId: clinic.id, status: 'ACTIVE', role: { code: 'CLINICAL_DIRECTOR' } } })).toBe(1);
+    it('dos Directores que se retiran mutuamente a la vez: solo uno prospera y siempre queda uno', async () => {
+      for (let round = 0; round < 3; round++) {
+        const clinic = await fx.clinic();
+        const d1 = await actorIn(ctx, fx, 'CLINICAL_DIRECTOR', { clinicId: clinic.id });
+        const d2 = await actorIn(ctx, fx, 'CLINICAL_DIRECTOR', { clinicId: clinic.id });
+        const a1 = await ctx.db.userAssignment.findFirstOrThrow({ where: { userId: d1.user.id, status: 'ACTIVE' } });
+        const a2 = await ctx.db.userAssignment.findFirstOrThrow({ where: { userId: d2.user.id, status: 'ACTIVE' } });
+        const results = await Promise.all([revoke(d1.token, a2.id), revoke(d2.token, a1.id)]);
+        const codes = results.map((r) => r.status).sort((x, y) => x - y);
+        expect(codes[0], `ronda ${round}`).toBe(200);
+        expect([403, 409]).toContain(codes[1]); // 409 = bloqueó la regla de último Director; 403 = ya había perdido el rol
+        expect(await ctx.db.userAssignment.count({ where: { clinicId: clinic.id, status: 'ACTIVE', role: { code: 'CLINICAL_DIRECTOR' } } })).toBe(1);
+      }
     });
   });
 
