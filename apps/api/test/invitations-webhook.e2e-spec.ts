@@ -6,9 +6,12 @@ import {
   acceptReq,
   actorIn,
   bearer,
+  confirmRecovery,
   createTestContext,
   Fixtures,
   inviteReq,
+  recoveryReq,
+  settleRecoveries,
   tokenFromUrl,
   type TestContext,
   uniq,
@@ -144,8 +147,67 @@ describe('Canal de entrega webhook firmado (sin asumir proveedor de correo)', ()
     await acceptReq(ctx, second).expect(200);
   });
 
+  describe('recuperación de contraseña por el mismo canal', () => {
+    it('entrega el enlace firmado al correo de la cuenta y la respuesta sigue siendo neutral', async () => {
+      const user = await fx.user();
+      const res = await recoveryReq(ctx, user.email).expect(202);
+      await settleRecoveries(ctx);
+      expect(res.body).toEqual({ message: 'Si el correo corresponde a una cuenta activa, le enviaremos instrucciones para restablecer su contraseña.' });
+      expect(received).toHaveLength(1);
+      const hit = received[0]!;
+      expect(hit.json).toMatchObject({ event: 'password_recovery.deliver', to: user.email });
+      expect(Object.keys(hit.json).sort()).toEqual(['event', 'expiresAt', 'recoveryId', 'resetUrl', 'to']);
+      expect(hit.json['resetUrl']).toMatch(/^http:\/\/localhost:5173\/admin\/restablecer-contrasena#token=pr_[A-Za-z0-9_-]{43}$/);
+      const ts = hit.headers['x-apidental-timestamp'] as string;
+      expect(hit.headers['x-apidental-signature']).toBe(WebhookDelivery.sign(SECRET, ts, hit.body));
+
+      const token = tokenFromUrl(hit.json['resetUrl']!);
+      const row = await ctx.db.passwordRecovery.findFirstOrThrow({ where: { userId: user.id } });
+      expect(row.tokenHash).toBe(sha(token));
+      const exposed = JSON.stringify(res.body) + JSON.stringify(await ctx.db.auditLog.findMany({ where: { userId: user.id } }));
+      for (const secret of [token, sha(token), SECRET, `127.0.0.1:${port}`]) expect(exposed).not.toContain(secret);
+      await confirmRecovery(ctx, token, 'Clave-Nueva-Por-Webhook-1').expect(200);
+    });
+
+    it('un correo inexistente no contacta al canal', async () => {
+      await recoveryReq(ctx, `${uniq('noexiste')}@test.pe`).expect(202);
+      await settleRecoveries(ctx);
+      expect(received).toHaveLength(0);
+    });
+
+    it('el tiempo de respuesta NO depende de que el correo exista ni de la lentitud del canal', async () => {
+      const user = await fx.user();
+      behavior = 'slow'; // el receptor tarda ~800 ms
+      const measure = async (email: string) => {
+        const t0 = performance.now();
+        await recoveryReq(ctx, email).expect(202);
+        return performance.now() - t0;
+      };
+      const existing = await measure(user.email);
+      const missing = await measure(`${uniq('noexiste')}@test.pe`);
+      expect(existing).toBeLessThan(400); // no espera la entrega
+      expect(missing).toBeLessThan(400);
+      await settleRecoveries(ctx);
+      expect(received).toHaveLength(1); // la entrega sí ocurrió, después de responder
+    });
+
+    it('si el canal falla, la respuesta es la misma y queda auditado un motivo genérico', async () => {
+      const user = await fx.user();
+      behavior = 'fail500';
+      const res = await recoveryReq(ctx, user.email).expect(202);
+      await settleRecoveries(ctx);
+      expect(res.body.message).toMatch(/Si el correo corresponde/);
+      const row = await ctx.db.passwordRecovery.findFirstOrThrow({ where: { userId: user.id } });
+      expect(row).toMatchObject({ status: 'PENDING', deliveryStatus: 'FAILED', lastDeliveryError: 'http_500' });
+      const [log] = await ctx.db.auditLog.findMany({ where: { userId: user.id, action: 'PASSWORD_RECOVERY_DELIVERY_FAILED' } });
+      expect(log!.summary).toEqual({ channel: 'webhook', reason: 'http_500' });
+      const dump = JSON.stringify(res.body) + JSON.stringify(log) + JSON.stringify(row);
+      for (const leak of ['secreto-del-receptor', SECRET, `127.0.0.1:${port}`, '/hook']) expect(dump).not.toContain(leak);
+    });
+  });
+
   describe('WebhookDelivery (unidad)', () => {
-    const message = { invitationId: 'i', toEmail: 'a@b.pe', acceptUrl: 'http://x/#token=inv_x', clinicName: null, roleName: 'Rol', expiresAt: new Date() };
+    const message = { type: 'invitation' as const, invitationId: 'i', toEmail: 'a@b.pe', acceptUrl: 'http://x/#token=inv_x', clinicName: null, roleName: 'Rol', expiresAt: new Date() };
 
     it('un receptor lento produce un fallo "timeout" (tiempo límite acotado)', async () => {
       behavior = 'slow';

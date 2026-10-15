@@ -91,7 +91,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
     expect(tables.map((t) => t.name).sort()).toEqual(
       [
         'attachments', 'audit_logs', 'auth_sessions', 'branches', 'clinics', 'guardians', 'invitations',
-        'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers', 'patients',
+        'password_recoveries', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers', 'patients',
         'permissions', 'provisioning_records', 'reauth_proofs', 'refresh_tokens', 'role_permissions', 'roles',
         'user_assignments', 'users',
       ],
@@ -111,7 +111,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
       [
         'attachments:DELETE', 'attachments:UPDATE', 'guardians:DELETE', 'patient_consents:DELETE', 'patient_consents:UPDATE',
         'patient_contacts:DELETE', 'patient_guardians:DELETE', 'patient_identifiers:DELETE', 'patients:DELETE', 'patients:UPDATE',
-        'invitations:DELETE', 'invitations:UPDATE', 'provisioning_records:DELETE', 'provisioning_records:UPDATE',
+        'invitations:DELETE', 'invitations:UPDATE', 'password_recoveries:DELETE', 'password_recoveries:UPDATE', 'provisioning_records:DELETE', 'provisioning_records:UPDATE',
         'reauth_proofs:UPDATE', 'refresh_tokens:UPDATE',
       ].sort(),
     );

@@ -11,7 +11,13 @@ import {
   Fixtures,
   inviteOk,
   inviteReq,
+  confirmRecovery,
+  devOutbox,
   loginFull,
+  recoveryReq,
+  requestRecovery,
+  settleRecoveries,
+  validateRecovery,
   NEW_PASSWORD,
   PASSWORD,
   reauthProofFor,
@@ -47,7 +53,7 @@ class CapturingLogger implements LoggerService {
 }
 
 // Cualquier cosa con forma de token propio o de JWT es un secreto, aunque no conozcamos su valor.
-const TOKEN_SHAPE = /\b(?:inv|rt|rp)_[A-Za-z0-9_-]{43}\b/;
+const TOKEN_SHAPE = /\b(?:inv|rt|rp|pr)_[A-Za-z0-9_-]{43}\b/;
 // Un SHA-256 en hexadecimal: en este recorrido NADA legítimo tiene esa forma (los ids son UUID).
 const HEX64 = /\b[0-9a-f]{64}\b/;
 const JWT_SHAPE = /\beyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\b/;
@@ -234,5 +240,38 @@ describe('Ningún token, hash ni contraseña se filtra a respuestas no autorizad
     const bad = await inviteReq(ctx, admin.token, { email: 'correo-invalido-secreto', roleCode: 'DENTIST' });
     expect(bad.status).toBe(400);
     expect(bad.text).not.toContain('correo-invalido-secreto');
+  });
+  it('la recuperación de contraseña no filtra tokens, hashes ni contraseñas a respuestas, logs, auditoría ni tablas', async () => {
+    const user = await fx.user();
+    const first = await requestRecovery(ctx, user.email);
+    const unknown = `${uniq('nadie')}@test.pe`;
+    const neutral = await recoveryReq(ctx, unknown).expect(202);
+    const known = await recoveryReq(ctx, user.email).expect(202);
+    await settleRecoveries(ctx);
+    const token = tokenFromUrl(devOutbox(ctx).last('password_recovery', user.email.toLowerCase())!.url); // la nueva solicitud reemplaza a la anterior
+    expect(token).not.toBe(first);
+    expect(known.text).toBe(neutral.text);
+    const nope = 'pr_' + 'Z'.repeat(43);
+    const bad = await validateRecovery(ctx, nope);
+    const badConfirm = await confirmRecovery(ctx, nope, 'Clave-Nueva-Segura-77');
+    for (const r of [bad, badConfirm]) {
+      expect(r.text).not.toContain(nope);
+      expect(r.text).not.toContain('Clave-Nueva-Segura-77');
+    }
+    const newPassword = 'Clave-Definitiva-88-xy';
+    await confirmRecovery(ctx, token, newPassword).expect(200);
+    await confirmRecovery(ctx, token, newPassword).expect(404);
+
+    const logs = logger.lines.join('\n');
+    const audit = JSON.stringify(await ctx.db.auditLog.findMany({ where: { OR: [{ userId: user.id }, { entityId: user.id }] } }));
+    const stored = JSON.stringify(await ctx.db.passwordRecovery.findMany({ where: { userId: user.id } }));
+    for (const [name, text] of [['logs', logs], ['auditoría', audit], ['tabla', stored]] as const) {
+      for (const secret of [token, nope, newPassword, 'Clave-Nueva-Segura-77']) expect(text, name).not.toContain(secret);
+      expect(TOKEN_SHAPE.test(text), name).toBe(false);
+      expect(JWT_SHAPE.test(text), name).toBe(false);
+    }
+    expect(logs).not.toContain(user.email);
+    expect(audit).not.toContain(unknown);
+    expect(stored).toContain(sha(token));
   });
 });

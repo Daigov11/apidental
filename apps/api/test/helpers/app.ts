@@ -9,6 +9,8 @@ import { syncCatalog } from '../../prisma/catalog.js';
 import { hashPassword } from '../../src/common/utils/password.js';
 import { assignmentKey } from '../../src/users/assignment-key.js';
 import { limaToday } from '../../src/patients/util/lima-date.js';
+import { PasswordRecoveryService } from '../../src/auth/password-recovery.service.js';
+import { DevDelivery, INVITATION_DELIVERY } from '../../src/invitations/delivery/invitation-delivery.js';
 
 export interface TestContext {
   app: INestApplication;
@@ -278,3 +280,31 @@ export async function reauthProofFor(
     .expect(200);
   return res.body.reauthToken as string;
 }
+
+
+// ---------------------------------------------------------------------------
+// Helpers de recuperación de contraseña
+// ---------------------------------------------------------------------------
+
+/** Buzón EN MEMORIA del canal de desarrollo (la respuesta de la recuperación es neutral y no lleva el enlace). */
+export const devOutbox = (ctx: TestContext): DevDelivery => ctx.app.get<DevDelivery>(INVITATION_DELIVERY);
+
+/** La solicitud responde de inmediato y trabaja después: esto espera a que termine. */
+export const settleRecoveries = (ctx: TestContext): Promise<void> => ctx.app.get(PasswordRecoveryService).idle();
+
+export const recoveryReq = (ctx: TestContext, email: string) => ctx.http().post('/v1/auth/password-recovery').send({ email });
+
+/** Solicita la recuperación, espera el trabajo en segundo plano y devuelve el token entregado al correo. */
+export async function requestRecovery(ctx: TestContext, email: string): Promise<string> {
+  await recoveryReq(ctx, email).expect(202);
+  await settleRecoveries(ctx);
+  const message = devOutbox(ctx).last('password_recovery', email.toLowerCase());
+  if (!message) throw new Error('No se entregó ninguna recuperación a ese correo');
+  return tokenFromUrl(message.url);
+}
+
+export const confirmRecovery = (ctx: TestContext, token: string, newPassword: string) =>
+  ctx.http().post('/v1/auth/password-recovery/confirm').send({ token, newPassword });
+
+export const validateRecovery = (ctx: TestContext, token: string) =>
+  ctx.http().post('/v1/auth/password-recovery/validate').send({ token });

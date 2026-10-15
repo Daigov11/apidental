@@ -449,7 +449,7 @@ describe('Invitaciones', () => {
       await expect(ctx.db.invitation.update({ where: { id }, data: { email: 'otro@test.pe' } })).rejects.toThrow(/inmutables/);
       await expect(ctx.db.invitation.update({ where: { id }, data: { clinicId: w.b.id } })).rejects.toThrow();
       await expect(ctx.db.invitation.update({ where: { id }, data: { issuedByPlatform: true } })).rejects.toThrow(/inmutables/);
-      await expect(ctx.db.invitation.delete({ where: { id } })).rejects.toThrow(/eliminación física/);
+      await expect(ctx.db.invitation.delete({ where: { id } })).rejects.toThrow(/solo se purgan invitaciones cerradas con más de 30 días/);
       await acceptReq(ctx, token).expect(200);
       await expect(ctx.db.invitation.update({ where: { id }, data: { status: 'PENDING' } })).rejects.toThrow(/no cambia de estado/);
     });

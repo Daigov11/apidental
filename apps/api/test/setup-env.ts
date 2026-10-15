@@ -21,6 +21,8 @@ process.env['CORS_ORIGINS'] = 'http://localhost:5173';
 process.env['LOGIN_MAX_ATTEMPTS'] = '3';
 process.env['LOGIN_LOCK_MINUTES'] = '5';
 process.env['RATE_LIMIT_PER_MINUTE'] = '100000';
+// Sin enfriamiento entre recuperaciones en las pruebas (se prueba aparte, con otro valor).
+process.env['PASSWORD_RECOVERY_COOLDOWN_SECONDS'] = '0';
 process.env['LOGIN_RATE_LIMIT_PER_MINUTE'] = '100000';
 
 // Directorio privado de adjuntos SOLO para pruebas (global-setup lo recrea vacío en cada ejecución).

@@ -21,8 +21,8 @@ describe('Límite de solicitudes en el login', () => {
     expect(statuses.slice(4)).toEqual([429, 429]);
   });
 
-  it('la reautenticación y la aceptación/vista previa de invitaciones comparten el límite estricto por IP del login', async () => {
-    for (const path of ['/v1/auth/reauthenticate', '/v1/invitations/accept', '/v1/invitations/preview']) {
+  it('la reautenticación, las invitaciones y la recuperación de contraseña comparten el límite estricto por IP del login', async () => {
+    for (const path of ['/v1/auth/reauthenticate', '/v1/invitations/accept', '/v1/invitations/preview', '/v1/auth/password-recovery', '/v1/auth/password-recovery/validate', '/v1/auth/password-recovery/confirm']) {
       const statuses: number[] = [];
       for (let i = 0; i < 6; i++) statuses.push((await ctx.http().post(path).send({})).status);
       expect(statuses.slice(0, 4).every((s) => s !== 429), path).toBe(true);
