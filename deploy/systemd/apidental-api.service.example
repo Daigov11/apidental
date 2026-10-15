@@ -24,7 +24,8 @@ ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
-# Cuando existan adjuntos: ReadWritePaths=/var/lib/apidental/files
+# Directorio privado de adjuntos de pacientes (ATTACHMENTS_DIR): único lugar con escritura.
+ReadWritePaths=/var/lib/apidental/files
 
 [Install]
 WantedBy=multi-user.target

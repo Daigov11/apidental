@@ -39,7 +39,16 @@ server {
 
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
-    client_max_body_size 1m;   # los adjuntos clínicos tendrán su propio límite cuando existan
+    client_max_body_size 1m;   # por defecto, cuerpos pequeños (JSON)
+
+    # Carga de adjuntos de pacientes: único lugar con un límite mayor (ATTACHMENT_MAX_BYTES + márgenes del multipart).
+    location ~ ^/v1/patients/[0-9a-fA-F-]{36}/attachments$ {
+        client_max_body_size 11m;
+        include /etc/nginx/snippets/apidental-api-proxy.conf;
+    }
+
+    # El directorio de adjuntos (ATTACHMENTS_DIR) NO debe estar bajo ningún root/alias de Nginx:
+    # los archivos solo salen por la API, autenticados y auditados.
 
     location = /v1/auth/login {
         limit_req zone=apidental_login burst=5 nodelay;

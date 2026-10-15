@@ -1,22 +1,23 @@
 # ApiDental
 
-Software web de gestión odontológica (Perú). Este repositorio contiene el **primer incremento técnico**: la base segura y extensible sobre la que se construirán pacientes, historia clínica, agenda, odontograma, pagos e inventario.
+Software web de gestión odontológica (Perú). Este repositorio contiene la **base técnica** (incremento 1) y la **ficha administrativa del paciente** (incremento 2), sobre las que se construirán historia clínica, agenda, odontograma, pagos e inventario.
 
 - Arquitectura y decisiones de producto: [`docs/arquitectura/mvp-p0-apidental.md`](docs/arquitectura/mvp-p0-apidental.md)
-- Decisiones, supuestos y límites de este incremento: [`docs/arquitectura/incremento-1-fundacion.md`](docs/arquitectura/incremento-1-fundacion.md)
+- Incremento 1 (fundación: tenancy, JWT, RBAC, auditoría): [`docs/arquitectura/incremento-1-fundacion.md`](docs/arquitectura/incremento-1-fundacion.md)
+- Incremento 2 (pacientes, consentimientos, adjuntos privados): [`docs/arquitectura/incremento-2-pacientes.md`](docs/arquitectura/incremento-2-pacientes.md)
 
 ## Qué incluye (y qué no)
 
-Incluye: API NestJS versionada en `/v1`, Prisma + MySQL con migración inicial, clínicas, sedes, usuarios, roles, permisos y asignaciones, autenticación JWT, autorización por clínica/sede/rol, auditoría inmutable, health check, pruebas unitarias y e2e.
+Incluye: API NestJS versionada en `/v1`, Prisma + MySQL, clínicas, sedes, usuarios, roles, permisos y asignaciones, autenticación JWT, autorización por clínica/sede/rol, auditoría inmutable, health check, **pacientes** (identificadores DNI/CE/pasaporte, contacto, detección de duplicados sin fusión, representantes de menores), **consentimientos** separados (clínico, fidelización, marketing) y **adjuntos administrativos privados**, con pruebas unitarias y e2e.
 
-**No** incluye (a propósito): pacientes, historias clínicas, agenda, odontograma, pagos, inventario, integración con Apiworking, refresh tokens ni interfaz funcional.
+**No** incluye (a propósito): antecedentes médicos, diagnósticos, evolución, odontograma, citas, pagos, inventario, firma digital, integración con Apiworking, refresh tokens ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
 
 ## Estructura
 
 ```
 apps/api/            API NestJS + Prisma (único workspace por ahora)
   prisma/            schema, migraciones, seed, create-admin, catálogo de roles
-  src/               auth, audit, tenancy, users, health, config, prisma, common
+  src/               auth, audit, tenancy, users, patients, health, config, prisma, common
   test/              pruebas e2e (contra una base *_test real)
 deploy/              PLANTILLAS para el VPS (nginx, systemd, deploy.sh). No se ejecutan desde aquí.
 docker/, docker-compose.dev.yml   MySQL 8.4 SOLO para desarrollo local
@@ -50,7 +51,7 @@ npm run db:up
 # 4. Cliente Prisma, migración inicial y datos de desarrollo
 npm run prisma:generate -w apps/api
 npm run db:migrate                    # aplica prisma/migrations
-npm run db:seed                       # roles, permisos, Clínica Demo, Sede Demo y admin de desarrollo
+npm run db:seed                       # roles, permisos, Clínica Demo, Sede Demo, admin de desarrollo y pacientes FICTICIOS
 
 # 5. Ejecutar la API
 npm run api:dev                       # http://127.0.0.1:3000/v1/health
@@ -68,7 +69,7 @@ npm run test:e2e       # pruebas e2e: aplican migraciones a TEST_DATABASE_URL y 
 npm run build          # prisma generate + nest build (apps/api/dist)
 ```
 
-Las pruebas e2e **se niegan a ejecutarse** si `TEST_DATABASE_URL` no termina en `_test`.
+Las pruebas e2e **se niegan a ejecutarse** si `TEST_DATABASE_URL` no termina en `_test`. Usan un directorio temporal para adjuntos (nunca el de desarrollo) y una prueba (`mysql-engine`) falla si el motor no es MySQL 8.4.
 
 ## Primer administrador
 
@@ -101,7 +102,31 @@ Flujo: **login** (token sin contexto) → **listar contextos** → **seleccionar
 | `GET /v1/users` · `POST /v1/users` | `user:read` · `user:manage` | Usuarios dentro del alcance del solicitante |
 | `GET /v1/roles` | `role:read` | Roles y permisos (las clínicas no ven roles de plataforma) |
 | `POST /v1/assignments` · `PATCH /v1/assignments/:id/revoke` | `assignment:manage` | Asignar y revocar roles |
-| `GET /v1/audit-logs` | `audit:read` | Auditoría de la clínica activa (plataforma: todas) |
+| `GET /v1/audit-logs` | `audit:read` | Auditoría de la clínica activa (plataforma: todas); filtros `action`, `userId`, `patientId` |
+
+**Pacientes** (requieren contexto de clínica; el administrador de plataforma no tiene acceso). Detalle y reglas en [`incremento-2-pacientes.md`](docs/arquitectura/incremento-2-pacientes.md).
+
+| Método y ruta | Permiso | Descripción |
+|---|---|---|
+| `POST /v1/patients` | `patient:write` | Alta. 409 si el DNI/CE/pasaporte ya existe en la clínica; advertencias de posible duplicado en la respuesta |
+| `GET /v1/patients` | `patient:read_basic` | Búsqueda por `identifier`, `name`, `phone`, `email`, `birthDate`, `status` |
+| `GET /v1/patients/:id` · `PATCH /v1/patients/:id` | `patient:read_basic` · `patient:write` | Ficha (completa o mínima según permiso) y edición |
+| `POST /v1/patients/:id/deactivate` · `/reactivate` | `patient:write` | Baja/alta lógica con motivo |
+| `POST /v1/patients/duplicate-check` · `GET /v1/patients/duplicate-report` · `GET /v1/patients/:id/duplicates` | `patient:write` · `patient:read` | Posibles duplicados (nunca se fusionan) |
+| `PUT /v1/patients/:id/identifiers` | `patient:write` | Alta/reemplazo de documento (motivo si se reemplaza) |
+| `POST /v1/patients/:id/contacts` · `PATCH …/:contactId` · `POST …/:contactId/retire` | `patient:write` | Contactos con historial (motivo en celular/correo) |
+| `GET/POST /v1/patients/:id/guardians` · `POST …/:linkId/end` · `GET /v1/guardians?search=` | `patient:read` / `patient:write` | Representantes de menores |
+| `GET/POST /v1/patients/:id/consents` · `POST …/:consentId/revoke` | `consent:read` / `consent:write` | Consentimientos (revocar exige motivo) |
+| `POST /v1/patients/:id/attachments` (multipart) · `POST …/:attachmentId/remove` | `attachment:write` | Carga y baja lógica de adjuntos |
+| `GET /v1/patients/:id/attachments` · `GET …/:attachmentId/download` | `attachment:read` | Listado y descarga autorizada (sin URL pública) |
+
+Ejemplo de carga y descarga:
+
+```bash
+curl -s -X POST "localhost:3000/v1/patients/$PID/attachments" -H "Authorization: Bearer $CTX" \
+  -F category=CONSENT -F "file=@consentimiento.pdf;type=application/pdf"
+curl -s -o copia.pdf "localhost:3000/v1/patients/$PID/attachments/$AID/download" -H "Authorization: Bearer $CTX"
+```
 
 Ejemplo:
 
@@ -122,7 +147,9 @@ curl -s localhost:3000/v1/branches -H "Authorization: Bearer $CTX"
 - Anti-escalada: nadie otorga un rol con más permisos que los propios; una clínica no asigna fuera de la suya ni roles de plataforma.
 - `passwordHash` se excluye por defecto de toda consulta Prisma y nunca se serializa.
 - La auditoría registra login (éxito, fallo, bloqueo), selección/denegación de contexto y acciones administrativas, con IP y user agent, sin contraseñas ni tokens. `audit_logs` es **inmutable por triggers** en la base de datos.
-- Logging estructurado (JSON en producción) sin cuerpos, cabeceras ni tokens. Helmet, CORS restringido y cuerpo máximo de 100 kb.
+- Logging estructurado (JSON en producción) sin cuerpos, cabeceras ni tokens. Helmet, CORS restringido y cuerpo JSON máximo de 100 kb.
+- **Datos de pacientes:** siempre dentro de la clínica del contexto (un paciente ajeno responde 404), FK compuestas en la base de datos, vistas por permiso (el cajero solo ve identificación y contacto), **lecturas auditadas** y auditoría sin datos personales (valores enmascarados). Sin eliminación física: triggers lo impiden.
+- **Adjuntos:** disco privado con nombre UUID, tipo detectado por contenido (PDF/JPEG/PNG/WebP), tamaño máximo, SHA-256 verificado en cada descarga, descarga solo por API autorizada y auditada, sin rutas ni claves en las respuestas, baja lógica con motivo.
 
 ## Producción (Debian + systemd + Nginx)
 
@@ -131,7 +158,8 @@ Plantillas en `deploy/`. **Nada se despliega ni se ejecuta desde este repositori
 - La API usa `deploy/systemd/apidental-api.service.example` y variables en `/etc/apidental/api.env` (permisos 600). Defina `NODE_ENV=production`, `TRUST_PROXY=1`, `CORS_ORIGINS=https://dental.apiworking.com.pe` y un `JWT_ACCESS_SECRET` propio. La API se niega a iniciar con el secreto de ejemplo o con configuración inválida.
 - **Triggers y binlog:** la migración crea triggers (auditoría inmutable). Con el binlog activo (por defecto en MySQL 8), MySQL exige `SUPER` o `log_bin_trust_function_creators=1` para crearlos. Ejecute las migraciones con un usuario con privilegios (o active esa variable) y use **otro usuario** para la aplicación.
 - **Usuario de la aplicación:** `SELECT, INSERT, UPDATE, DELETE` sobre las tablas, pero **solo `SELECT, INSERT` sobre `audit_logs`** como segunda barrera además de los triggers.
-- Los respaldos diarios externos con prueba de restauración son requisito previo a operar con datos clínicos (ver documento de arquitectura, sección 8.6).
+- **Adjuntos:** defina `ATTACHMENTS_DIR` con una ruta **absoluta** (p. ej. `/var/lib/apidental/files`), propietario `apidental`, modo `0700`, fuera de cualquier `root`/`alias` de Nginx, y agregue `ReadWritePaths=` en la unidad systemd. Ese directorio **debe incluirse en los respaldos** junto con MySQL; un respaldo solo de la base deja registros sin archivos. Se recomienda cifrar el volumen. La API se niega a iniciar en producción si la ruta es relativa.
+- Los respaldos diarios externos con prueba de restauración son requisito previo a operar con datos de pacientes (ver documento de arquitectura, sección 8.6).
 
 ## Solución de problemas
 
