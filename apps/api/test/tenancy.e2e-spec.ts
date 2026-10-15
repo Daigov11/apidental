@@ -78,7 +78,7 @@ describe('Aislamiento por clínica y sede, y permisos', () => {
     await ctx.http().get('/v1/branches').set(bearer(token)).expect(200); // branch:read sí
     await ctx.http().post('/v1/branches').set(bearer(token)).send({ name: uniq('Sede ') }).expect(403);
     await ctx.http().get('/v1/users').set(bearer(token)).expect(403);
-    await ctx.http().post('/v1/users').set(bearer(token)).send({}).expect(403);
+    await ctx.http().post('/v1/invitations').set(bearer(token)).send({ email: 'x@test.pe', roleCode: 'DENTIST' }).expect(403);
     await ctx.http().get('/v1/audit-logs').set(bearer(token)).expect(403);
   });
 

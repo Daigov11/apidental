@@ -1,4 +1,4 @@
-import type { INestApplication } from '@nestjs/common';
+import type { INestApplication, LoggerService } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../../src/app.module.js';
@@ -17,11 +17,11 @@ export interface TestContext {
   close: () => Promise<void>;
 }
 
-export async function createTestContext(): Promise<TestContext> {
+export async function createTestContext(opts: { logger?: LoggerService } = {}): Promise<TestContext> {
   const db = createPrismaClient(process.env['DATABASE_URL']!, 3);
   await syncCatalog(db);
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
-  const app = moduleRef.createNestApplication({ logger: false });
+  const app = moduleRef.createNestApplication({ logger: opts.logger ?? false });
   configureApp(app, new AppConfig());
   await app.init();
   // supertest abre un listener por solicitud sobre el mismo servidor: evita la advertencia de fugas.
@@ -93,8 +93,9 @@ export async function loginInContext(
   ctx: TestContext,
   email: string,
   context: { clinicId?: string | null; branchId?: string | null } = {},
+  password = PASSWORD,
 ): Promise<string> {
-  const token = await login(ctx, email);
+  const token = await login(ctx, email, password);
   const res = await ctx
     .http()
     .post('/v1/auth/select-context')
@@ -224,3 +225,56 @@ export const refreshWith = (ctx: TestContext, refreshToken: string | null, heade
 
 export const sessionIdOf = (accessToken: string): string =>
   JSON.parse(Buffer.from(accessToken.split('.')[1]!, 'base64url').toString()).sid as string;
+
+// ---------------------------------------------------------------------------
+// Helpers de invitaciones (el canal "dev" devuelve el enlace SOLO en desarrollo/pruebas)
+// ---------------------------------------------------------------------------
+
+export const NEW_PASSWORD = 'Mi-Clave-Propia-2026';
+
+export const tokenFromUrl = (url: string): string => decodeURIComponent(url.split('#token=')[1] ?? '');
+
+export const inviteReq = (ctx: TestContext, accessToken: string, body: Record<string, unknown>) =>
+  ctx.http().post('/v1/invitations').set(bearer(accessToken)).send(body);
+
+export const acceptReq = (ctx: TestContext, token: string, body: Record<string, unknown> = {}) =>
+  ctx
+    .http()
+    .post('/v1/invitations/accept')
+    .send({ token, password: NEW_PASSWORD, firstName: 'Nueva', lastName: 'Persona', ...body });
+
+/** Crea una invitación (debe responder 201) y devuelve su id y el token del enlace de desarrollo. */
+export async function inviteOk(ctx: TestContext, accessToken: string, body: Record<string, unknown>) {
+  const res = await inviteReq(ctx, accessToken, body).expect(201);
+  return { id: res.body.id as string, token: tokenFromUrl(res.body.devAcceptUrl as string), res };
+}
+
+/** Invita y acepta en un paso: devuelve las credenciales de la cuenta creada por la propia persona. */
+export async function inviteAndAccept(
+  ctx: TestContext,
+  inviterAccessToken: string,
+  body: { roleCode: string; clinicId?: string; branchId?: string; email?: string },
+  password = NEW_PASSWORD,
+) {
+  const email = body.email ?? `${uniq('inv')}@test.pe`;
+  const { id, token } = await inviteOk(ctx, inviterAccessToken, { ...body, email });
+  await acceptReq(ctx, token, { password }).expect(200);
+  return { email, password, invitationId: id };
+}
+
+/** Reautentica (contraseña correcta) y devuelve la prueba de un solo uso para ese propósito/objeto. */
+export async function reauthProofFor(
+  ctx: TestContext,
+  accessToken: string,
+  purpose: string,
+  targetId?: string,
+  password = PASSWORD,
+): Promise<string> {
+  const res = await ctx
+    .http()
+    .post('/v1/auth/reauthenticate')
+    .set(bearer(accessToken))
+    .send({ password, purpose, ...(targetId ? { targetId } : {}) })
+    .expect(200);
+  return res.body.reauthToken as string;
+}

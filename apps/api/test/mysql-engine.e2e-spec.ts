@@ -1,4 +1,4 @@
-import { bearer, createTestContext, Fixtures, loginInContext, type TestContext } from './helpers/app.js';
+import { createTestContext, Fixtures, inviteAndAccept, loginInContext, type TestContext } from './helpers/app.js';
 
 /**
  * Regresión de motor: el producto objetivo es MySQL 8.4. Estas pruebas fallan si la base
@@ -47,16 +47,12 @@ describe('Motor MySQL 8.4 y esquema real', () => {
     const clinic = await fx.clinic();
     const { user } = await fx.userWithRole('CLINIC_ADMIN', { clinicId: clinic.id });
     const token = await loginInContext(ctx, user.email, { clinicId: clinic.id });
-    await ctx.http().post('/v1/users').set(bearer(token)).send({
-      email: `json-${Date.now()}@test.pe`,
-      password: 'Contraseña-Inicial-1',
-      firstName: 'Ana',
-      lastName: 'Pérez',
-      assignment: { roleCode: 'ASSISTANT' },
-    }).expect(201);
+    const secretPassword = 'Contraseña-Que-Elige-La-Persona-9';
+    const created = await inviteAndAccept(ctx, token, { roleCode: 'ASSISTANT', email: `json-${Date.now()}@test.pe` }, secretPassword);
     const logs = await ctx.db.auditLog.findMany({ where: { clinicId: clinic.id } });
     expect(logs.length).toBeGreaterThan(0);
-    expect(JSON.stringify(logs)).not.toMatch(/Contraseña-Inicial|argon2|password/i);
+    const dump = JSON.stringify(logs);
+    for (const secret of [secretPassword, 'argon2', 'password', created.email]) expect(dump).not.toContain(secret);
   });
 
   it('el esquema real contiene el CHECK de user_assignments y está aplicado', async () => {

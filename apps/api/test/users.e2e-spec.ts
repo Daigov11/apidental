@@ -1,4 +1,4 @@
-import { bearer, createTestContext, Fixtures, login, loginInContext, PASSWORD, uniq, type TestContext } from './helpers/app.js';
+import { bearer, createTestContext, Fixtures, inviteAndAccept, inviteOk, inviteReq, login, loginInContext, PASSWORD, uniq, type TestContext } from './helpers/app.js';
 
 describe('Usuarios, roles y asignaciones', () => {
   let ctx: TestContext;
@@ -19,82 +19,72 @@ describe('Usuarios, roles y asignaciones', () => {
     const tokenA = await loginInContext(ctx, adminA.email, { clinicId: a.id });
     return { a, b, a1, a2, b1, adminA, tokenA };
   }
-  const newUser = (extra: object = {}) => ({
-    email: `${uniq('nuevo')}@test.pe`,
-    password: 'Contraseña-Inicial-1',
-    firstName: 'Ana',
-    lastName: 'Pérez',
-    ...extra,
-  });
 
-  describe('POST /v1/users', () => {
-    it('crea un usuario con su asignación en la clínica del administrador y audita sin secretos', async () => {
+  describe('alta de personal: solo por invitación (POST /v1/users ya no existe)', () => {
+    it('no hay forma de crear usuarios con una contraseña fijada por el administrador', async () => {
       const t = await setup();
-      const body = newUser({ assignment: { roleCode: 'DENTIST', branchId: t.a1.id } });
-      const res = await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(body).expect(201);
-
-      expect(res.body).toMatchObject({ email: body.email, status: 'ACTIVE', assignment: { clinicId: t.a.id, branchId: t.a1.id, role: { code: 'DENTIST' } } });
-      expect(JSON.stringify(res.body)).not.toMatch(/passwordHash|\$argon2|Contraseña-Inicial/);
-
-      const logs = await ctx.db.auditLog.findMany({ where: { entityId: res.body.id } });
-      expect(logs.map((l) => l.action)).toContain('USER_CREATED');
-      expect(JSON.stringify(logs)).not.toMatch(/Contraseña-Inicial|argon2/);
-
-      // el usuario creado puede iniciar sesión con la contraseña que se le asignó
-      const real = await ctx.http().post('/v1/auth/login').send({ email: body.email, password: body.password }).expect(200);
-      expect(real.body.contexts).toHaveLength(1);
+      const body = { email: `${uniq('x')}@test.pe`, password: 'Contraseña-Inicial-1', firstName: 'A', lastName: 'B', assignment: { roleCode: 'DENTIST' } };
+      await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(body).expect(404);
+      const { user } = await fx.userWithRole('PLATFORM_ADMIN');
+      const platformToken = await loginInContext(ctx, user.email);
+      await ctx.http().post('/v1/users').set(bearer(platformToken)).send(body).expect(404);
+      expect(await ctx.db.user.count({ where: { email: body.email } })).toBe(0);
     });
 
-    it('un administrador de clínica debe asignar al usuario (no deja usuarios huérfanos)', async () => {
+    it('la persona invitada crea su propia cuenta y queda asignada a la clínica y sede del administrador', async () => {
       const t = await setup();
-      await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(newUser()).expect(400);
+      const created = await inviteAndAccept(ctx, t.tokenA, { roleCode: 'DENTIST', branchId: t.a1.id });
+      const token = await loginInContext(ctx, created.email, { clinicId: t.a.id, branchId: t.a1.id }, created.password);
+      const me = await ctx.http().get('/v1/auth/me').set(bearer(token)).expect(200);
+      expect(me.body.roles).toEqual(['DENTIST']);
+      // la contraseña la eligió la persona: el administrador no la conoce (no hay ningún rastro de ella)
+      const row = await ctx.db.user.findUniqueOrThrow({ where: { email: created.email }, omit: { passwordHash: false } });
+      expect(row.passwordHash.startsWith('$argon2id$')).toBe(true);
     });
 
-    it('rechaza correo duplicado, contraseña corta y campos desconocidos', async () => {
+    it('rechaza invitar a roles de plataforma, a otra clínica, a sedes ajenas o a roles inexistentes', async () => {
       const t = await setup();
-      const body = newUser({ assignment: { roleCode: 'ASSISTANT' } });
-      await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(body).expect(201);
-      await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(body).expect(409);
-      await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(newUser({ password: 'corta', assignment: { roleCode: 'ASSISTANT' } })).expect(400);
-      await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(newUser({ isAdmin: true, assignment: { roleCode: 'ASSISTANT' } })).expect(400);
+      const attempts: [number, Record<string, unknown>][] = [
+        [403, { roleCode: 'PLATFORM_ADMIN' }],
+        [403, { roleCode: 'DENTIST', clinicId: t.b.id }],
+        [400, { roleCode: 'DENTIST', branchId: t.b1.id }],
+        [400, { roleCode: 'ROL_INEXISTENTE' }],
+        [400, { roleCode: 'CLINICAL_DIRECTOR' }], // sin registro formal de aprovisionamiento ni reautenticación
+      ];
+      const before = await ctx.db.invitation.count();
+      for (const [status, body] of attempts) {
+        const res = await inviteReq(ctx, t.tokenA, { email: `${uniq('x')}@test.pe`, ...body });
+        expect(res.status, JSON.stringify(body)).toBe(status);
+      }
+      expect(await ctx.db.invitation.count()).toBe(before);
     });
 
-    it('no permite crear administradores de plataforma ni asignar en otra clínica ni con sede ajena', async () => {
-      const t = await setup();
-      const emails: string[] = [];
-      const post = (assignment: object) => {
-        const body = newUser({ assignment });
-        emails.push(body.email);
-        return ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(body);
-      };
-      await post({ roleCode: 'PLATFORM_ADMIN' }).expect(403);
-      await post({ roleCode: 'DENTIST', clinicId: t.b.id }).expect(403);
-      await post({ roleCode: 'DENTIST', branchId: t.b1.id }).expect(400);
-      await post({ roleCode: 'ROL_INEXISTENTE' }).expect(400);
-      // ninguno de los intentos fallidos dejó usuarios a medias
-      expect(await ctx.db.user.count({ where: { email: { in: emails } } })).toBe(0);
-    });
-
-    it('un administrador limitado a una sede solo crea usuarios de esa sede', async () => {
+    it('un administrador limitado a una sede solo invita a esa sede', async () => {
       const t = await setup();
       const branchAdmin = (await fx.userWithRole('CLINIC_ADMIN', { clinicId: t.a.id, branchId: t.a1.id })).user;
       const token = await loginInContext(ctx, branchAdmin.email, { clinicId: t.a.id, branchId: t.a1.id });
-      await ctx.http().post('/v1/users').set(bearer(token)).send(newUser({ assignment: { roleCode: 'CASHIER', branchId: t.a2.id } })).expect(403);
-      const ok = await ctx.http().post('/v1/users').set(bearer(token)).send(newUser({ assignment: { roleCode: 'CASHIER' } })).expect(201);
-      expect(ok.body.assignment.branchId).toBe(t.a1.id);
+      await inviteReq(ctx, token, { email: `${uniq('x')}@test.pe`, roleCode: 'CASHIER', branchId: t.a2.id }).expect(403);
+      const ok = await inviteReq(ctx, token, { email: `${uniq('x')}@test.pe`, roleCode: 'CASHIER' }).expect(201);
+      expect(ok.body.branchId).toBe(t.a1.id);
     });
 
-    it('la plataforma crea administradores de plataforma y de cualquier clínica', async () => {
+    it('la plataforma NO otorga roles de clínica directamente (la excepción del incremento 2 se retiró)', async () => {
       const t = await setup();
       const { user } = await fx.userWithRole('PLATFORM_ADMIN');
-      const token = await loginInContext(ctx, user.email);
-      const post = (body: object) => ctx.http().post('/v1/users').set(bearer(token)).send(body);
-      const platform = await post(newUser({ assignment: { roleCode: 'PLATFORM_ADMIN' } })).expect(201);
-      expect(platform.body.assignment).toMatchObject({ clinicId: null, branchId: null });
-      await post(newUser({ assignment: { roleCode: 'PLATFORM_ADMIN', clinicId: t.a.id } })).expect(400);
-      await post(newUser({ assignment: { roleCode: 'CLINIC_ADMIN' } })).expect(400); // falta clinicId
-      const clinicAdmin = await post(newUser({ assignment: { roleCode: 'CLINIC_ADMIN', clinicId: t.b.id } })).expect(201);
-      expect(clinicAdmin.body.assignment.clinicId).toBe(t.b.id);
+      const platformToken = await loginInContext(ctx, user.email);
+      const target = await fx.user();
+      for (const roleCode of ['CLINIC_ADMIN', 'DENTIST', 'RECEPTIONIST']) {
+        const res = await ctx.http().post('/v1/assignments').set(bearer(platformToken)).send({ userId: target.id, roleCode, clinicId: t.b.id }).expect(403);
+        expect(res.body.message).toMatch(/plataforma no otorga roles de clínica/);
+      }
+      expect(await ctx.db.userAssignment.count({ where: { userId: target.id } })).toBe(0);
+    });
+
+    it('el rol Director Clínico no se otorga por asignación directa, ni siquiera un administrador de clínica', async () => {
+      const t = await setup();
+      const target = await fx.user();
+      const res = await ctx.http().post('/v1/assignments').set(bearer(t.tokenA)).send({ userId: target.id, roleCode: 'CLINICAL_DIRECTOR' }).expect(403);
+      expect(res.body.message).toMatch(/solo se otorga mediante invitación formal/);
     });
   });
 
@@ -213,8 +203,8 @@ describe('Usuarios, roles y asignaciones', () => {
       const t = await setup();
       const adminB = (await fx.userWithRole('CLINIC_ADMIN', { clinicId: t.b.id })).user;
       const tokenB = await loginInContext(ctx, adminB.email, { clinicId: t.b.id });
-      await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(newUser({ assignment: { roleCode: 'ASSISTANT' } })).expect(201);
-      await ctx.http().post('/v1/users').set(bearer(tokenB)).send(newUser({ assignment: { roleCode: 'ASSISTANT' } })).expect(201);
+      await inviteOk(ctx, t.tokenA, { email: `${uniq('a')}@test.pe`, roleCode: 'ASSISTANT' });
+      await inviteOk(ctx, tokenB, { email: `${uniq('b')}@test.pe`, roleCode: 'ASSISTANT' });
 
       const a = await ctx.http().get('/v1/audit-logs?limit=100').set(bearer(t.tokenA)).expect(200);
       expect(a.body.length).toBeGreaterThan(0);
@@ -222,7 +212,7 @@ describe('Usuarios, roles y asignaciones', () => {
 
       const { user } = await fx.userWithRole('PLATFORM_ADMIN');
       const pt = await loginInContext(ctx, user.email);
-      const all = await ctx.http().get('/v1/audit-logs?limit=100&action=USER_CREATED').set(bearer(pt)).expect(200);
+      const all = await ctx.http().get('/v1/audit-logs?limit=100&action=INVITATION_CREATED').set(bearer(pt)).expect(200);
       const clinics = new Set(all.body.map((l: { clinicId: string }) => l.clinicId));
       expect(clinics.has(t.a.id) && clinics.has(t.b.id)).toBe(true);
     });
