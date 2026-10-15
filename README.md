@@ -8,6 +8,7 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 - **Política de acceso clínico P0** (adoptada): [`docs/arquitectura/politica-acceso-clinico.md`](docs/arquitectura/politica-acceso-clinico.md)
 - **Sub-incremento 3.0** (acceso seguro: invitaciones, sesiones, reautenticación, último administrador): [`docs/arquitectura/incremento-3-0-acceso-seguro.md`](docs/arquitectura/incremento-3-0-acceso-seguro.md)
 - **Sub-incremento 3.1** (relación asistencial y control de acceso clínico): [`docs/arquitectura/incremento-3-1-acceso-clinico.md`](docs/arquitectura/incremento-3-1-acceso-clinico.md)
+- **Sub-incremento 3.5** (odontograma versionado y exportable): [`docs/arquitectura/incremento-3-5-odontograma.md`](docs/arquitectura/incremento-3-5-odontograma.md) · especificación visual: [`docs/diseno/odontograma.md`](docs/diseno/odontograma.md)
 - **Sub-incremento 3.4** (evoluciones narrativas, ficha de atención y datos demo): [`docs/arquitectura/incremento-3-4-evoluciones.md`](docs/arquitectura/incremento-3-4-evoluciones.md) · contrato de pantalla: [`docs/diseno/ficha-de-atencion.md`](docs/diseno/ficha-de-atencion.md)
 - **Sub-incremento 3.3** (visitas, diagnósticos y procedimientos): [`docs/arquitectura/incremento-3-3-visitas-diagnosticos-procedimientos.md`](docs/arquitectura/incremento-3-3-visitas-diagnosticos-procedimientos.md)
 - **Sub-incremento 3.2** (antecedentes, alergias y alertas clínicas): [`docs/arquitectura/incremento-3-2-antecedentes-alertas.md`](docs/arquitectura/incremento-3-2-antecedentes-alertas.md) · **parche 3.2.1** (evaluación de alergias, motivo del alta): [`incremento-3-2-1-parche.md`](docs/arquitectura/incremento-3-2-1-parche.md)
@@ -20,13 +21,15 @@ Incluye: API NestJS versionada en `/v1`, Prisma + MySQL, clínicas, sedes, usuar
 
 Desde 3.1 incluye también el **control de acceso clínico**: relación asistencial paciente–odontólogo, permisos `clinical:*`, vista de apoyo del asistente y lectura excepcional del Director (`clinical:read_all`) con justificación, reautenticación y auditoría previa.
 
+Desde 3.5 incluye el **odontograma digital** (estructura por pieza FDI, superficies y estados; versionado e inmutable al guardar; corrección con motivo y reautenticación; exportación a PDF/SVG con el aviso **"formato clínico por validar"**). No se afirma cumplimiento MINSA, y no genera tratamientos, presupuestos ni diagnósticos.
+
 Desde 3.4 incluye la **evolución narrativa** por visita (borrador → cerrada con reautenticación → corregida, sin edición ni borrado de lo cerrado) y la **ficha de atención** en una sola lectura, con **datos demo ficticios** de Clínica Demo.
 
 Desde 3.3 incluye **visitas clínicas, diagnósticos y procedimientos** (versionados) con un **catálogo de procedimientos por clínica**; el consentimiento clínico faltante nunca bloquea abrir una visita ni diagnosticar, pero sí **cerrar** los procedimientos que la clínica configure como "requiere consentimiento".
 
 Desde 3.2 incluye **antecedentes, alergias y alertas clínicas** versionados (corrección, rectificación, desactivación, historial y motivo; sin eliminación física), siempre bajo el motor de acceso de 3.1.
 
-**No** incluye (a propósito): odontograma, planes de tratamiento, citas, pagos, inventario, firma digital, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
+**No** incluye (a propósito): planes de tratamiento, citas, pagos, inventario, firma digital, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
 
 ## Estructura
 
@@ -193,6 +196,9 @@ Flujo: **login** (access token sin contexto + cookie del refresh token) → **li
 | `GET …/visits/:visitId/sheet` | Odontólogo con relación; Director autorizado (lectura); **no** el asistente | **Ficha de atención**: alertas, diagnóstico, procedimientos y evolución en una lectura, con textos claros y acciones disponibles |
 | `GET\|PUT …/visits/:visitId/evolution` · `GET …/evolution/versions` | Responsable escribe; otros lectores autorizados leen lo cerrado | Evolución narrativa: el `PUT` crea o actualiza el **borrador** (con `etag`) |
 | `POST …/evolution/close` · `correct` · `rectify` · `mark-error` · `discard` | Odontólogo responsable | Cierra con **contraseña en un paso** (o prueba de reautenticación): **no es una firma digital, legal ni clínica**. Corregir/rectificar: versión nueva con motivo |
+| `GET …/clinical/odontogram` · `…/versions` · `…/export?format=pdf\|svg` | Odontólogo con relación; Director autorizado (lectura); **no** el asistente ni perfiles administrativos | Odontograma: versión vigente y borrador; exportación auditada **antes** de entregar |
+| `POST …/odontogram/draft` · `PUT …/draft` · `POST …/close` · `…/discard` · `…/mark-error` | Odontólogo con relación (solo el autor del borrador) | Borrador editable → versión guardada **inmutable**; corregir/rectificar y registrar por error exigen motivo y reautenticación (**no es una firma**) |
+| `GET /v1/clinical/odontogram/spec` | Cualquier perfil clínico | Especificación visual y de estructura para el panel |
 | `GET /v1/clinical/options` | Cualquier perfil clínico | Valores sugeridos (no limitan lo que se registra) |
 
 Ejemplo de carga y descarga:
