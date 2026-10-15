@@ -56,6 +56,8 @@ La relación tiene `desde`, `hasta` (opcional) y `motivo/origen`; puede cerrarse
 
 ### 3.3 "Vista de apoyo" del asistente (lectura clínica limitada)
 
+> **Implementada en 3.2 con un alcance menor al propuesto abajo:** el asistente ve solo **alertas activas y mínimas** (origen, severidad, etiqueta breve, vigencia). No ve antecedentes ni alergias no críticas, ni detalle, ni versiones. Ver [`incremento-3-2-antecedentes-alertas.md`](incremento-3-2-antecedentes-alertas.md).
+
 Propuesta, **[por validar con Clínica Demo]**:
 
 | Puede ver | No puede ver |

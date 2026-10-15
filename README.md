@@ -8,6 +8,7 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 - **Política de acceso clínico P0** (adoptada): [`docs/arquitectura/politica-acceso-clinico.md`](docs/arquitectura/politica-acceso-clinico.md)
 - **Sub-incremento 3.0** (acceso seguro: invitaciones, sesiones, reautenticación, último administrador): [`docs/arquitectura/incremento-3-0-acceso-seguro.md`](docs/arquitectura/incremento-3-0-acceso-seguro.md)
 - **Sub-incremento 3.1** (relación asistencial y control de acceso clínico): [`docs/arquitectura/incremento-3-1-acceso-clinico.md`](docs/arquitectura/incremento-3-1-acceso-clinico.md)
+- **Sub-incremento 3.2** (antecedentes, alergias y alertas clínicas): [`docs/arquitectura/incremento-3-2-antecedentes-alertas.md`](docs/arquitectura/incremento-3-2-antecedentes-alertas.md)
 - Incremento 3 (**propuesta**, historia clínica; sin código): [`docs/arquitectura/incremento-3-historia-clinica.md`](docs/arquitectura/incremento-3-historia-clinica.md)
 - Sistema de diseño (propuesta, previo al frontend): [`docs/diseno/sistema-de-diseno.md`](docs/diseno/sistema-de-diseno.md) · vista previa: [`docs/diseno/vista-previa.html`](docs/diseno/vista-previa.html)
 
@@ -17,7 +18,9 @@ Incluye: API NestJS versionada en `/v1`, Prisma + MySQL, clínicas, sedes, usuar
 
 Desde 3.1 incluye también el **control de acceso clínico**: relación asistencial paciente–odontólogo, permisos `clinical:*`, vista de apoyo del asistente y lectura excepcional del Director (`clinical:read_all`) con justificación, reautenticación y auditoría previa.
 
-**No** incluye (a propósito): **datos clínicos** (antecedentes, alergias, diagnósticos, visitas, evolución), odontograma, citas, pagos, inventario, firma digital, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
+Desde 3.2 incluye **antecedentes, alergias y alertas clínicas** versionados (corrección, rectificación, desactivación, historial y motivo; sin eliminación física), siempre bajo el motor de acceso de 3.1.
+
+**No** incluye (a propósito): diagnósticos, procedimientos, visitas, evolución, odontograma, citas, pagos, inventario, firma digital, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
 
 ## Estructura
 
@@ -164,6 +167,17 @@ Flujo: **login** (access token sin contexto + cookie del refresh token) → **li
 | `POST /v1/care-relationships/:relId/revoke` · `GET /v1/care-relationships` | `care:assign` | Revoca con motivo / revisión de la clínica |
 | `GET /v1/patients/:id/clinical-summary` | `clinical:read` · `read_limited` · `read_all` | Resumen clínico (hoy: acceso, alertas y datos de apoyo). Auditado **antes** de entregar; `404` igual para ajeno e inexistente |
 | `POST /v1/patients/:id/clinical-access` | `clinical:read_all` (Director) | Categoría + motivo ≥ 10 caracteres + reautenticación `CLINICAL_READ_ALL` del paciente → lectura de **ese** paciente por 30 min, solo lectura |
+
+**Antecedentes, alergias y alertas (3.2).** Texto estructurado de apoyo administrativo; cada cambio exige motivo y `expectedVersion`. Detalle en [`incremento-3-2-antecedentes-alertas.md`](docs/arquitectura/incremento-3-2-antecedentes-alertas.md).
+
+| Método y ruta | Quién | Descripción |
+|---|---|---|
+| `GET/POST /v1/patients/:id/clinical/history` | Odontólogo con relación · Director con autorización (solo lectura) | Antecedentes y alergias vigentes / alta |
+| `GET …/history/:itemId` · `…/versions` | ídem | Detalle e historial completo de versiones |
+| `POST …/history/:itemId/correct` · `rectify` · `deactivate` · `reactivate` · `mark-error` | Odontólogo con relación | Nueva versión con motivo; `409` si la versión cambió |
+| `GET /v1/patients/:id/clinical/alerts` | Odontólogo, Director (autorizado) y **asistente (vista mínima)** | Alertas activas: derivadas de lo crítico + manuales. Informativas, no bloquean nada |
+| `POST /v1/patients/:id/clinical/alerts` · `…/:itemId/correct` · `deactivate` · `reactivate` · `mark-error` · `GET …/versions` | Odontólogo con relación | Alertas manuales con severidad, vigencia y motivo |
+| `GET /v1/clinical/options` | Cualquier perfil clínico | Valores sugeridos (no limitan lo que se registra) |
 
 Ejemplo de carga y descarga:
 

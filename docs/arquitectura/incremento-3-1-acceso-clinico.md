@@ -119,7 +119,7 @@ Migración `20261015000000_care_relationships_and_clinical_access`: `patient_car
 
 1. **Colusión de dos personas** (el administrador que invita + recepción que asigna): logran acceso a un paciente. Todo queda trazado y es visible en `GET /v1/care-relationships`, pero no se impide. Mitigación futura: informe periódico al Director y confirmación del Director para relaciones nuevas de odontólogos incorporados por un administrador.
 2. **Alias en dominio propio** (`yo@mi-dominio.pe` e `ysegundo@mi-dominio.pe`) no se detecta por correo; solo lo frena la separación de funciones.
-3. **Clínicas de una sola persona/dos personas**: la separación de funciones exige al menos dos actores (quien otorga y quien asigna). Es un efecto buscado.
+3. **Clínicas de una sola persona/dos personas**: la separación de funciones exige al menos dos actores (quien otorga y quien asigna). Es un efecto buscado y **se mantiene**: el futuro flujo de excepción para clínicas muy pequeñas deberá exigir aprobación explícita y auditoría reforzada, nunca eliminar la separación (ver 3.2, sección 7).
 4. **Vacancia del único Director**: sin flujo automático (6.1).
 5. **Datos demográficos**: el odontólogo, el asistente y el Director ven la ficha demográfica de todos los pacientes de la clínica (pregunta abierta 12). 3.1 solo restringe lo **clínico**.
 6. **Relaciones por cita/visita**: la tabla y el cierre por vigencia están listos, pero no hay agenda ni visitas que las generen; hoy solo por asignación manual.
@@ -137,7 +137,7 @@ Ver la sección final del reporte del sub-incremento y la suite: `care-relations
 3. **Revisión legal** de los puntos normativos de la política (datos de salud, historia clínica, figura del Director, conservación) y de los plazos de retención.
 Además: notificación de "contraseña cambiada", mantenimiento programado y revisión periódica de la auditoría clínica.
 
-## 13. Para iniciar 3.2 (antecedentes, alergias y alertas)
+## 13. Para iniciar 3.2 (antecedentes, alergias y alertas) — **hecho**, ver [`incremento-3-2-antecedentes-alertas.md`](incremento-3-2-antecedentes-alertas.md)
 1. Cada lectura/escritura nueva debe llamar a `ClinicalAccessService.authorize` **y** auditar **antes** de entregar (falla cerrada); nunca consultar tablas clínicas fuera de ese camino.
 2. Las alertas clínicas reales se suman a las derivadas del consentimiento en `alerts`; la vista del asistente crece solo con lo aprobado.
 3. Las escrituras se auditan en la misma transacción y usan `authorize(..., 'write')`.
