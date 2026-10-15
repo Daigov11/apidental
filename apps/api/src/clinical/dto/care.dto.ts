@@ -208,3 +208,75 @@ export class ListProceduresQuery extends PaginationQuery {
   })
   status?: 'OPEN' | 'CLOSED' | 'CANCELLED' | 'ENTERED_IN_ERROR';
 }
+
+// ----------------------------------------------------------------------------- evolución
+
+/**
+ * Reautenticación para cerrar o corregir una evolución: la contraseña (un solo paso) o una prueba emitida antes por
+ * `POST /auth/reauthenticate`. Es una confirmación de identidad; NO es una firma digital, legal ni clínica.
+ */
+export class ReauthInput {
+  @IsOptional() @IsString() @MaxLength(128) password?: string;
+  @IsOptional() @IsString() @MaxLength(100) reauthToken?: string;
+}
+
+/** Guarda el borrador (lo crea si no existe). `expectedEtag` = el `etag` que devolvió la última lectura; se omite al crear. */
+export class SaveDraftDto {
+  @Transform(trim)
+  @IsString()
+  @MinLength(1, { message: 'Escriba la evolución' })
+  @MaxLength(10000)
+  body!: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(2000) followUp?: string;
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{1,6}\.\d{1,6}$/, { message: 'expectedEtag no es válido' })
+  expectedEtag?: string;
+}
+
+export class CloseNoteDto extends ReauthInput {
+  @IsString()
+  @Matches(/^\d{1,6}\.\d{1,6}$/, { message: 'expectedEtag no es válido' })
+  expectedEtag!: string;
+}
+
+export class CorrectNoteDto extends ReauthInput {
+  @IsString()
+  @Matches(/^\d{1,6}\.\d{1,6}$/, { message: 'expectedEtag no es válido' })
+  expectedEtag!: string;
+  @Transform(trim)
+  @IsString()
+  @MinLength(3, { message: REASON_MSG })
+  @MaxLength(300)
+  reason!: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MinLength(1)
+  @MaxLength(10000)
+  body?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(2000) followUp?:
+    string | null;
+}
+
+export class MarkNoteErrorDto extends ReauthInput {
+  @IsString()
+  @Matches(/^\d{1,6}\.\d{1,6}$/, { message: 'expectedEtag no es válido' })
+  expectedEtag!: string;
+  @Transform(trim)
+  @IsString()
+  @MinLength(3, { message: REASON_MSG })
+  @MaxLength(300)
+  reason!: string;
+}
+
+export class DiscardDraftDto {
+  @IsString()
+  @Matches(/^\d{1,6}\.\d{1,6}$/, { message: 'expectedEtag no es válido' })
+  expectedEtag!: string;
+  @Transform(trim)
+  @IsString()
+  @MinLength(3, { message: REASON_MSG })
+  @MaxLength(300)
+  reason!: string;
+}

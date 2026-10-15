@@ -93,7 +93,7 @@ export class ReauthService {
     targetId: string | null,
     meta: RequestMeta,
     tx: DbTx,
-  ): Promise<void> {
+  ): Promise<string> {
     // Cada rechazo se audita POR SEPARADO (fuera de la transacción de la operación, que se revierte): quién,
     // para qué propósito y por qué razón general. Nunca el token ni el objeto.
     const deny = async (reason: string): Promise<never> => {
@@ -132,5 +132,6 @@ export class ReauthService {
       },
       tx,
     );
+    return proof.id; // el id de la prueba (nunca el token) queda como evidencia en el registro protegido
   }
 }

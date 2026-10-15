@@ -315,6 +315,17 @@ export class ClinicalVisitsService {
                   code: 'OPEN_PROCEDURES',
                   count: open,
                 });
+              const drafts = await tx.clinicalNote.count({
+                where: { visitId, currentKey: { not: null }, status: 'DRAFT' },
+              });
+              if (drafts > 0) {
+                throw new ConflictException({
+                  message:
+                    'Cierre o descarte el borrador de la evolución antes de cerrar la visita',
+                  code: 'OPEN_NOTE',
+                  count: drafts,
+                });
+              }
             } else {
               const live = await tx.clinicalProcedure.count({
                 where: {
@@ -330,6 +341,21 @@ export class ClinicalVisitsService {
                   code: 'HAS_PROCEDURES',
                   count: live,
                 });
+              const notes = await tx.clinicalNote.count({
+                where: {
+                  visitId,
+                  currentKey: { not: null },
+                  status: { in: ['DRAFT', 'CLOSED'] },
+                },
+              });
+              if (notes > 0) {
+                throw new ConflictException({
+                  message:
+                    'La visita tiene una evolución vigente; no puede cancelarse',
+                  code: 'HAS_NOTES',
+                  count: notes,
+                });
+              }
             }
             const updated = await tx.clinicalVisit.update({
               where: { id: visitId },

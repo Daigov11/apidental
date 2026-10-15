@@ -6,6 +6,8 @@ import { ClinicalSummaryService } from './clinical-summary.service.js';
 import { ClinicalAllergyAssessmentService } from './clinical-allergy-assessment.service.js';
 import { ClinicalCareController } from './clinical-care.controller.js';
 import { ClinicalDiagnosesService } from './clinical-diagnoses.service.js';
+import { ClinicalNotesService } from './clinical-notes.service.js';
+import { ClinicalSheetService } from './clinical-sheet.service.js';
 import { ClinicalProceduresService } from './clinical-procedures.service.js';
 import { ClinicalVisitsService } from './clinical-visits.service.js';
 import { ProcedureDefinitionsService } from './procedure-definitions.service.js';
@@ -32,6 +34,8 @@ import { ClinicalController } from './clinical.controller.js';
     ClinicalVisitsService,
     ClinicalDiagnosesService,
     ClinicalProceduresService,
+    ClinicalNotesService,
+    ClinicalSheetService,
   ],
   exports: [ClinicalAccessService, CareRelationshipsService],
 })

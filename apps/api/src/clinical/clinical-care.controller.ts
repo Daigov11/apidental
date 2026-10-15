@@ -7,8 +7,11 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { CurrentPrincipal } from '../common/decorators/current-principal.decorator.js';
 import {
@@ -17,10 +20,17 @@ import {
 } from '../common/decorators/permissions.decorator.js';
 import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
 import { ClinicalDiagnosesService } from './clinical-diagnoses.service.js';
+import { ClinicalNotesService } from './clinical-notes.service.js';
+import { ClinicalSheetService } from './clinical-sheet.service.js';
 import { ClinicalProceduresService } from './clinical-procedures.service.js';
 import { ClinicalVisitsService } from './clinical-visits.service.js';
 import {
   CancelVisitDto,
+  CloseNoteDto,
+  CorrectNoteDto,
+  DiscardDraftDto,
+  MarkNoteErrorDto,
+  SaveDraftDto,
   ChangeDiagnosisDto,
   ChangeProcedureDto,
   CloseProcedureDto,
@@ -55,6 +65,8 @@ export class ClinicalCareController {
     private readonly visits: ClinicalVisitsService,
     private readonly diagnoses: ClinicalDiagnosesService,
     private readonly procedures: ClinicalProceduresService,
+    private readonly notes: ClinicalNotesService,
+    private readonly sheet: ClinicalSheetService,
   ) {}
 
   // ------------------------------------------------------------- catálogo (configuración de la clínica)
@@ -448,5 +460,124 @@ export class ClinicalCareController {
       dto.reason,
       meta,
     );
+  }
+
+  // ------------------------------------------------------------------------------- ficha de atención
+
+  /** Toda la ficha de la visita en una sola lectura: alertas, diagnóstico, procedimientos y evolución. */
+  @Get(`${P}/visits/:visitId/sheet`)
+  @RequireAnyPermission(...ANY_CLINICAL)
+  getSheet(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Param('visitId', uuid()) visitId: string,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.sheet.get(a, id, visitId, meta);
+  }
+
+  // ------------------------------------------------------------------------------------- evolución
+
+  @Get(`${P}/visits/:visitId/evolution`)
+  @RequireAnyPermission(...ANY_CLINICAL)
+  getEvolution(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Param('visitId', uuid()) visitId: string,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.notes.get(a, id, visitId, meta);
+  }
+
+  /** Guarda el borrador (lo crea la primera vez: 201; después lo actualiza: 200). */
+  @Put(`${P}/visits/:visitId/evolution`)
+  @RequirePermissions('clinical:write')
+  async saveEvolution(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Param('visitId', uuid()) visitId: string,
+    @Body() dto: SaveDraftDto,
+    @Meta() meta: RequestMeta,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const out = await this.notes.saveDraft(a, id, visitId, dto, meta);
+    res.status(out.created ? 201 : 200);
+    return { evolution: out.evolution };
+  }
+
+  @Get(`${P}/visits/:visitId/evolution/versions`)
+  @RequireAnyPermission(...ANY_CLINICAL)
+  evolutionVersions(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Param('visitId', uuid()) visitId: string,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.notes.versions(a, id, visitId, meta);
+  }
+
+  @Post(`${P}/visits/:visitId/evolution/close`)
+  @HttpCode(200)
+  @RequirePermissions('clinical:write')
+  closeEvolution(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Param('visitId', uuid()) visitId: string,
+    @Body() dto: CloseNoteDto,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.notes.close(a, id, visitId, dto, meta);
+  }
+
+  @Post(`${P}/visits/:visitId/evolution/correct`)
+  @HttpCode(200)
+  @RequirePermissions('clinical:write')
+  correctEvolution(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Param('visitId', uuid()) visitId: string,
+    @Body() dto: CorrectNoteDto,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.notes.correct(a, id, visitId, dto, 'CORRECTED', meta);
+  }
+
+  @Post(`${P}/visits/:visitId/evolution/rectify`)
+  @HttpCode(200)
+  @RequirePermissions('clinical:write')
+  rectifyEvolution(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Param('visitId', uuid()) visitId: string,
+    @Body() dto: CorrectNoteDto,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.notes.correct(a, id, visitId, dto, 'RECTIFIED', meta);
+  }
+
+  @Post(`${P}/visits/:visitId/evolution/discard`)
+  @HttpCode(200)
+  @RequirePermissions('clinical:write')
+  discardEvolution(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Param('visitId', uuid()) visitId: string,
+    @Body() dto: DiscardDraftDto,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.notes.discard(a, id, visitId, dto, meta);
+  }
+
+  @Post(`${P}/visits/:visitId/evolution/mark-error`)
+  @HttpCode(200)
+  @RequirePermissions('clinical:write')
+  markEvolutionError(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Param('visitId', uuid()) visitId: string,
+    @Body() dto: MarkNoteErrorDto,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.notes.markError(a, id, visitId, dto, meta);
   }
 }
