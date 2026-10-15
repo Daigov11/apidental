@@ -43,7 +43,7 @@ Convención: **[por validar]** = no es un hecho normativo ni confirmado.
 3. **Fricción en la atención:** si la relación asistencial exige pasos, los odontólogos pueden sentirlo como obstáculo → la autoasignación con motivo evita bloqueos pero genera revisión.
 4. **Abuso de la autoasignación** (un odontólogo se asigna pacientes ajenos): mitigado con motivo, marca de revisión e informe al Director Clínico.
 5. **Datos clínicos en la auditoría o en *logs*:** reglas estrictas de no copiar contenido.
-6. **Vía indirecta de plataforma** (excepción de aprovisionamiento): hay que **reemplazarla antes de cargar datos reales** (sección 9, paso 3.0).
+6. **Vía indirecta de plataforma** (excepción de aprovisionamiento): **resuelta en 3.0** (invitación de un solo uso); persiste un riesgo residual acotado y documentado.
 7. **Acceso técnico a la base de datos** por quien opere el VPS (riesgo residual; ver política).
 8. **Rendimiento** de historias con muchos registros: paginación e índices por paciente.
 9. **Pérdida de datos clínicos:** el respaldo diario externo con prueba de restauración deja de ser recomendable y pasa a **obligatorio**.
@@ -278,7 +278,7 @@ Reglas: inmutable; en la **misma transacción** en escrituras y **antes de entre
 
 | # | Contenido | Compuerta de salida |
 |---|---|---|
-| **3.0** | **Seguridad previa:** flujo formal de **aprovisionamiento/invitación** que **reemplaza** la excepción de plataforma; endpoint de **reautenticación**; **refresh token/logout**; **recuperación de contraseña**; regla de **último administrador**; auditoría de **accesos denegados** | Plataforma ya no otorga roles de clínica; pruebas de invitación (un solo uso, vencimiento, sin que plataforma conozca la clave) |
+| **3.0** ✅ | **Hecho** ([`incremento-3-0-acceso-seguro.md`](incremento-3-0-acceso-seguro.md)): aprovisionamiento por **invitación** que reemplaza la excepción de plataforma; **reautenticación**; **refresh token/logout**; regla de **último administrador/Director**; rol Director. **Pendiente de 3.0 antes de datos reales:** **recuperación de contraseña**, deshabilitación de usuarios por API y auditoría de **accesos denegados** | Plataforma ya no otorga roles de clínica; 302 pruebas e2e; sin fugas de secretos |
 | **3.1** | Modelo base, `clinical_record`, **relación asistencial**, permisos, rol **Director Clínico**, `clinical:read_all` con justificación, auditoría clínica y su suite negativa | Matriz de acceso completa verde |
 | **3.2** | Antecedentes, alergias (y evaluación) y alertas versionados | Versionado e inmutabilidad probados en BD |
 | **3.3** | Visitas, diagnósticos y procedimientos | Reglas de sede y visita probadas |

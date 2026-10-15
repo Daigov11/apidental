@@ -120,20 +120,14 @@ Los nombres se confirman en el incremento 3. **`clinical:read_all` aún no exist
 - **Riesgo residual conocido:** quien tenga acceso al servidor o a la base de datos (SSH/root, usuario de BD) puede técnicamente leer datos. Mitigaciones previstas, sin sustituir un contrato **[por validar]**: usuario de aplicación distinto del de migraciones, cifrado de disco y respaldos, acceso al VPS limitado y registrado, y cláusulas de confidencialidad con quien opere la infraestructura.
 - Si en el futuro se necesitara acceso de soporte, deberá ser **excepcional, solicitado por la clínica, con aprobación del Director Clínico, justificado, de duración limitada y auditado**; requiere una decisión nueva.
 
-## 7. Punto de seguridad a vigilar: la excepción del aprovisionamiento
+## 7. Punto de seguridad vigilado: la excepción del aprovisionamiento (RESUELTO en 3.0)
 
-En el incremento 2 se permitió que el **administrador de plataforma otorgue roles de clínica** (p. ej. crear el primer administrador de una clínica) aunque la plataforma no tenga los permisos sobre pacientes que esos roles incluyen; sin esa excepción no podría incorporar clínicas. Esa vía es **indirecta**: quien crea un administrador con una contraseña que conoce podría actuar como él. Hoy está auditada, pero **no debe permanecer**.
+En el incremento 2 la plataforma podía otorgar roles de clínica directamente (por ejemplo, crear el primer administrador con una contraseña que conocía), una vía indirecta de acceso. **Se retiró en el sub-incremento 3.0** ([`incremento-3-0-acceso-seguro.md`](incremento-3-0-acceso-seguro.md)):
 
-Con esta política el riesgo crece: ese administrador podría, a su vez, asignar el rol Director Clínico y con ello `clinical:read_all`. Por eso:
-
-- **Los roles que incluyen `clinical:read_all` quedan fuera de la excepción:** la plataforma **nunca** puede otorgarlos (ya lo impide la regla anti-escalada, porque no posee ese permiso).
-- **Debe sustituirse por un flujo formal de aprovisionamiento/invitación** antes de usar datos reales:
-  1. La plataforma crea la clínica y **una invitación de un solo uso** (token aleatorio, vencimiento corto, ligada a un correo y a un rol).
-  2. El destinatario **define su propia contraseña**; la plataforma nunca la conoce ni la fija.
-  3. La plataforma **ya no otorga roles de clínica directamente**: solo emite invitaciones y puede revocarlas.
-  4. Todo queda auditado (emisión, uso, vencimiento, revocación).
-  5. Designación del primer Director Clínico mediante invitación con referencia de autorización (ver 4.3).
-- Hasta que exista, **no se cargan datos reales** de pacientes (ya es requisito previo a usuarios reales).
+- La plataforma **ya no otorga roles de clínica** ni crea usuarios con contraseña: solo emite una **invitación de un solo uso** al **primer administrador** de una clínica **sin administrador**; la persona define su propia contraseña.
+- La plataforma **nunca** designa al Director Clínico ni posee `provisioning:*` ni `director:manage`. El primer Director exige **registro formal de aprovisionamiento** de la clínica + reautenticación; los siguientes, un Director vigente.
+- Una clínica no puede quedar sin administrador ni sin Director (regla de último administrador).
+- **Riesgo residual documentado:** un operador de plataforma que controle un correo puede invitarlo a una clínica sin administrador. No obtiene acceso clínico y todo queda trazado, pero conviene verificar con la clínica, por un canal independiente, quién es su administrador **[por validar]**. El registro de aprovisionamiento es declarativo mientras no exista firma o flujo contractual integrado.
 
 ## 8. Auditoría exigida por esta política
 

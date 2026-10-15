@@ -117,7 +117,7 @@ Acciones nuevas: `PATIENT_CREATED/VIEWED/SEARCHED/UPDATED/DEACTIVATED/REACTIVATE
 
 ## Decisiones tomadas
 
-1. **Regla anti-escalada con excepción.** Los roles de clínica ahora incluyen permisos sobre pacientes que la plataforma no tiene; sin excepción, la plataforma no podría crear administradores de clínica. Se permite que la plataforma otorgue roles de **clínica** (no se relaja nada para roles de plataforma ni para administradores de clínica). Es una vía **indirecta** de acceso: queda auditada y debe cerrarse con un flujo de invitación en el que el usuario fije su propia clave.
+1. **Regla anti-escalada con excepción (RETIRADA en el sub-incremento 3.0).** En este incremento la plataforma podía otorgar roles de clínica para incorporar clínicas, una vía indirecta de acceso. Se **sustituyó** por invitaciones de un solo uso donde la persona define su propia contraseña; ver [`incremento-3-0-acceso-seguro.md`](incremento-3-0-acceso-seguro.md).
 2. **Historial en tablas de dominio, enmascarado en auditoría** (ver arriba), para no volver inmutables datos personales.
 3. **Vista según permiso**, no según ruta, para que el cajero use las mismas rutas con menos datos.
 4. **Desactivar un paciente exige motivo** y lo excluye de la búsqueda por defecto (`status=INACTIVE` lo recupera).

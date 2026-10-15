@@ -225,7 +225,7 @@ Derivados de reglas del backend; se implementan una sola vez y se reutilizan:
 
 - **Diálogo de motivo (`ReasonDialog`):** campo de motivo obligatorio, texto explicativo de qué se conserva ("El archivo se conserva; solo dejará de estar disponible"). Lo usan: reemplazar DNI, cambiar celular/correo, revocar consentimiento, dar de baja un adjunto o un paciente, finalizar un vínculo de representante, anular un pago.
 - **Diálogo de reautenticación (`ReauthDialog`):** pide la contraseña para confirmar el cierre de una evolución. Texto fijo: "Confirma que usted realiza esta acción. **No es una firma legal ni digital.**" **[por validar]**
-- **Aviso de sesión por vencer (`SessionExpiryDialog`):** el token de acceso dura 15 minutos y aún no hay renovación; a los 2 minutos del vencimiento se avisa y se ofrece guardar el trabajo. (Se simplificará cuando exista refresh token.)
+- **Aviso de sesión por vencer (`SessionExpiryDialog`):** el access token dura 15 minutos y se **renueva en silencio** con el refresh token (cookie HttpOnly). El diálogo solo aparece si la renovación falla o la sesión llegó a su tope (inactividad o límite absoluto): avisa, ofrece conservar el borrador no clínico y vuelve al inicio de sesión. Las renovaciones deben **serializarse** (una a la vez, también entre pestañas).
 
 ### 5.9 Navegación
 
@@ -560,7 +560,7 @@ SEO: `<title>` y metadatos por página, `sitemap.xml`, `robots.txt`, datos estru
 ## 14. Decisiones y riesgos abiertos
 
 1. **Marca provisional:** el ícono actual es una propuesta técnica, no una identidad final.
-2. **Sin refresh token ni recuperación de contraseña** (backend): la interfaz debe manejar el vencimiento a los 15 min y no ofrecer "¿Olvidó su contraseña?" hasta que exista.
+2. **Recuperación de contraseña** (backend): sigue pendiente; la interfaz no debe ofrecer "¿Olvidó su contraseña?" hasta que exista. Las altas son por **invitación** (pantalla de aceptación en `/admin/aceptar-invitacion`, con el token en el fragmento de la URL).
 3. **Política de acceso clínico:** define qué pestañas y datos clínicos aparecen por rol (ver [`politica-acceso-clinico.md`](../arquitectura/politica-acceso-clinico.md)).
 4. **Mapeo de estados Apiworking/SUNAT** y tipos de comprobante: provisional.
 5. **Mensajes comerciales** sobre cumplimiento normativo: prohibidos hasta validar.
