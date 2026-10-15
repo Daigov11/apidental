@@ -6,12 +6,14 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
 } from '@nestjs/common';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { CurrentPrincipal } from '../common/decorators/current-principal.decorator.js';
 import { RequireAnyPermission } from '../common/decorators/permissions.decorator.js';
 import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
+import { ClinicalAllergyAssessmentService } from './clinical-allergy-assessment.service.js';
 import { ClinicalAlertsService } from './clinical-alerts.service.js';
 import { ClinicalHistoryService } from './clinical-history.service.js';
 import { CLINICAL_OPTIONS } from './clinical-options.js';
@@ -22,6 +24,7 @@ import {
   CreateHistoryEntryDto,
   ListAlertsQuery,
   ListHistoryQuery,
+  SetAllergyAssessmentDto,
   TransitionDto,
 } from './dto/history.dto.js';
 
@@ -39,6 +42,7 @@ export class ClinicalHistoryController {
   constructor(
     private readonly history: ClinicalHistoryService,
     private readonly alerts: ClinicalAlertsService,
+    private readonly assessment: ClinicalAllergyAssessmentService,
   ) {}
 
   /** Valores sugeridos de apoyo administrativo (no clínicos, no dependen del paciente). */
@@ -292,5 +296,38 @@ export class ClinicalHistoryController {
       'MARKED_IN_ERROR',
       meta,
     );
+  }
+
+  // ------------------------------------------------------- evaluación de alergias
+
+  @Get('patients/:id/clinical/allergy-assessment')
+  @RequireAnyPermission(...ANY_CLINICAL)
+  getAssessment(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.assessment.get(a, id, meta);
+  }
+
+  @Put('patients/:id/clinical/allergy-assessment')
+  @RequireAnyPermission(...WRITE)
+  setAssessment(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Body() dto: SetAllergyAssessmentDto,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.assessment.set(a, id, dto, meta);
+  }
+
+  @Get('patients/:id/clinical/allergy-assessment/versions')
+  @RequireAnyPermission(...ANY_CLINICAL)
+  assessmentVersions(
+    @CurrentPrincipal() a: AuthPrincipal,
+    @Param('id', uuid()) id: string,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.assessment.versions(a, id, meta);
   }
 }

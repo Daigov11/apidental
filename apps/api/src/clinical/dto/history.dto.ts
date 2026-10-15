@@ -58,11 +58,13 @@ export class CreateHistoryEntryDto {
   @IsString()
   @MaxLength(1000)
   observations?: string;
+  /** Opcional en el alta (la fuente sí es obligatoria); obligatorio en todo cambio posterior. */
+  @IsOptional()
   @Transform(trim)
   @IsString()
   @MinLength(3, { message: REASON_MSG })
   @MaxLength(300)
-  reason!: string;
+  reason?: string;
 }
 
 /**
@@ -126,11 +128,13 @@ export class CreateAlertDto {
   @IsEnum(SourceDto) source!: SourceDto;
   /** Fecha y hora (ISO 8601) hasta la cual se muestra; omitida = sin vencimiento. */
   @IsOptional() @IsString() @MaxLength(40) expiresAt?: string;
+  /** Opcional en el alta (la fuente sí es obligatoria); obligatorio en todo cambio posterior. */
+  @IsOptional()
   @Transform(trim)
   @IsString()
   @MinLength(3, { message: REASON_MSG })
   @MaxLength(300)
-  reason!: string;
+  reason?: string;
 }
 
 export class ChangeAlertDto {
@@ -157,4 +161,38 @@ export class ListAlertsQuery {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   includeInactive?: boolean;
+}
+
+// ---------------------------------------------------------------- evaluación de alergias
+
+export enum AllergyAssessmentStatusDto {
+  NOT_ASKED = 'NOT_ASKED',
+  NO_KNOWN_ALLERGIES = 'NO_KNOWN_ALLERGIES',
+  ALLERGIES_RECORDED = 'ALLERGIES_RECORDED',
+}
+
+/**
+ * Declara el estado de la evaluación de alergias. `ALLERGIES_RECORDED` NO se declara: lo deriva el sistema cuando hay
+ * una alergia activa. `expectedVersion` = versión que el cliente leyó (0 si no existe aún). El motivo es obligatorio
+ * desde la segunda versión.
+ */
+export class SetAllergyAssessmentDto {
+  @IsEnum(AllergyAssessmentStatusDto) status!: AllergyAssessmentStatusDto;
+  @IsEnum(SourceDto) source!: SourceDto;
+  @IsInt() @Min(0) expectedVersion!: number;
+  /** Fecha en que se consultó al paciente (YYYY-MM-DD, no futura); por omisión, hoy. */
+  @IsOptional()
+  @Matches(DATE, { message: 'assessedOn debe tener el formato YYYY-MM-DD' })
+  assessedOn?: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(500)
+  observations?: string;
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MinLength(3, { message: REASON_MSG })
+  @MaxLength(300)
+  reason?: string;
 }

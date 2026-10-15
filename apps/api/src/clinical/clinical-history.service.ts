@@ -1,3 +1,4 @@
+import { ClinicalAllergyAssessmentService } from './clinical-allergy-assessment.service.js';
 import { randomUUID } from 'node:crypto';
 import { BadRequestException, Inject, Injectable } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service.js';
@@ -62,7 +63,7 @@ interface Row {
   source: string;
   observations: string | null;
   changeKind: string;
-  changeReason: string;
+  changeReason: string | null;
   changedFields: unknown;
   createdById: string;
   createdAt: Date;
@@ -107,6 +108,7 @@ export class ClinicalHistoryService {
     @Inject(PRISMA) private readonly db: PrismaDb,
     private readonly audit: AuditService,
     private readonly access: ClinicalAccessService,
+    private readonly assessment: ClinicalAllergyAssessmentService,
   ) {}
 
   // ------------------------------------------------------------------- lectura
@@ -210,6 +212,7 @@ export class ClinicalHistoryService {
       this.db.$transaction(
         async (tx) => {
           await this.access.assertStillAuthorized(tx, actor, d, meta);
+          await this.assessment.lockPatient(tx, patientId);
           const created = await tx.clinicalHistoryEntry.create({
             data: {
               clinicId: d.clinicId,
@@ -228,7 +231,7 @@ export class ClinicalHistoryService {
               source: dto.source,
               observations: dto.observations || null,
               changeKind: 'CREATED',
-              changeReason: dto.reason,
+              changeReason: dto.reason ?? null,
               changedFields: [...FIELDS],
               createdById: actor.user.id,
             },
@@ -242,6 +245,8 @@ export class ClinicalHistoryService {
             'CREATED',
             [...FIELDS],
           );
+          if (created.kind === 'ALLERGY')
+            await this.assessment.syncInTx(tx, actor, d, meta);
           return created;
         },
         { isolationLevel: 'ReadCommitted' },
@@ -353,6 +358,7 @@ export class ClinicalHistoryService {
       this.db.$transaction(
         async (tx) => {
           await this.access.assertStillAuthorized(tx, actor, d, meta);
+          await this.assessment.lockPatient(tx, patientId);
           // Bloqueo de la versión vigente: dos cambios simultáneos se serializan y el segundo ve la versión nueva.
           const locked = await tx.$queryRaw<{ id: string; version: number }[]>`
             SELECT id, version FROM clinical_history_entries
@@ -411,6 +417,8 @@ export class ClinicalHistoryService {
             kind,
             fields,
           );
+          if (created.kind === 'ALLERGY')
+            await this.assessment.syncInTx(tx, actor, d, meta);
           return created;
         },
         { isolationLevel: 'ReadCommitted' },

@@ -10,6 +10,7 @@ import { ageOn, formatDateOnly, isMinor } from '../patients/util/lima-date.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { ClinicalAccessService } from './clinical-access.service.js';
+import { ClinicalAllergyAssessmentService } from './clinical-allergy-assessment.service.js';
 import { ClinicalAlertsService } from './clinical-alerts.service.js';
 
 /**
@@ -28,6 +29,7 @@ export class ClinicalSummaryService {
     @Inject(PRISMA) private readonly db: PrismaDb,
     private readonly access: ClinicalAccessService,
     private readonly clinicalAlerts: ClinicalAlertsService,
+    private readonly assessment: ClinicalAllergyAssessmentService,
   ) {}
 
   async get(actor: AuthPrincipal, patientId: string, meta: RequestMeta) {
@@ -104,6 +106,10 @@ export class ClinicalSummaryService {
       },
       alerts,
       clinicalAlerts,
+      allergyAssessment: await this.assessment.currentView(
+        decision.clinicId,
+        patientId,
+      ),
       clinicalConsent: { state: consent.state, grantedAt: consent.grantedAt },
       sections: {
         status: 'NOT_AVAILABLE',

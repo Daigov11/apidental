@@ -44,7 +44,7 @@ interface AlertRow {
   status: string;
   expiresAt: Date | null;
   changeKind: string;
-  changeReason: string;
+  changeReason: string | null;
   changedFields: unknown;
   createdById: string;
   createdAt: Date;
@@ -60,7 +60,7 @@ export interface AlertView {
   source?: string;
   version?: number;
   status?: string;
-  reason?: string;
+  reason?: string | null;
 }
 
 /**
@@ -234,7 +234,7 @@ export class ClinicalAlertsService {
               status: 'ACTIVE',
               expiresAt,
               changeKind: 'CREATED',
-              changeReason: dto.reason,
+              changeReason: dto.reason ?? null,
               changedFields: [...FIELDS],
               createdById: actor.user.id,
             },
