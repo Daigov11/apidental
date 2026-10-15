@@ -318,6 +318,8 @@ model Patient {
   attachments       Attachment[]
   careRelationships PatientCareRelationship[]
   clinicalGrants    ClinicalAccessGrant[]
+  historyEntries    ClinicalHistoryEntry[]
+  clinicalAlerts    ClinicalAlert[]
 
   @@unique([id, clinicId])
   @@index([clinicId, lastName, firstName])
@@ -825,4 +827,123 @@ model ClinicalAccessGrant {
   @@index([userId, patientId, expiresAt])
   @@index([clinicId, grantedAt])
   @@map("clinical_access_grants")
+}
+
+// ---------------------------------------------------------------------------
+// Sub-incremento 3.2: antecedentes, alergias y alertas clínicas (versionados).
+// Patrón "elemento versionado": una fila por versión; una sola vigente por elemento (current_key único).
+// Los triggers solo permiten un UPDATE (soltar current_key al ser reemplazada), nunca DELETE: el historial
+// de correcciones, rectificaciones y desactivaciones se conserva siempre. Los valores son TEXTO
+// ESTRUCTURADO de apoyo administrativo: no son un catálogo ni una guía médica.
+// ---------------------------------------------------------------------------
+
+enum ClinicalEntryKind {
+  BACKGROUND
+  ALLERGY
+}
+
+/// Gravedad referencial declarada por el profesional (no calculada ni normativa).
+enum ClinicalSeverity {
+  NOT_SPECIFIED
+  MILD
+  MODERATE
+  SEVERE
+}
+
+enum ClinicalRecordStatus {
+  ACTIVE
+  INACTIVE
+  ENTERED_IN_ERROR
+}
+
+enum ClinicalInfoSource {
+  PATIENT
+  GUARDIAN
+  DOCUMENT
+  PROFESSIONAL
+  OTHER
+}
+
+enum ClinicalChangeKind {
+  CREATED
+  CORRECTED
+  RECTIFIED
+  DEACTIVATED
+  REACTIVATED
+  MARKED_IN_ERROR
+}
+
+enum ClinicalAlertSeverity {
+  INFO
+  WARNING
+  CRITICAL
+}
+
+/// Antecedente médico o alergia (una versión). `is_critical` genera una alerta derivada mientras esté vigente y activa.
+model ClinicalHistoryEntry {
+  id            String               @id @default(uuid()) @db.Char(36)
+  clinicId      String               @map("clinic_id") @db.Char(36)
+  patientId     String               @map("patient_id") @db.Char(36)
+  /// Identificador estable del elemento a través de sus versiones.
+  itemId        String               @map("item_id") @db.Char(36)
+  version       Int
+  supersedesId  String?              @map("supersedes_id") @db.Char(36)
+  /// = item_id en la versión vigente; NULL en las reemplazadas (índice único => una sola vigente).
+  currentKey    String?              @unique @map("current_key") @db.Char(36)
+  kind          ClinicalEntryKind
+  /// Antecedente o agente alérgeno, en texto libre estructurado.
+  label         String               @db.VarChar(200)
+  /// Condición o reacción.
+  condition     String?              @db.VarChar(300)
+  /// Etiqueta de agrupación libre (sin catálogo rígido).
+  category      String?              @db.VarChar(60)
+  severity      ClinicalSeverity     @default(NOT_SPECIFIED)
+  status        ClinicalRecordStatus @default(ACTIVE)
+  isCritical    Boolean              @default(false) @map("is_critical")
+  onsetDate     DateTime?            @map("onset_date") @db.Date
+  source        ClinicalInfoSource
+  observations  String?              @db.VarChar(1000)
+  changeKind    ClinicalChangeKind   @map("change_kind")
+  changeReason  String               @map("change_reason") @db.VarChar(300)
+  /// Solo NOMBRES de campos modificados respecto de la versión anterior (nunca valores).
+  changedFields Json?                @map("changed_fields")
+  createdById   String               @map("created_by_id") @db.Char(36)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+
+  patient Patient @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@unique([itemId, version])
+  @@index([clinicId, patientId, currentKey])
+  @@index([clinicId, patientId, kind, status])
+  @@map("clinical_history_entries")
+}
+
+/// Alerta clínica MANUAL (una versión). Las derivadas de alergias/antecedentes críticos no se almacenan.
+/// Una alerta es informativa: no decide ni bloquea tratamientos.
+model ClinicalAlert {
+  id            String                @id @default(uuid()) @db.Char(36)
+  clinicId      String                @map("clinic_id") @db.Char(36)
+  patientId     String                @map("patient_id") @db.Char(36)
+  itemId        String                @map("item_id") @db.Char(36)
+  version       Int
+  supersedesId  String?               @map("supersedes_id") @db.Char(36)
+  currentKey    String?               @unique @map("current_key") @db.Char(36)
+  severity      ClinicalAlertSeverity
+  /// Texto breve visible también para el asistente (sin notas extensas).
+  text          String                @db.VarChar(300)
+  source        ClinicalInfoSource
+  status        ClinicalRecordStatus  @default(ACTIVE)
+  /// Vigencia: pasada esta fecha la alerta deja de mostrarse (sigue en el historial).
+  expiresAt     DateTime?             @map("expires_at") @db.DateTime(3)
+  changeKind    ClinicalChangeKind    @map("change_kind")
+  changeReason  String                @map("change_reason") @db.VarChar(300)
+  changedFields Json?                 @map("changed_fields")
+  createdById   String                @map("created_by_id") @db.Char(36)
+  createdAt     DateTime              @default(now()) @map("created_at") @db.DateTime(3)
+
+  patient Patient @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@unique([itemId, version])
+  @@index([clinicId, patientId, currentKey])
+  @@map("clinical_alerts")
 }
