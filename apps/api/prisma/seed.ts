@@ -6,6 +6,7 @@ import { createPrismaClient } from '../src/prisma/client.js';
 import { contactRow, identifierRow, prepareContacts, prepareIdentifier } from '../src/patients/patient-data.js';
 import { toDateOnly } from '../src/patients/util/lima-date.js';
 import { assignmentKey } from '../src/users/assignment-key.js';
+import { seedDemoClinical } from './demo-data.js';
 
 loadEnvFile();
 
@@ -59,6 +60,12 @@ async function seedDemo() {
   }
   console.log(`Administrador de desarrollo listo: ${normalized} (PLATFORM_ADMIN + CLINIC_ADMIN de Clínica Demo)`);
   await seedDemoPatients(clinic.id, user.id);
+
+  // Equipo y atención clínica de demostración (ficticios). Contraseña: SEED_DEMO_PASSWORD o, si falta, la del administrador de desarrollo.
+  const demoPassword = process.env['SEED_DEMO_PASSWORD'] ?? password;
+  if (demoPassword.length < 12) throw new Error('SEED_DEMO_PASSWORD debe tener al menos 12 caracteres');
+  const demo = await seedDemoClinical(db, { clinicId: clinic.id, branchId: branch.id, adminUserId: user.id, password: demoPassword });
+  console.log(`Atención clínica demo (ficticia) lista: ${Object.keys(demo.users).length} usuarios, ${Object.keys(demo.patients).length} pacientes con visita (cerrada/corregida, borrador y consentimiento faltante).`);
 }
 
 /**
