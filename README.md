@@ -8,6 +8,7 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 - **Política de acceso clínico P0** (adoptada): [`docs/arquitectura/politica-acceso-clinico.md`](docs/arquitectura/politica-acceso-clinico.md)
 - **Sub-incremento 3.0** (acceso seguro: invitaciones, sesiones, reautenticación, último administrador): [`docs/arquitectura/incremento-3-0-acceso-seguro.md`](docs/arquitectura/incremento-3-0-acceso-seguro.md)
 - **Sub-incremento 3.1** (relación asistencial y control de acceso clínico): [`docs/arquitectura/incremento-3-1-acceso-clinico.md`](docs/arquitectura/incremento-3-1-acceso-clinico.md)
+- **Sub-incremento 3.3** (visitas, diagnósticos y procedimientos): [`docs/arquitectura/incremento-3-3-visitas-diagnosticos-procedimientos.md`](docs/arquitectura/incremento-3-3-visitas-diagnosticos-procedimientos.md)
 - **Sub-incremento 3.2** (antecedentes, alergias y alertas clínicas): [`docs/arquitectura/incremento-3-2-antecedentes-alertas.md`](docs/arquitectura/incremento-3-2-antecedentes-alertas.md) · **parche 3.2.1** (evaluación de alergias, motivo del alta): [`incremento-3-2-1-parche.md`](docs/arquitectura/incremento-3-2-1-parche.md)
 - Incremento 3 (**propuesta**, historia clínica; sin código): [`docs/arquitectura/incremento-3-historia-clinica.md`](docs/arquitectura/incremento-3-historia-clinica.md)
 - Sistema de diseño (propuesta, previo al frontend): [`docs/diseno/sistema-de-diseno.md`](docs/diseno/sistema-de-diseno.md) · vista previa: [`docs/diseno/vista-previa.html`](docs/diseno/vista-previa.html)
@@ -18,9 +19,11 @@ Incluye: API NestJS versionada en `/v1`, Prisma + MySQL, clínicas, sedes, usuar
 
 Desde 3.1 incluye también el **control de acceso clínico**: relación asistencial paciente–odontólogo, permisos `clinical:*`, vista de apoyo del asistente y lectura excepcional del Director (`clinical:read_all`) con justificación, reautenticación y auditoría previa.
 
+Desde 3.3 incluye **visitas clínicas, diagnósticos y procedimientos** (versionados) con un **catálogo de procedimientos por clínica**; el consentimiento clínico faltante nunca bloquea abrir una visita ni diagnosticar, pero sí **cerrar** los procedimientos que la clínica configure como "requiere consentimiento".
+
 Desde 3.2 incluye **antecedentes, alergias y alertas clínicas** versionados (corrección, rectificación, desactivación, historial y motivo; sin eliminación física), siempre bajo el motor de acceso de 3.1.
 
-**No** incluye (a propósito): diagnósticos, procedimientos, visitas, evolución, odontograma, citas, pagos, inventario, firma digital, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
+**No** incluye (a propósito): evoluciones narrativas, odontograma, planes de tratamiento, citas, pagos, inventario, firma digital, integración con Apiworking ni interfaz funcional. Nunca hay eliminación física de pacientes ni adjuntos.
 
 ## Estructura
 
@@ -178,6 +181,10 @@ Flujo: **login** (access token sin contexto + cookie del refresh token) → **li
 | `GET /v1/patients/:id/clinical/alerts` | Odontólogo, Director (autorizado) y **asistente (vista mínima)** | Alertas activas: derivadas de lo crítico + manuales. Informativas, no bloquean nada |
 | `POST /v1/patients/:id/clinical/alerts` · `…/:itemId/correct` · `deactivate` · `reactivate` · `mark-error` · `GET …/versions` | Odontólogo con relación | Alertas manuales con severidad, vigencia y motivo |
 | `GET/PUT /v1/patients/:id/clinical/allergy-assessment` · `GET …/versions` | Odontólogo con relación (PUT) · Director autorizado (solo lectura) · **no** el asistente | Evaluación de alergias: `NOT_ASKED` / `NO_KNOWN_ALLERGIES` / `ALLERGIES_RECORDED` (este último lo deriva el sistema; no coexiste con `NO_KNOWN_ALLERGIES`) |
+| `GET/POST /v1/procedure-definitions` · `PATCH /:id` · `POST /:id/deactivate\|reactivate` | `procedure:read` / `procedure:manage` (administración, Director) | Catálogo de procedimientos de la clínica con `requiresClinicalConsent` (no es un nomenclador) |
+| `POST/GET /v1/patients/:id/clinical/visits` · `GET …/:visitId` · `POST …/:visitId/close\|cancel` | Odontólogo con relación (solo el responsable escribe, en la sede de la visita); Director autorizado lee; **no** el asistente | Visitas: `OPEN → CLOSED\|CANCELLED` con versión optimista. Abrirla no se bloquea por consentimiento |
+| `POST …/visits/:visitId/diagnoses` · `GET …/diagnoses` · `…/:itemId` · `…/versions` · `POST …/diagnoses/:itemId/correct\|rectify\|deactivate\|reactivate\|mark-error` | ídem | Diagnósticos declarados por el profesional, versionados, motivo en cada cambio. No dependen del consentimiento |
+| `POST …/visits/:visitId/procedures` · `GET …/procedures` · `…/:itemId` · `…/versions` · `POST …/procedures/:itemId/correct\|rectify\|close\|cancel\|mark-error` | ídem | Procedimientos versionados. **Cerrar** uno que "requiere consentimiento" sin consentimiento clínico vigente: `409 CLINICAL_CONSENT_REQUIRED` (auditado sin contenido) |
 | `GET /v1/clinical/options` | Cualquier perfil clínico | Valores sugeridos (no limitan lo que se registra) |
 
 Ejemplo de carga y descarga:
