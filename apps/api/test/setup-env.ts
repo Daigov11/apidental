@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { loadEnvFile } from '../src/config/load-env-file.js';
 
 // Las pruebas e2e SIEMPRE usan TEST_DATABASE_URL, nunca la base de desarrollo.
@@ -20,3 +22,7 @@ process.env['LOGIN_MAX_ATTEMPTS'] = '3';
 process.env['LOGIN_LOCK_MINUTES'] = '5';
 process.env['RATE_LIMIT_PER_MINUTE'] = '100000';
 process.env['LOGIN_RATE_LIMIT_PER_MINUTE'] = '100000';
+
+// Directorio privado de adjuntos SOLO para pruebas (global-setup lo recrea vacío en cada ejecución).
+process.env['ATTACHMENTS_DIR'] = join(tmpdir(), 'apidental-e2e-attachments');
+process.env['ATTACHMENT_MAX_BYTES'] = '1048576';

@@ -59,8 +59,13 @@ describe('Aislamiento por clínica y sede, y permisos', () => {
     const t = await twoClinics();
     const { user } = await fx.userWithRole('PLATFORM_ADMIN');
     const token = await loginInContext(ctx, user.email);
-    const clinics = await ctx.http().get('/v1/clinics?limit=100').set(bearer(token)).expect(200);
-    const ids = clinics.body.map((c: { id: string }) => c.id);
+    // La base de pruebas acumula muchas clínicas: se recorren todas las páginas.
+    const ids: string[] = [];
+    for (let offset = 0; ; offset += 100) {
+      const page = await ctx.http().get(`/v1/clinics?limit=100&offset=${offset}`).set(bearer(token)).expect(200);
+      ids.push(...page.body.map((c: { id: string }) => c.id));
+      if (page.body.length < 100) break;
+    }
     expect(ids).toEqual(expect.arrayContaining([t.a.id, t.b.id]));
     const branches = await ctx.http().get(`/v1/branches?clinicId=${t.b.id}`).set(bearer(token)).expect(200);
     expect(branches.body.map((b: { id: string }) => b.id)).toEqual([t.b1.id]);

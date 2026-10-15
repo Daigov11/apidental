@@ -1,4 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createConnection } from 'mariadb';
 import { loadEnvFile } from '../src/config/load-env-file.js';
 
@@ -14,6 +17,11 @@ export default async function globalSetup(): Promise<void> {
     stdio: 'pipe',
     env: { ...process.env, DATABASE_URL: url },
   });
+
+  // Adjuntos de pruebas: carpeta temporal vacía (jamás el directorio de desarrollo).
+  const dir = join(tmpdir(), 'apidental-e2e-attachments');
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
 
   const u = new URL(url);
   const conn = await createConnection({

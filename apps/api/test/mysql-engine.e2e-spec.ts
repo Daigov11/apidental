@@ -93,11 +93,48 @@ describe('Motor MySQL 8.4 y esquema real', () => {
       ctx.db.$queryRaw`SELECT TABLE_NAME AS name, ENGINE AS engine, TABLE_COLLATION AS collation FROM information_schema.tables WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' AND table_name <> '_prisma_migrations'`,
     );
     expect(tables.map((t) => t.name).sort()).toEqual(
-      ['audit_logs', 'branches', 'clinics', 'permissions', 'role_permissions', 'roles', 'user_assignments', 'users'],
+      [
+        'attachments', 'audit_logs', 'branches', 'clinics', 'guardians', 'patient_consents', 'patient_contacts',
+        'patient_guardians', 'patient_identifiers', 'patients', 'permissions', 'role_permissions', 'roles',
+        'user_assignments', 'users',
+      ],
     );
     for (const t of tables) {
       expect(t.engine).toBe('InnoDB');
       expect(t.collation).toMatch(/^utf8mb4/);
     }
+  });
+
+  it('existen los triggers de inmutabilidad y no-borrado del módulo de pacientes', async () => {
+    const triggers = await rows<{ name: string; table: string; event: string }>(
+      ctx.db.$queryRaw`SELECT TRIGGER_NAME AS name, EVENT_OBJECT_TABLE AS \`table\`, EVENT_MANIPULATION AS event FROM information_schema.triggers WHERE trigger_schema = DATABASE() AND event_object_table <> 'audit_logs'`,
+    );
+    const key = (t: { table: string; event: string }) => `${t.table}:${t.event}`;
+    expect(triggers.map(key).sort()).toEqual(
+      [
+        'attachments:DELETE', 'attachments:UPDATE', 'guardians:DELETE', 'patient_consents:DELETE', 'patient_consents:UPDATE',
+        'patient_contacts:DELETE', 'patient_guardians:DELETE', 'patient_identifiers:DELETE', 'patients:DELETE', 'patients:UPDATE',
+      ].sort(),
+    );
+  });
+
+  it('las tablas hijas de pacientes usan FK compuesta (patient_id, clinic_id) hacia patients', async () => {
+    const fks = await rows<{ tableName: string; refTable: string; cols: number }>(
+      ctx.db.$queryRaw`SELECT rc.TABLE_NAME AS tableName, rc.REFERENCED_TABLE_NAME AS refTable,
+          (SELECT COUNT(*) FROM information_schema.key_column_usage k WHERE k.constraint_schema = rc.constraint_schema AND k.constraint_name = rc.constraint_name AND k.table_name = rc.table_name) AS cols
+        FROM information_schema.referential_constraints rc
+        WHERE rc.constraint_schema = DATABASE() AND rc.referenced_table_name = 'patients'`,
+    );
+    expect(fks.map((f) => f.tableName).sort()).toEqual(
+      ['attachments', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers'],
+    );
+    for (const f of fks) expect(Number(f.cols)).toBe(2);
+  });
+
+  it('el DNI, la fecha de nacimiento y los importes de texto conservan tildes y tipo DATE', async () => {
+    const [col] = await rows<{ t: string }>(
+      ctx.db.$queryRaw`SELECT DATA_TYPE AS t FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'patients' AND column_name = 'birth_date'`,
+    );
+    expect(col!.t).toBe('date');
   });
 });
