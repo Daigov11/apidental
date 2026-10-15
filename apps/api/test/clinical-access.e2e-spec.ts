@@ -338,12 +338,7 @@ describe('Acceso clínico: relación asistencial, vista de apoyo y lectura excep
       const res = await summaryReq(ctx, assistant.token, w.patientId).expect(
         200,
       );
-      expect(Object.keys(res.body).sort()).toEqual([
-        'access',
-        'alerts',
-        'patient',
-        'supportData',
-      ]);
+      expect(Object.keys(res.body).sort()).toEqual(['access', 'alerts', 'clinicalAlerts', 'patient', 'supportData']);
       expect(res.body.access).toEqual({
         level: 'LIMITED',
         via: 'support_view',

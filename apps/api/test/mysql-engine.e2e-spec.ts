@@ -90,7 +90,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
     );
     expect(tables.map((t) => t.name).sort()).toEqual(
       [
-        'attachments', 'audit_logs', 'auth_sessions', 'branches', 'clinical_access_grants', 'clinics', 'guardians', 'invitations',
+        'attachments', 'audit_logs', 'auth_sessions', 'branches', 'clinical_access_grants', 'clinical_alerts', 'clinical_history_entries', 'clinics', 'guardians', 'invitations',
         'password_recoveries', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers', 'patients',
         'permissions', 'provisioning_records', 'reauth_proofs', 'refresh_tokens', 'role_permissions', 'roles',
         'user_assignments', 'users',
@@ -114,6 +114,8 @@ describe('Motor MySQL 8.4 y esquema real', () => {
         'invitations:DELETE', 'invitations:UPDATE', 'password_recoveries:DELETE', 'password_recoveries:UPDATE', 'provisioning_records:DELETE', 'provisioning_records:UPDATE',
         'reauth_proofs:UPDATE', 'refresh_tokens:UPDATE',
         'patient_care_relationships:INSERT', 'patient_care_relationships:UPDATE', 'patient_care_relationships:DELETE',
+        'clinical_alerts:INSERT', 'clinical_alerts:UPDATE', 'clinical_alerts:DELETE',
+        'clinical_history_entries:INSERT', 'clinical_history_entries:UPDATE', 'clinical_history_entries:DELETE',
         'clinical_access_grants:INSERT', 'clinical_access_grants:UPDATE', 'clinical_access_grants:DELETE',
         'role_permissions:INSERT', 'role_permissions:UPDATE',
       ].sort(),
@@ -128,7 +130,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
         WHERE rc.constraint_schema = DATABASE() AND rc.referenced_table_name = 'patients'`,
     );
     expect(fks.map((f) => f.tableName).sort()).toEqual(
-      ['attachments', 'clinical_access_grants', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers'],
+      ['attachments', 'clinical_access_grants', 'clinical_alerts', 'clinical_history_entries', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers'],
     );
     for (const f of fks) expect(Number(f.cols)).toBe(2);
   });
