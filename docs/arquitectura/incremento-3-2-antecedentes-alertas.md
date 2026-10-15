@@ -1,6 +1,6 @@
 # Sub-incremento 3.2: antecedentes, alergias y alertas clínicas
 
-**Estado:** implementado y validado contra MySQL 8.4 (2026-10-15). Primer contenido clínico real del sistema. **No** incluye diagnósticos, procedimientos, visitas, evoluciones, odontograma ni presupuestos. Todo lo normativo/legal sigue **[por validar]**.
+**Estado:** implementado y validado contra MySQL 8.4 (2026-10-15); ajustado por el [parche 3.2.1](incremento-3-2-1-parche.md) (evaluación de alergias y motivo del alta). Primer contenido clínico real del sistema. **No** incluye diagnósticos, procedimientos, visitas, evoluciones, odontograma ni presupuestos. Todo lo normativo/legal sigue **[por validar]**.
 
 Se apoya en [`incremento-3-1-acceso-clinico.md`](incremento-3-1-acceso-clinico.md): **cada** lectura y escritura pasa por `ClinicalAccessService` (no hay otra vía a estas tablas).
 
@@ -41,7 +41,7 @@ Patrón de **elemento versionado**: una fila por versión; `item_id` identifica 
 | Ingresado por error | `…/:itemId/mark-error` | → `ENTERED_IN_ERROR`, terminal (`MARKED_IN_ERROR`) |
 | Historial | `…/:itemId/versions` | Todas las versiones, con tipo de cambio, motivo, autor y **nombres** de campos modificados |
 
-- **Motivo obligatorio (≥ 3 caracteres) en TODAS las acciones, incluida el alta**: se interpretó literalmente "cada alta… debe conservar… motivo". Lo exigen la API y un trigger.
+- **Motivo:** obligatorio (≥ 3 caracteres) en corrección, rectificación, desactivación, reactivación e "ingresado por error"; **opcional en el alta** (la fuente sí es obligatoria). *Ajustado en el parche 3.2.1* ([`incremento-3-2-1-parche.md`](incremento-3-2-1-parche.md)). Lo exigen la API y un trigger.
 - **Concurrencia optimista:** cada cambio envía `expectedVersion`; si otra persona cambió el registro, `409 VERSION_CONFLICT` (con solo el número de versión actual, nada del contenido). Dos cambios simultáneos se serializan con un bloqueo de la versión vigente: **exactamente uno prospera**.
 - **Sin eliminación física, ni reescritura:** triggers impiden `DELETE`, impiden modificar cualquier columna de una versión escrita (solo se permite **soltar** la marca de vigente al ser reemplazada), validan que cada versión continúe a la anterior **del mismo elemento, paciente y clínica**, y que la versión 1 sea el alta. FK compuestas impiden cruzar clínicas.
 - Un paciente inactivo no admite registros nuevos. Un registro `ENTERED_IN_ERROR` no admite cambios, pero **se conserva y se puede consultar**.
@@ -104,7 +104,7 @@ La separación (quien otorga un rol clínico no asigna pacientes a esa cuenta) *
 8. La retención indefinida de las versiones y de la auditoría.
 
 **Técnicos / de producto:**
-- **Alergias sin "evaluación":** no se distingue "sin alergias conocidas" de "no se preguntó". Importante clínicamente; propuesto (`allergy_assessment`) pero no incluido en este alcance.
+- ~~Alergias sin "evaluación"~~ **Resuelto en el parche 3.2.1** (`NOT_ASKED` / `NO_KNOWN_ALLERGIES` / `ALLERGIES_RECORDED`, versionado).
 - **El texto es libre:** el sistema no valida que sea correcto, ni evita datos clínicos en campos no previstos (p. ej. el **motivo** del cambio y el texto de la alerta). El motivo de cada versión es contenido clínico visible solo para quien lee el historial; **no** va a la auditoría.
 - **Sin alertas automáticas** a quien agenda o a quien cobra: hoy las alertas solo se ven en el resumen y en `/clinical/alerts` con permiso clínico (decisión de producto: no mostrarlas a perfiles administrativos).
 - **Sin búsqueda por contenido** clínico (por diseño).

@@ -8,7 +8,7 @@ Software web de gestión odontológica (Perú). Este repositorio contiene la **b
 - **Política de acceso clínico P0** (adoptada): [`docs/arquitectura/politica-acceso-clinico.md`](docs/arquitectura/politica-acceso-clinico.md)
 - **Sub-incremento 3.0** (acceso seguro: invitaciones, sesiones, reautenticación, último administrador): [`docs/arquitectura/incremento-3-0-acceso-seguro.md`](docs/arquitectura/incremento-3-0-acceso-seguro.md)
 - **Sub-incremento 3.1** (relación asistencial y control de acceso clínico): [`docs/arquitectura/incremento-3-1-acceso-clinico.md`](docs/arquitectura/incremento-3-1-acceso-clinico.md)
-- **Sub-incremento 3.2** (antecedentes, alergias y alertas clínicas): [`docs/arquitectura/incremento-3-2-antecedentes-alertas.md`](docs/arquitectura/incremento-3-2-antecedentes-alertas.md)
+- **Sub-incremento 3.2** (antecedentes, alergias y alertas clínicas): [`docs/arquitectura/incremento-3-2-antecedentes-alertas.md`](docs/arquitectura/incremento-3-2-antecedentes-alertas.md) · **parche 3.2.1** (evaluación de alergias, motivo del alta): [`incremento-3-2-1-parche.md`](docs/arquitectura/incremento-3-2-1-parche.md)
 - Incremento 3 (**propuesta**, historia clínica; sin código): [`docs/arquitectura/incremento-3-historia-clinica.md`](docs/arquitectura/incremento-3-historia-clinica.md)
 - Sistema de diseño (propuesta, previo al frontend): [`docs/diseno/sistema-de-diseno.md`](docs/diseno/sistema-de-diseno.md) · vista previa: [`docs/diseno/vista-previa.html`](docs/diseno/vista-previa.html)
 
@@ -168,7 +168,7 @@ Flujo: **login** (access token sin contexto + cookie del refresh token) → **li
 | `GET /v1/patients/:id/clinical-summary` | `clinical:read` · `read_limited` · `read_all` | Resumen clínico (hoy: acceso, alertas y datos de apoyo). Auditado **antes** de entregar; `404` igual para ajeno e inexistente |
 | `POST /v1/patients/:id/clinical-access` | `clinical:read_all` (Director) | Categoría + motivo ≥ 10 caracteres + reautenticación `CLINICAL_READ_ALL` del paciente → lectura de **ese** paciente por 30 min, solo lectura |
 
-**Antecedentes, alergias y alertas (3.2).** Texto estructurado de apoyo administrativo; cada cambio exige motivo y `expectedVersion`. Detalle en [`incremento-3-2-antecedentes-alertas.md`](docs/arquitectura/incremento-3-2-antecedentes-alertas.md).
+**Antecedentes, alergias y alertas (3.2).** Texto estructurado de apoyo administrativo; el alta no exige motivo (sí la fuente); todo cambio posterior exige motivo y `expectedVersion`. Detalle en [`incremento-3-2-antecedentes-alertas.md`](docs/arquitectura/incremento-3-2-antecedentes-alertas.md).
 
 | Método y ruta | Quién | Descripción |
 |---|---|---|
@@ -177,6 +177,7 @@ Flujo: **login** (access token sin contexto + cookie del refresh token) → **li
 | `POST …/history/:itemId/correct` · `rectify` · `deactivate` · `reactivate` · `mark-error` | Odontólogo con relación | Nueva versión con motivo; `409` si la versión cambió |
 | `GET /v1/patients/:id/clinical/alerts` | Odontólogo, Director (autorizado) y **asistente (vista mínima)** | Alertas activas: derivadas de lo crítico + manuales. Informativas, no bloquean nada |
 | `POST /v1/patients/:id/clinical/alerts` · `…/:itemId/correct` · `deactivate` · `reactivate` · `mark-error` · `GET …/versions` | Odontólogo con relación | Alertas manuales con severidad, vigencia y motivo |
+| `GET/PUT /v1/patients/:id/clinical/allergy-assessment` · `GET …/versions` | Odontólogo con relación (PUT) · Director autorizado (solo lectura) · **no** el asistente | Evaluación de alergias: `NOT_ASKED` / `NO_KNOWN_ALLERGIES` / `ALLERGIES_RECORDED` (este último lo deriva el sistema; no coexiste con `NO_KNOWN_ALLERGIES`) |
 | `GET /v1/clinical/options` | Cualquier perfil clínico | Valores sugeridos (no limitan lo que se registra) |
 
 Ejemplo de carga y descarga:
