@@ -1,5 +1,6 @@
 import { hashPassword } from '../src/common/utils/password.js';
 import { noteContentHash } from '../src/clinical/note-hash.js';
+import { type Dentition, normalizeOdontogram, odontogramHash } from '../src/clinical/odontogram/odontogram-spec.js';
 import type { PrismaDb } from '../src/prisma/client.js';
 import { assignmentKey } from '../src/users/assignment-key.js';
 
@@ -173,5 +174,152 @@ export async function seedDemoClinical(db: PrismaDb, ctx: Ctx): Promise<{ users:
       await note(jorge, visit.id, 'Evolución de demostración cerrada mientras el consentimiento está pendiente (dato ficticio).', null, 'closed');
     }
   }
+  // ---- odontogramas de demostración (fáciles de entender; formato clínico por validar) ----
+  const odontogram = async (
+    patientId: string,
+    dentition: Dentition,
+    steps: {
+      teeth: Record<string, unknown>;
+      notes?: string;
+      kind: 'CREATED' | 'UPDATED' | 'RECTIFIED';
+      reason?: string;
+      close: boolean;
+    }[],
+  ) => {
+    if ((await db.clinicalOdontogram.count({ where: { patientId } })) > 0)
+      return;
+    let prev: { id: string; version: number } | null = null;
+    for (const st of steps) {
+      const data = normalizeOdontogram(
+        {
+          schema: 'apidental.odontogram',
+          schemaVersion: 1,
+          teeth: st.teeth,
+          ...(st.notes ? { notes: st.notes } : {}),
+        },
+        dentition,
+      );
+      const base = {
+        clinicId,
+        patientId,
+        dentition,
+        data: data as never,
+        changeKind: st.kind,
+        changeReason: st.reason ?? null,
+        createdById: dentistId,
+      };
+      if (prev)
+        await db.clinicalOdontogram.update({
+          where: { id: prev.id },
+          data: { currentKey: null },
+        });
+      const draft: { id: string; version: number } =
+        await db.clinicalOdontogram.create({
+          data: {
+            ...base,
+            version: (prev?.version ?? 0) + 1,
+            supersedesId: prev?.id ?? null,
+            currentKey: patientId,
+            status: 'DRAFT',
+          },
+        });
+      prev = draft;
+      if (!st.close) continue;
+      await db.clinicalOdontogram.update({
+        where: { id: draft.id },
+        data: { currentKey: null },
+      });
+      const version = draft.version + 1;
+      const needsReauth = st.kind === 'RECTIFIED';
+      prev = await db.clinicalOdontogram.create({
+        data: {
+          ...base,
+          version,
+          supersedesId: draft.id,
+          currentKey: patientId,
+          status: 'CLOSED',
+          contentHash: odontogramHash({ patientId, version, dentition, data }),
+          closedAt: new Date(),
+          reauthProofId: needsReauth ? DEMO_PROOF_ID : null,
+        },
+      });
+    }
+  };
+  const SEC = (note: string) => ({ state: 'CARIES', note });
+  await odontogram(lucia, 'PERMANENT', [
+    {
+      kind: 'CREATED',
+      close: true,
+      teeth: {
+        '16': {
+          surfaces: { O: SEC('Hallazgo de demostración (dato ficticio)') },
+        },
+        '26': {
+          surfaces: {
+            O: { state: 'RESTORATION' },
+            M: { state: 'RESTORATION' },
+          },
+        },
+        '14': { surfaces: { O: { state: 'SEALANT' } } },
+        '21': { surfaces: { O: { state: 'FRACTURE' } } },
+        '36': { status: 'ABSENT' },
+        '18': { status: 'UNERUPTED' },
+        '24': { marks: ['ENDODONTIC'] },
+      },
+      notes: 'Odontograma de demostración (dato ficticio).',
+    },
+    {
+      kind: 'RECTIFIED',
+      reason: 'Se agregan dos piezas aclaradas (ejemplo)',
+      close: true,
+      teeth: {
+        '16': {
+          surfaces: { O: SEC('Hallazgo de demostración (dato ficticio)') },
+        },
+        '26': {
+          surfaces: {
+            O: { state: 'RESTORATION' },
+            M: { state: 'RESTORATION' },
+          },
+        },
+        '14': { surfaces: { O: { state: 'SEALANT' } } },
+        '21': { surfaces: { O: { state: 'FRACTURE' } } },
+        '36': { status: 'ABSENT' },
+        '18': { status: 'UNERUPTED' },
+        '24': { marks: ['ENDODONTIC'] },
+        '46': { marks: ['CROWN'] },
+        '47': { status: 'IMPLANT' },
+      },
+      notes: 'Odontograma de demostración, rectificado (dato ficticio).',
+    },
+  ]);
+  await odontogram(mateo, 'MIXED', [
+    {
+      kind: 'CREATED',
+      close: false,
+      teeth: {
+        '55': { surfaces: { O: { state: 'CARIES' } } },
+        '16': { surfaces: { O: { state: 'SEALANT' } } },
+        '75': { status: 'ABSENT' },
+        '11': {},
+        '21': { status: 'UNERUPTED' },
+      },
+      notes: 'Borrador de demostración (dato ficticio).',
+    },
+  ]);
+  await odontogram(jorge, 'PERMANENT', [
+    {
+      kind: 'CREATED',
+      close: true,
+      teeth: {
+        '18': { status: 'ABSENT' },
+        '28': { status: 'ABSENT' },
+        '38': { status: 'ABSENT' },
+        '48': { status: 'ABSENT' },
+        '36': { surfaces: { O: { state: 'RESTORATION' } } },
+      },
+      notes: 'Odontograma de demostración (dato ficticio).',
+    },
+  ]);
   return { users, patients };
 }
