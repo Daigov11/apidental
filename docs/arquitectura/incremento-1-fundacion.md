@@ -36,22 +36,35 @@ Fuera de alcance, sin tablas ni endpoints: pacientes, historia clínica, agenda,
 8. **Zona horaria:** las fechas se guardan en UTC; la conversión a `America/Lima` es responsabilidad de la presentación.
 9. **IP del cliente:** `req.ip` solo es fiable con `TRUST_PROXY=1` detrás de Nginx; sin él, el límite de tasa y la auditoría verán la IP del proxy.
 
-## Verificación realizada y sus límites
+## Verificación realizada
 
-Ejecutado el 2026-10-14 en el entorno de desarrollo:
+### Validación estricta contra MySQL 8.4 (2026-10-14)
+
+Motor real: **MySQL Community Server 8.4.6** (imagen `mysql:8.4.6` de `docker-compose.dev.yml`), `utf8mb4`, binlog activo. Se destruyó el contenedor y el volumen del proyecto y se repitió todo desde cero.
 
 | Comprobación | Resultado |
 |---|---|
-| `tsc --noEmit`, `oxlint --type-aware`, `nest build` | Sin errores |
+| Versión real del motor (`SELECT VERSION()`, `@@version_comment`) | 8.4.6, MySQL Community Server - GPL |
+| Bases `apidental_dev/_test/_shadow` creadas por `docker/mysql-init` | Correcto |
+| `prisma migrate deploy` desde cero y `migrate dev` (base sombra) | Correcto; sin desvío con el schema |
+| Seed (dos ejecuciones) | Idempotente |
+| Pruebas e2e (7 archivos, base `_test` recién creada) | **74 de 74** |
 | Pruebas unitarias | 31 de 31 |
-| Pruebas e2e | 67 de 67 |
-| Migración inicial aplicada desde cero y sin desvío (`migrate diff`) | Correcta |
-| Seed idempotente; seed en producción sin datos demo ni admin | Correcto |
-| API compilada arrancando con `.env`; health y login reales | Correcto |
-| Arranque con entorno inválido | Aborta con mensaje claro |
-| `npm audit` | 0 vulnerabilidades (con overrides de `mariadb`, `mysql2`, `deepmerge-ts`) |
+| `tsc --noEmit`, `oxlint --type-aware`, `nest build` | Sin errores |
+| `npm audit` | 0 vulnerabilidades |
 
-**Límite importante:** Docker Desktop estaba pausado durante el desarrollo, así que **la base usada para validar fue una instancia temporal de MariaDB 12.3.2, no el MySQL 8.4 objetivo**. El modelo, el CHECK, la FK compuesta y los triggers funcionaron allí, pero **debe repetirse la ejecución contra MySQL 8.4** (`npm run db:up`, migrar, `npm run test:e2e`) antes de darla por validada. Diferencias conocidas a vigilar: tipo `JSON` (en MariaDB es alias de texto), semántica de CHECK y `log_bin_trust_function_creators`.
+Garantías comprobadas específicamente en MySQL 8.4 (`test/mysql-engine.e2e-spec.ts` y `test/db-constraints.e2e-spec.ts`):
+
+- **Triggers de `audit_logs`:** existen exactamente `BEFORE UPDATE` y `BEFORE DELETE`; UPDATE, DELETE y DELETE masivo son rechazados.
+- **CHECK** `user_assignments_branch_requires_clinic_chk`: presente y `ENFORCED = YES`; rechaza sede sin clínica.
+- **FK compuesta** `(branch_id, clinic_id) → branches(id, clinic_id)`: de 2 columnas, `RESTRICT`; rechaza sede con clínica equivocada.
+- **JSON:** `audit_logs.summary` es de tipo `json` nativo; ida y vuelta exacta con tildes, símbolos y anidados; `JSON_EXTRACT` funciona; no se guardan claves sensibles.
+- **Aislamiento clínica/sede:** todos los casos de `tenancy`, `users` y `auth` pasan.
+- **Base de pruebas:** se crea por el script de inicio y la suite la migra y vacía en cada ejecución.
+- **Todas las tablas** InnoDB y `utf8mb4`.
+- **Triggers sin SUPER (comprobado):** con `log_bin_trust_function_creators=0` y el usuario de la aplicación, la migración falla con el error 1419 (*You do not have the SUPER privilege and binary logging is enabled*). Por eso el compose de desarrollo lo activa y el VPS requiere migrar con un usuario privilegiado o activar esa variable.
+
+**Diferencias MariaDB/MySQL:** una validación previa en MariaDB 12.3.2 había pasado igual; no apareció ninguna diferencia que corregir. La prueba `mysql-engine` fija el motor para que una base MariaDB o un esquema distinto hagan fallar la suite.
 
 ## Hallazgo corregido durante las pruebas
 
