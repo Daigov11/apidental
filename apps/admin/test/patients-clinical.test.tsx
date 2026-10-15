@@ -55,6 +55,21 @@ describe('Pacientes y acceso clínico', () => {
     expect(screen.queryByRole('button', { name: /Iniciar odontograma|Actualizar odontograma|Corregir la versión guardada/ })).not.toBeInTheDocument();
   });
 
+  it('el primer odontograma se inicia sin «propósito» (el servidor lo rechaza si viene)', async () => {
+    const { called } = mockApi({
+      ...sessionRoutes(DENTIST_PERMS, ['DENTIST']), 'GET /patients/p-1': { json: PATIENT },
+      'GET /patients/p-1/clinical/odontogram': { json: { official: null, draft: null, versionsCount: 0, formatNotice: 'Formato clínico por validar.' } },
+      'GET /clinical/odontogram/spec': { json: { toothStatuses: [], surfaces: [], surfaceStates: [], marks: [] } },
+      'POST /patients/p-1/clinical/odontogram/draft': { json: {} },
+    });
+    renderApp('/pacientes/p-1/odontograma');
+    await userEvent.click(await screen.findByRole('button', { name: 'Iniciar odontograma' }));
+    await waitFor(() => expect(called('POST', '/patients/p-1/clinical/odontogram/draft')).toHaveLength(1));
+    const body = called('POST', '/patients/p-1/clinical/odontogram/draft')[0]?.body as Record<string, unknown>;
+    expect(body.purpose).toBeUndefined();
+    expect(body.dentition).toBe('PERMANENT');
+  });
+
   it('un perfil sin permiso clínico (caja) no ve la sección clínica y no la solicita', async () => {
     const { calls } = mockApi({ ...sessionRoutes(CASHIER_PERMS, ['CASHIER']), 'GET /patients/p-1': { json: PATIENT }, 'GET /appointments': { json: [] } });
     renderApp('/pacientes/p-1');

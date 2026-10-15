@@ -69,7 +69,7 @@ export function OdontogramPage() {
       {!canWrite && <Alert tone="info">Vista de solo lectura: este perfil puede ver el odontograma, no editarlo.</Alert>}
       {canWrite && !view.data?.draft && (
         <div className="toolbar" style={{ gap: 'var(--space-4)' }}>
-          <Button variant="primary" icon={<Pencil size={18} aria-hidden="true" />} loading={starting} loadingText="Abriendo…" onClick={() => void start('UPDATE')}>
+          <Button variant="primary" icon={<Pencil size={18} aria-hidden="true" />} loading={starting} loadingText="Abriendo…" onClick={() => void start(official ? 'UPDATE' : undefined)}>
             {official ? 'Actualizar odontograma' : 'Iniciar odontograma'}
           </Button>
           {official && <Button onClick={() => setCorrecting('CORRECTION')}>Corregir la versión guardada</Button>}
