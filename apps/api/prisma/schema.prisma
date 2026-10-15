@@ -330,6 +330,7 @@ model Patient {
   historyEntries     ClinicalHistoryEntry[]
   allergyAssessments ClinicalAllergyAssessment[]
   visits             ClinicalVisit[]
+  charges            Charge[]
   diagnoses          ClinicalDiagnosis[]
   procedures         ClinicalProcedure[]
   notes              ClinicalNote[]
@@ -1387,6 +1388,8 @@ model AgendaService {
   name            String        @db.VarChar(120)
   specialtyId     String?       @map("specialty_id") @db.Char(36)
   durationMinutes Int           @map("duration_minutes")
+  /// Precio de referencia en céntimos de sol (opcional); sugiere el monto al registrar el cobro de una atención.
+  priceCents      Int?          @map("price_cents")
   status          CatalogStatus @default(ACTIVE)
   createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(3)
 
@@ -1512,4 +1515,188 @@ model AppointmentSlot {
   @@index([ownerKind, ownerId])
   @@index([clinicId, slotStart])
   @@map("appointment_slots")
+}
+
+// ======================================================================================================
+// 4.1 Cobros, comprobantes, cola (outbox), fidelización y reseñas SIMULADOS. Solo con INTEGRATIONS_MODE=mock.
+// Nada de esto contiene datos clínicos. Los comprobantes llevan siempre la marca «DEMO — NO VÁLIDO PARA SUNAT».
+// ======================================================================================================
+
+enum ChargeStatus {
+  PENDING
+  PAID
+  VOIDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  YAPE_PLIN
+  TRANSFER
+}
+
+enum BillingDocumentType {
+  BOLETA
+  FACTURA
+}
+
+enum BillingDocumentStatus {
+  PENDING_SEND
+  SENT
+  ISSUED
+  REJECTED
+  RETRYABLE_ERROR
+  NEEDS_RECONCILIATION
+}
+
+enum OutboxKind {
+  BILLING_EMIT
+  LOYALTY_ACCRUE
+  REVIEW_REQUEST
+}
+
+enum OutboxStatus {
+  PENDING
+  DONE
+  FAILED
+  SKIPPED
+}
+
+/// Cobro de una atención. El monto es inmutable; el pago y la anulación son los únicos cambios de estado.
+model Charge {
+  id             String         @id @default(uuid()) @db.Char(36)
+  clinicId       String         @map("clinic_id") @db.Char(36)
+  branchId       String         @map("branch_id") @db.Char(36)
+  patientId      String         @map("patient_id") @db.Char(36)
+  /// Cita que originó el cobro (administrativo; no enlaza a la visita clínica).
+  appointmentId  String?        @map("appointment_id") @db.Char(36)
+  /// = appointmentId mientras el cobro no esté anulado: un solo cobro vigente por cita.
+  appointmentKey String?        @unique @map("appointment_key") @db.Char(36)
+  description    String         @db.VarChar(200)
+  amountCents    Int            @map("amount_cents")
+  currency       String         @default("PEN") @db.Char(3)
+  status         ChargeStatus   @default(PENDING)
+  paymentMethod  PaymentMethod? @map("payment_method")
+  paidAt         DateTime?      @map("paid_at") @db.DateTime(3)
+  paidById       String?        @map("paid_by_id") @db.Char(36)
+  voidReason     String?        @map("void_reason") @db.VarChar(300)
+  createdById    String         @map("created_by_id") @db.Char(36)
+  version        Int            @default(1)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+
+  patient   Patient           @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  documents BillingDocument[]
+
+  @@unique([id, clinicId])
+  @@index([clinicId, status, createdAt])
+  @@index([patientId, createdAt])
+  @@map("charges")
+}
+
+/// Comprobante SIMULADO. `demoMark` es obligatorio y exacto (CHECK en la base de datos).
+model BillingDocument {
+  id                String                @id @default(uuid()) @db.Char(36)
+  clinicId          String                @map("clinic_id") @db.Char(36)
+  chargeId          String                @map("charge_id") @db.Char(36)
+  type              BillingDocumentType
+  series            String                @db.VarChar(8)
+  number            Int
+  status            BillingDocumentStatus @default(PENDING_SEND)
+  customerName      String                @map("customer_name") @db.VarChar(200)
+  customerDocType   String                @map("customer_doc_type") @db.VarChar(10)
+  customerDocNumber String                @map("customer_doc_number") @db.VarChar(20)
+  amountCents       Int                   @map("amount_cents")
+  igvCents          Int                   @map("igv_cents")
+  demoMark          String                @map("demo_mark") @db.VarChar(60)
+  /// Clave de idempotencia ante el proveedor: reenviar la misma clave nunca duplica el comprobante.
+  idempotencyKey    String                @unique @map("idempotency_key") @db.VarChar(100)
+  /// = chargeId mientras el comprobante no esté rechazado: un solo comprobante vigente por cobro.
+  activeKey         String?               @unique @map("active_key") @db.Char(36)
+  providerRef       String?               @map("provider_ref") @db.VarChar(80)
+  rejectionReason   String?               @map("rejection_reason") @db.VarChar(300)
+  /// Pista de la simulación (qué debe responder el simulador). Nulo cuando exista un proveedor real.
+  scenario          String?               @db.VarChar(20)
+  attempts          Int                   @default(0)
+  lastAttemptAt     DateTime?             @map("last_attempt_at") @db.DateTime(3)
+  issuedAt          DateTime?             @map("issued_at") @db.DateTime(3)
+  createdById       String                @map("created_by_id") @db.Char(36)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime              @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  charge Charge @relation(fields: [chargeId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@unique([clinicId, series, number])
+  @@index([clinicId, status])
+  @@map("billing_documents")
+}
+
+/// Correlativo por clínica y serie (se toma con bloqueo de fila).
+model BillingCounter {
+  clinicId String @map("clinic_id") @db.Char(36)
+  series   String @db.VarChar(8)
+  last     Int    @default(0)
+
+  @@id([clinicId, series])
+  @@map("billing_counters")
+}
+
+/// Cola de integraciones: el cambio local y el mensaje se guardan en la MISMA transacción; un procesador los entrega.
+model IntegrationOutbox {
+  id             String       @id @default(uuid()) @db.Char(36)
+  clinicId       String       @map("clinic_id") @db.Char(36)
+  kind           OutboxKind
+  aggregateType  String       @map("aggregate_type") @db.VarChar(40)
+  aggregateId    String       @map("aggregate_id") @db.Char(36)
+  idempotencyKey String       @unique @map("idempotency_key") @db.VarChar(100)
+  status         OutboxStatus @default(PENDING)
+  attempts       Int          @default(0)
+  nextAttemptAt  DateTime     @default(now()) @map("next_attempt_at") @db.DateTime(3)
+  /// Texto breve y sin datos sensibles.
+  note           String?      @db.VarChar(300)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  processedAt    DateTime?    @map("processed_at") @db.DateTime(3)
+
+  @@index([status, nextAttemptAt])
+  @@index([clinicId, status])
+  @@map("integration_outbox")
+}
+
+/// Estado que «recordaría» el proveedor de comprobantes simulado, por clave de idempotencia (solo mock).
+model MockProviderRecord {
+  idempotencyKey String   @id @map("idempotency_key") @db.VarChar(100)
+  kind           String   @db.VarChar(20)
+  state          String   @db.VarChar(20)
+  attempts       Int      @default(0)
+  result         Json?
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("mock_provider_records")
+}
+
+/// Libro de puntos del proveedor de fidelización simulado (solo mock).
+model MockLoyaltyEntry {
+  id             String   @id @default(uuid()) @db.Char(36)
+  clinicId       String   @map("clinic_id") @db.Char(36)
+  patientRef     String   @map("patient_ref") @db.Char(36)
+  kind           String   @db.VarChar(12)
+  points         Int
+  reason         String?  @db.VarChar(200)
+  idempotencyKey String   @unique @map("idempotency_key") @db.VarChar(100)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([clinicId, patientRef, createdAt])
+  @@map("mock_loyalty_entries")
+}
+
+/// Solicitudes de reseña del proveedor simulado (solo mock).
+model MockReviewRequest {
+  id             String   @id @default(uuid()) @db.Char(36)
+  clinicId       String   @map("clinic_id") @db.Char(36)
+  patientRef     String   @map("patient_ref") @db.Char(36)
+  idempotencyKey String   @unique @map("idempotency_key") @db.VarChar(100)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  @@index([clinicId, createdAt])
+  @@map("mock_review_requests")
 }
