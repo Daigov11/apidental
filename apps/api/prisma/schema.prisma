@@ -61,6 +61,9 @@ model Clinic {
   invitations          Invitation[]
   provisioningRecords  ProvisioningRecord[]
   procedureDefinitions ProcedureDefinition[]
+  rooms                Room[]
+  specialties          Specialty[]
+  agendaServices       AgendaService[]
 
   @@map("clinics")
 }
@@ -79,6 +82,8 @@ model Branch {
   invitations       Invitation[]
   careRelationships PatientCareRelationship[]
   visits            ClinicalVisit[]
+  rooms             Room[]
+  appointments      Appointment[]
 
   @@unique([clinicId, name])
   // Permite la clave foránea compuesta (branch_id, clinic_id) desde user_assignments,
@@ -107,13 +112,14 @@ model User {
   createdAt           DateTime   @default(now()) @map("created_at")
   updatedAt           DateTime   @updatedAt @map("updated_at")
 
-  assignments        UserAssignment[]
-  sessions           AuthSession[]
-  reauthProofs       ReauthProof[]
-  passwordRecoveries PasswordRecovery[]
-  careRelationships  PatientCareRelationship[]
-  clinicalGrants     ClinicalAccessGrant[]
-  visitsAsDentist    ClinicalVisit[]
+  assignments           UserAssignment[]
+  sessions              AuthSession[]
+  reauthProofs          ReauthProof[]
+  passwordRecoveries    PasswordRecovery[]
+  careRelationships     PatientCareRelationship[]
+  clinicalGrants        ClinicalAccessGrant[]
+  visitsAsDentist       ClinicalVisit[]
+  appointmentsAsDentist Appointment[]
 
   @@map("users")
 }
@@ -328,6 +334,7 @@ model Patient {
   procedures         ClinicalProcedure[]
   notes              ClinicalNote[]
   odontograms        ClinicalOdontogram[]
+  appointments       Appointment[]
   clinicalAlerts     ClinicalAlert[]
 
   @@unique([id, clinicId])
@@ -1101,6 +1108,7 @@ model ClinicalVisit {
   diagnoses     ClinicalDiagnosis[]
   procedures    ClinicalProcedure[]
   clinicalNotes ClinicalNote[]
+  appointment   Appointment?
 
   @@unique([patientId, visitNumber])
   @@unique([id, clinicId, patientId])
@@ -1299,4 +1307,209 @@ model ClinicalOdontogram {
   @@unique([patientId, version])
   @@index([clinicId, patientId])
   @@map("clinical_odontograms")
+}
+
+// ---------------------------------------------------------------------------
+// Incremento 4.0: agenda y citas. Sin cobros, caja, facturación, inventario, mensajería ni planes de tratamiento.
+// La doble reserva se impide en la propia base de datos: cada cita (y cada bloqueo) ocupa huecos de 5 minutos del
+// odontólogo y del consultorio en `appointment_slots`, con clave única por recurso y hueco.
+// ---------------------------------------------------------------------------
+
+enum CatalogStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AppointmentStatus {
+  RESERVED
+  CONFIRMED
+  ATTENDED
+  CANCELLED
+  NO_SHOW
+}
+
+enum SlotResourceKind {
+  DENTIST
+  ROOM
+}
+
+enum SlotOwnerKind {
+  APPOINTMENT
+  BLOCK
+}
+
+enum BlockStatus {
+  ACTIVE
+  RELEASED
+}
+
+/// Consultorio de una sede.
+model Room {
+  id        String        @id @default(uuid()) @db.Char(36)
+  clinicId  String        @map("clinic_id") @db.Char(36)
+  branchId  String        @map("branch_id") @db.Char(36)
+  name      String        @db.VarChar(80)
+  status    CatalogStatus @default(ACTIVE)
+  createdAt DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+
+  clinic       Clinic         @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  branch       Branch         @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  appointments Appointment[]
+  rules        ScheduleRule[]
+
+  @@unique([branchId, name])
+  @@unique([id, branchId])
+  @@unique([id, clinicId])
+  @@map("rooms")
+}
+
+/// Especialidad (catálogo de la clínica; apoyo administrativo, no una clasificación clínica).
+model Specialty {
+  id        String        @id @default(uuid()) @db.Char(36)
+  clinicId  String        @map("clinic_id") @db.Char(36)
+  name      String        @db.VarChar(80)
+  status    CatalogStatus @default(ACTIVE)
+  createdAt DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+
+  clinic   Clinic             @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  services AgendaService[]
+  dentists DentistSpecialty[]
+
+  @@unique([clinicId, name])
+  @@unique([id, clinicId])
+  @@map("specialties")
+}
+
+/// Servicio agendable (tipo de cita) con duración configurable. NO es un procedimiento clínico.
+model AgendaService {
+  id              String        @id @default(uuid()) @db.Char(36)
+  clinicId        String        @map("clinic_id") @db.Char(36)
+  name            String        @db.VarChar(120)
+  specialtyId     String?       @map("specialty_id") @db.Char(36)
+  durationMinutes Int           @map("duration_minutes")
+  status          CatalogStatus @default(ACTIVE)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+
+  clinic       Clinic        @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  specialty    Specialty?    @relation(fields: [specialtyId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  appointments Appointment[]
+
+  @@unique([clinicId, name])
+  @@unique([id, clinicId])
+  @@map("agenda_services")
+}
+
+model DentistSpecialty {
+  clinicId    String @map("clinic_id") @db.Char(36)
+  userId      String @map("user_id") @db.Char(36)
+  specialtyId String @map("specialty_id") @db.Char(36)
+
+  specialty Specialty @relation(fields: [specialtyId, clinicId], references: [id, clinicId], onDelete: Restrict)
+
+  @@id([userId, specialtyId])
+  @@index([clinicId])
+  @@map("dentist_specialties")
+}
+
+/// Horario recurrente semanal de un odontólogo en una sede (hora local de Lima, en minutos desde la medianoche).
+model ScheduleRule {
+  id            String        @id @default(uuid()) @db.Char(36)
+  clinicId      String        @map("clinic_id") @db.Char(36)
+  branchId      String        @map("branch_id") @db.Char(36)
+  dentistUserId String        @map("dentist_user_id") @db.Char(36)
+  /// Consultorio habitual (opcional): se ofrece primero.
+  roomId        String?       @map("room_id") @db.Char(36)
+  /// 1 = lunes … 7 = domingo.
+  weekday       Int
+  startMinute   Int           @map("start_minute")
+  endMinute     Int           @map("end_minute")
+  validFrom     DateTime      @map("valid_from") @db.Date
+  validUntil    DateTime?     @map("valid_until") @db.Date
+  status        CatalogStatus @default(ACTIVE)
+  createdById   String        @map("created_by_id") @db.Char(36)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+
+  room Room? @relation(fields: [roomId, branchId], references: [id, branchId], onDelete: Restrict)
+
+  @@index([clinicId, branchId, dentistUserId, status])
+  @@map("schedule_rules")
+}
+
+/// Bloqueo o excepción (vacaciones, mantenimiento, reunión) de un odontólogo o de un consultorio.
+model ScheduleBlock {
+  id            String      @id @default(uuid()) @db.Char(36)
+  clinicId      String      @map("clinic_id") @db.Char(36)
+  branchId      String      @map("branch_id") @db.Char(36)
+  dentistUserId String?     @map("dentist_user_id") @db.Char(36)
+  roomId        String?     @map("room_id") @db.Char(36)
+  startsAt      DateTime    @map("starts_at") @db.DateTime(3)
+  endsAt        DateTime    @map("ends_at") @db.DateTime(3)
+  reason        String      @db.VarChar(300)
+  status        BlockStatus @default(ACTIVE)
+  createdById   String      @map("created_by_id") @db.Char(36)
+  createdAt     DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  releasedAt    DateTime?   @map("released_at") @db.DateTime(3)
+  releasedById  String?     @map("released_by_id") @db.Char(36)
+  releaseReason String?     @map("release_reason") @db.VarChar(300)
+
+  @@index([clinicId, branchId, startsAt])
+  @@map("schedule_blocks")
+}
+
+/// Cita. El paciente, la sede y el consultorio quedan atados a la clínica con claves foráneas compuestas.
+model Appointment {
+  id               String            @id @default(uuid()) @db.Char(36)
+  clinicId         String            @map("clinic_id") @db.Char(36)
+  branchId         String            @map("branch_id") @db.Char(36)
+  patientId        String            @map("patient_id") @db.Char(36)
+  dentistUserId    String            @map("dentist_user_id") @db.Char(36)
+  roomId           String            @map("room_id") @db.Char(36)
+  serviceId        String            @map("service_id") @db.Char(36)
+  startsAt         DateTime          @map("starts_at") @db.DateTime(3)
+  endsAt           DateTime          @map("ends_at") @db.DateTime(3)
+  status           AppointmentStatus @default(RESERVED)
+  /// Nota ADMINISTRATIVA (p. ej. "llega con su mamá"); no debe contener datos clínicos.
+  notes            String?           @db.VarChar(300)
+  /// Versión optimista: cada cambio la incrementa.
+  version          Int               @default(1)
+  createdById      String            @map("created_by_id") @db.Char(36)
+  confirmedById    String?           @map("confirmed_by_id") @db.Char(36)
+  confirmedAt      DateTime?         @map("confirmed_at") @db.DateTime(3)
+  cancelReason     String?           @map("cancel_reason") @db.VarChar(300)
+  noShowReason     String?           @map("no_show_reason") @db.VarChar(300)
+  rescheduledCount Int               @default(0) @map("rescheduled_count")
+  /// Visita clínica a la que dio origen al iniciar la atención.
+  visitId          String?           @unique @map("visit_id") @db.Char(36)
+  attendedAt       DateTime?         @map("attended_at") @db.DateTime(3)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime          @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  patient Patient        @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  branch  Branch         @relation(fields: [branchId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  room    Room           @relation(fields: [roomId, branchId], references: [id, branchId], onDelete: Restrict)
+  service AgendaService  @relation(fields: [serviceId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  dentist User           @relation(fields: [dentistUserId], references: [id], onDelete: Restrict)
+  visit   ClinicalVisit? @relation(fields: [visitId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId, branchId, startsAt])
+  @@index([dentistUserId, startsAt])
+  @@index([patientId, startsAt])
+  @@map("appointments")
+}
+
+/// Huecos de 5 minutos ocupados por una cita o un bloqueo, por odontólogo y por consultorio. La clave primaria
+/// (recurso + hueco) hace imposible que dos citas ocupen el mismo odontólogo o consultorio a la vez, aunque
+/// dos solicitudes lleguen simultáneamente.
+model AppointmentSlot {
+  resourceKind SlotResourceKind @map("resource_kind")
+  resourceId   String           @map("resource_id") @db.Char(36)
+  slotStart    DateTime         @map("slot_start") @db.DateTime(0)
+  ownerKind    SlotOwnerKind    @map("owner_kind")
+  ownerId      String           @map("owner_id") @db.Char(36)
+  clinicId     String           @map("clinic_id") @db.Char(36)
+
+  @@id([resourceKind, resourceId, slotStart])
+  @@index([ownerKind, ownerId])
+  @@index([clinicId, slotStart])
+  @@map("appointment_slots")
 }
