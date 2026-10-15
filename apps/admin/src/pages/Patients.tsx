@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Plus, Search, Users } from 'lucide-react';
+import { Plus, Search } from 'lucide-react';
 import { get } from '../api/client';
 import type { PatientSummary } from '../api/types';
 import { mobileFmt } from '../lib/format';
@@ -10,6 +10,7 @@ import { Badge, EmptyState, ErrorState, Loading } from '../ui/feedback';
 import { useAsync } from '../lib/useAsync';
 import { useAuth } from '../auth/AuthProvider';
 import { CreatePatientDialog } from './CreatePatientDialog';
+import mascota from '../assets/brand/mascota.png';
 
 export function PatientsPage() {
   const [text, setText] = useState('');
@@ -40,7 +41,7 @@ export function PatientsPage() {
       <div aria-live="polite">
         {list.loading && query && <Loading label="Buscando pacientes" />}
         {list.error != null && <ErrorState error={list.error} onRetry={list.reload} />}
-        {!query && <EmptyState icon={<Users size={32} aria-hidden="true" />} title="Busque a un paciente">Escriba su DNI, nombre o celular para abrir su ficha.</EmptyState>}
+        {!query && <EmptyState icon={<img className="empty-art" src={mascota} alt="" aria-hidden="true" />} title="Busque a un paciente">Escriba su DNI, nombre o celular para abrir su ficha.</EmptyState>}
         {query && !list.loading && !list.error && list.data?.length === 0 && <EmptyState title="Sin resultados" action={canCreate ? <Button variant="primary" icon={<Plus size={18} aria-hidden="true" />} onClick={() => setCreating(true)}>Crear a «{query}»</Button> : undefined}>Revise el dato escrito o pruebe con otro. {canCreate ? 'Si no está registrado, créelo ahora.' : 'Si no está registrado, pida a recepción que lo cree.'}</EmptyState>}
         {list.data && list.data.length > 0 && (
           <div className="table-wrap table-cards">

@@ -6,6 +6,8 @@ import { BranchProvider } from '../lib/branch';
 import { IntegrationsProvider, useIntegrations } from '../lib/integrations';
 import { SimulationBanner } from '../ui/SimulationBanner';
 import { Button } from '../ui/Button';
+import logoBlanco from '../assets/brand/apimedical-blanco.png';
+import mascota from '../assets/brand/mascota.png';
 
 interface Item { to: string; label: string; icon: ReactNode; show: boolean; end?: boolean }
 
@@ -36,7 +38,11 @@ function Shell() {
       <a className="skip-link" href="#main">Saltar al contenido</a>
       <div className="shell">
         <aside className="sidebar">
-          <p className="brand"><span aria-hidden="true">◆</span><span>ApiDental<small>by Apiworking</small></span></p>
+          <div className="brand">
+            <img className="brand-logo" src={logoBlanco} alt="APIMedical" />
+            <img className="brand-mini" src={mascota} alt="" aria-hidden="true" />
+            <span className="brand-sub">ApiDental<small>by Apiworking</small></span>
+          </div>
           <nav aria-label="Principal" className="nav">
             {items.filter((i) => i.show).map((i) => (
               <NavLink key={i.to} to={i.to} end={i.end} title={i.label}>

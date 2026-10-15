@@ -11,6 +11,7 @@ import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } fr
 import { ReasonDialog } from '../ui/overlays';
 import { OdontogramEditor } from './odontogram/OdontogramEditor';
 import { OdontogramFigure } from './odontogram/OdontogramFigure';
+import muela from '../assets/brand/muela.png';
 
 /** Vista básica del odontograma vigente: figura (SVG del servidor), tabla equivalente accesible y descarga del PDF. */
 export function OdontogramPage() {
@@ -77,7 +78,7 @@ export function OdontogramPage() {
           onConfirm={async (reason) => { await start(undefined, reason, correcting); setCorrecting(null); }}
         />
       )}
-      {!official && !view.data?.draft && <EmptyState title="Todavía no hay un odontograma guardado">Use «Iniciar odontograma» para registrarlo durante la atención.</EmptyState>}
+      {!official && !view.data?.draft && <EmptyState icon={<img className="empty-art" src={muela} alt="" aria-hidden="true" />} title="Todavía no hay un odontograma guardado">Use «Iniciar odontograma» para registrarlo durante la atención.</EmptyState>}
       {official && !view.data?.draft && (
         <>
           <div className="odonto-figure odonto-figure-edit">
