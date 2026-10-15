@@ -46,6 +46,11 @@ export const PERMISSIONS = {
   // --- Catálogo de procedimientos de la clínica (3.3). Configuración administrativa, no datos de pacientes ---
   'procedure:read': 'Ver el catálogo de procedimientos de la clínica',
   'procedure:manage': 'Configurar el catálogo de procedimientos de la clínica (incluye si requieren consentimiento clínico)',
+  // --- Agenda y citas (4.0). Administrativos: no dan acceso a datos clínicos ---
+  'appointment:read': 'Ver la agenda y las citas de la clínica',
+  'appointment:manage': 'Crear, confirmar, reprogramar, cancelar y marcar ausencia en citas; bloquear horarios',
+  'appointment:attend': 'Iniciar la atención de las propias citas (abre la visita clínica; exige además permisos clínicos)',
+  'agenda:manage': 'Configurar consultorios, especialidades, servicios, horarios y odontólogos de la agenda',
   'care:assign': 'Asignar y revocar la relación asistencial paciente–odontólogo (acto administrativo, no clínico)',
 } as const;
 
@@ -66,6 +71,7 @@ export const CARE_ATTENDANCE_PERMISSIONS = [
   'clinical:read',
   'clinical:write',
   'clinical:read_limited',
+  'appointment:attend',
 ] as const satisfies readonly PermissionCode[];
 
 /** Único rol que puede tener `clinical:read_all` (lo impide también un trigger de la base de datos). */
@@ -114,6 +120,8 @@ const PLATFORM_PERMISSIONS = ALL_PERMISSIONS.filter(
     !(CLINICAL_PERMISSIONS as readonly string[]).includes(p) &&
     p !== 'care:assign' &&
     !p.startsWith('procedure:') &&
+    !p.startsWith('appointment:') &&
+    !p.startsWith('agenda:') &&
     !(CLINIC_GOVERNANCE_PERMISSIONS as readonly string[]).includes(p),
 );
 
@@ -157,6 +165,9 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'care:assign',
       'procedure:read',
       'procedure:manage',
+      'appointment:read',
+      'appointment:manage',
+      'agenda:manage',
       ...PATIENT_FULL_ACCESS,
     ],
   },
@@ -181,6 +192,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'care:assign',
       'procedure:read',
       'procedure:manage',
+      'appointment:read',
     ],
   },
   {
@@ -188,14 +200,14 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     name: 'Recepcionista',
     scope: 'CLINIC',
     description: 'Recepción y agenda (permisos de módulos futuros).',
-    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS, 'care:assign'],
+    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS, 'care:assign', 'appointment:read', 'appointment:manage'],
   },
   {
     code: 'DENTIST',
     name: 'Odontólogo',
     scope: 'CLINIC',
     description: 'Atención clínica de los pacientes con los que tiene relación asistencial vigente.',
-    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY, 'clinical:read', 'clinical:write', 'procedure:read'],
+    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY, 'clinical:read', 'clinical:write', 'procedure:read', 'appointment:read', 'appointment:attend'],
   },
   {
     code: 'CASHIER',
@@ -209,6 +221,6 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     name: 'Asistente',
     scope: 'CLINIC',
     description: 'Apoyo clínico: vista limitada (alertas y datos de apoyo) de los pacientes en atención.',
-    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY, 'clinical:read_limited'],
+    permissions: [...BASIC_READ, ...PATIENT_READ_ONLY, 'clinical:read_limited', 'appointment:read'],
   },
 ];

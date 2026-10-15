@@ -41,6 +41,6 @@ import { ClinicalController } from './clinical.controller.js';
     ClinicalSheetService,
     OdontogramService,
   ],
-  exports: [ClinicalAccessService, CareRelationshipsService],
+  exports: [ClinicalAccessService, CareRelationshipsService, ClinicalAllergyAssessmentService],
 })
 export class ClinicalModule {}
