@@ -17,7 +17,6 @@ describe('Alta de paciente', () => {
     renderApp('/pacientes');
     const user = userEvent.setup();
     await user.type(await screen.findByLabelText('Buscar por DNI, nombre o celular'), '71234567');
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
     await user.click(await screen.findByRole('button', { name: /Crear a «71234567»/ }));
     const dialog = await screen.findByRole('dialog', { name: 'Nuevo paciente' });
     expect(within(dialog).getByLabelText(/Número/)).toHaveValue('71234567'); // el DNI buscado ya viene escrito
@@ -43,7 +42,7 @@ describe('Alta de paciente', () => {
     unmount();
     mockApi({ ...sessionRoutes(DENTIST_PERMS, ['DENTIST']) });
     renderApp('/pacientes');
-    expect(await screen.findByText('Busque a un paciente')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Pacientes' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Nuevo paciente' })).not.toBeInTheDocument();
   });
 
@@ -106,5 +105,33 @@ describe('Alta de paciente', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Nuevo paciente' })).not.toBeInTheDocument());
     expect(within(screen.getByRole('dialog', { name: 'Nueva cita' })).getByRole('combobox', { name: 'Paciente' })).toHaveValue('Ana Quispe Rojas');
     expect(screen.getByText('Paciente elegido.')).toBeInTheDocument();
+  });
+
+  it('Pacientes: la lista aparece sin escribir y el filtro de estado pide inactivos', async () => {
+    const { called } = mockApi({ ...sessionRoutes(RECEPTION_PERMS), 'GET /patients': { json: [NEW] } });
+    renderApp('/pacientes');
+    const user = userEvent.setup();
+    expect(await screen.findByRole('link', { name: 'Ana Quispe Rojas' })).toBeInTheDocument();
+    expect(called('GET', '/patients')[0]!.query.get('status')).toBe('ACTIVE');
+    await user.selectOptions(screen.getByLabelText('Estado'), 'INACTIVE');
+    await waitFor(() => expect(called('GET', '/patients').some((c) => c.query.get('status') === 'INACTIVE')).toBe(true));
+  });
+
+  it('Nueva cita: al enfocar el buscador ofrece pacientes sin escribir, y filtra desde 2 caracteres', async () => {
+    const { called } = mockApi({
+      ...sessionRoutes(RECEPTION_PERMS), 'GET /patients': { json: [NEW] },
+      'GET /agenda/calendar': { json: { from: '2026-10-20', to: '2026-10-20', dentists: [], rooms: [], windows: [], blocks: [], appointments: [] } },
+      'GET /agenda/services': { json: [] },
+    });
+    renderApp('/agenda');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /Nueva cita/ }));
+    const drawer = await screen.findByRole('dialog', { name: 'Nueva cita' });
+    const box = within(drawer).getByRole('combobox', { name: 'Paciente' });
+    await user.click(box);
+    expect(await within(drawer).findByRole('option', { name: /Ana Quispe Rojas/ })).toBeInTheDocument();
+    expect(called('GET', '/patients')[0]!.query.get('name')).toBeNull(); // sin filtro
+    await user.type(box, 'An');
+    await waitFor(() => expect(called('GET', '/patients').some((c) => c.query.get('name') === 'An')).toBe(true));
   });
 });

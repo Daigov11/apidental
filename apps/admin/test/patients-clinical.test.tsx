@@ -18,11 +18,17 @@ describe('Pacientes y acceso clínico', () => {
     const { called } = mockApi({ ...sessionRoutes(RECEPTION_PERMS), 'GET /patients': { json: [PATIENT] }, 'GET /patients/p-1': { json: PATIENT }, 'GET /appointments': { json: [] } });
     renderApp('/pacientes');
     const user = userEvent.setup();
-    expect(await screen.findByText('Busque a un paciente')).toBeInTheDocument();
-    await user.type(screen.getByLabelText('Buscar por DNI, nombre o celular'), 'Lucía');
-    await user.click(screen.getByRole('button', { name: 'Buscar' }));
+    // Al abrir ya se ven los pacientes (sin escribir nada)
+    expect(await screen.findByRole('link', { name: 'Lucía Demo Adulta' })).toBeInTheDocument();
+    expect(called('GET', '/patients')[0]?.query.get('name')).toBeNull();
+    expect(called('GET', '/patients')[0]?.query.get('limit')).toBe('50');
+    // Con 1 carácter no se filtra; desde 2 se filtra al escribir, sin pulsar Buscar
+    await user.type(screen.getByLabelText('Buscar por DNI, nombre o celular'), 'L');
+    await new Promise((r) => setTimeout(r, 450));
+    expect(called('GET', '/patients').every((c) => c.query.get('name') === null)).toBe(true);
+    await user.type(screen.getByLabelText('Buscar por DNI, nombre o celular'), 'ucía');
+    await waitFor(() => expect(called('GET', '/patients').some((c) => c.query.get('name') === 'Lucía')).toBe(true));
     const link = await screen.findByRole('link', { name: 'Lucía Demo Adulta' });
-    expect(called('GET', '/patients')[0]?.query.get('name')).toBe('Lucía');
     expect(link.getAttribute('href')).toBe('/pacientes/p-1');
     await user.click(link);
     expect(await screen.findByRole('heading', { name: 'Lucía Demo Adulta' })).toBeInTheDocument();

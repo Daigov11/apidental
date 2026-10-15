@@ -8,6 +8,7 @@ import { toDateOnly } from '../src/patients/util/lima-date.js';
 import { assignmentKey } from '../src/users/assignment-key.js';
 import { seedDemoClinical } from './demo-data.js';
 import { seedDemoAgenda } from './demo-agenda.js';
+import { seedDemoCases } from './demo-cases.js';
 import { seedDemoExtra } from './demo-extra.js';
 
 loadEnvFile();
@@ -71,6 +72,8 @@ async function seedDemo() {
   console.log(`Agenda demo (ficticia) lista: ${agenda.rooms} consultorios, ${agenda.services} servicios, ${agenda.appointments} citas nuevas.`);
   const extra = await seedDemoExtra(db, { clinicId: clinic.id, branchId: branch.id, dentistId: demo.users['dentist']!, receptionId: demo.users['reception']!, adminUserId: user.id });
   console.log(`Datos demo adicionales (ficticios) listos: ${JSON.stringify(extra)} (elementos nuevos en esta ejecución).`);
+  const cases = await seedDemoCases(db, { clinicId: clinic.id, branchId: branch.id, dentistId: demo.users['dentist']!, receptionId: demo.users['reception']!, adminUserId: user.id });
+  console.log(`Diez casos de paciente demo (ficticios) listos: ${JSON.stringify(cases)} (elementos nuevos en esta ejecución).`);
   console.log(`Atención clínica demo (ficticia) lista: ${Object.keys(demo.users).length} usuarios, ${Object.keys(demo.patients).length} pacientes con visita (cerrada/corregida, borrador y consentimiento faltante).`);
 }
 

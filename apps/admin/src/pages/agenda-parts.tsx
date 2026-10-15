@@ -18,6 +18,7 @@ export function PatientPicker({ onPick, error, createInitial, initialText = '' }
   const [picked, setPicked] = useState<PatientSummary | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
   const [searched, setSearched] = useState(false);
+  const [focused, setFocused] = useState(false);
   const [creating, setCreating] = useState(false);
   const { can } = useAuth();
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -25,17 +26,19 @@ export function PatientPicker({ onPick, error, createInitial, initialText = '' }
   useEffect(() => {
     clearTimeout(timer.current);
     const q = text.trim();
-    if (picked || q.length < 2) { setResults([]); setSearched(false); return; }
+    if (picked) { setResults([]); setSearched(false); return; }
+    // Con menos de 2 caracteres se ofrecen los primeros pacientes (por apellido) al enfocar; desde 2 se filtra.
+    if (q.length < 2 && !focused) { setResults([]); setSearched(false); return; }
     timer.current = setTimeout(() => {
       const digits = /^\d+$/.test(q);
-      const query = digits ? (q.length >= 8 ? { identifier: q } : { phone: q }) : { name: q };
+      const query = q.length < 2 ? {} : digits ? (q.length >= 8 ? { identifier: q } : { phone: q }) : { name: q };
       get<PatientSummary[]>('/patients', { ...query, limit: 8 }).then(
-        (r) => { setResults(r); setSearched(true); setOpen(true); setActive(0); setFailed(null); },
+        (r) => { setResults(r); setSearched(q.length >= 2); setOpen(true); setActive(0); setFailed(null); },
         (e: unknown) => setFailed(errorText(e)),
       );
-    }, 250);
+    }, q.length < 2 ? 0 : 250);
     return () => clearTimeout(timer.current);
-  }, [text, picked]);
+  }, [text, picked, focused]);
 
   const choose = (p: PatientSummary) => { setPicked(p); setText(p.fullName); setOpen(false); onPick(p); };
   return (
@@ -44,7 +47,8 @@ export function PatientPicker({ onPick, error, createInitial, initialText = '' }
       <div className="combo">
         <input
           id={id} className="input" role="combobox" aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" autoComplete="off"
-          aria-invalid={error ? true : undefined} placeholder="Buscar por DNI, nombre o celular" value={text}
+          onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+          aria-invalid={error ? true : undefined} placeholder="Elija o busque por DNI, nombre o celular" value={text}
           onChange={(e) => { setText(e.target.value); if (picked) { setPicked(null); onPick(null); } }}
           onKeyDown={(e) => {
             if (!open || results.length === 0) return;
@@ -74,7 +78,7 @@ export function PatientPicker({ onPick, error, createInitial, initialText = '' }
         )}
       </div>
       <p className="field-help" aria-live="polite">
-        {failed ?? (picked ? 'Paciente elegido.' : text.trim().length >= 2 && searched && results.length === 0 ? 'Sin resultados. Revise el dato o cree al paciente.' : 'Escriba al menos 2 caracteres.')}
+        {failed ?? (picked ? 'Paciente elegido.' : text.trim().length >= 2 && searched && results.length === 0 ? 'Sin resultados. Revise el dato o cree al paciente.' : 'Elija de la lista o escriba para buscar (desde 2 caracteres).')}
       </p>
       {error && <p className="field-error" role="alert">{error}</p>}
       {creating && <CreatePatientDialog initialText={text} initial={createInitial} onClose={() => setCreating(false)} onCreated={(p) => { setCreating(false); choose(p); }} />}
