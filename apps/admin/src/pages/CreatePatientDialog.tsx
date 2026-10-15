@@ -34,24 +34,26 @@ export function prefillFrom(text: string): { docNumber: string; mobile: string; 
  * Alta de paciente. Antes de crear consulta si ya existe (mismo documento) o si hay coincidencias parecidas; en ambos
  * casos permite usar a la persona que ya está registrada. El sistema nunca fusiona ni bloquea por coincidencias suaves.
  */
-interface Props { initialText?: string; onCreated: (p: PatientSummary) => void; onClose: () => void }
+/** Datos con los que se precarga el formulario (p. ej. los de una solicitud de cita). */
+export interface PatientInitial { firstName?: string; lastName?: string; secondLastName?: string; docType?: 'DNI' | 'CE' | 'PASSPORT'; docNumber?: string; mobile?: string; email?: string }
+interface Props { initialText?: string; initial?: PatientInitial; onCreated: (p: PatientSummary) => void; onClose: () => void }
 
 /** Se dibuja fuera del formulario que lo abre (p. ej. «Nueva cita»): no se anidan formularios ni se mezclan sus envíos. */
 export function CreatePatientDialog(props: Props) {
   return createPortal(<CreatePatientForm {...props} />, document.body);
 }
 
-function CreatePatientForm({ initialText = '', onCreated, onClose }: Props) {
-  const pre = prefillFrom(initialText);
-  const [docType, setDocType] = useState<keyof typeof DOC_RULES>('DNI');
-  const [docNumber, setDocNumber] = useState(pre.docNumber);
-  const [firstName, setFirstName] = useState(pre.firstName);
-  const [lastName, setLastName] = useState(pre.lastName);
-  const [secondLastName, setSecondLastName] = useState('');
+function CreatePatientForm({ initialText = '', initial, onCreated, onClose }: Props) {
+  const pre = { ...prefillFrom(initialText), ...initial };
+  const [docType, setDocType] = useState<keyof typeof DOC_RULES>(initial?.docType ?? 'DNI');
+  const [docNumber, setDocNumber] = useState(pre.docNumber ?? '');
+  const [firstName, setFirstName] = useState(pre.firstName ?? '');
+  const [lastName, setLastName] = useState(pre.lastName ?? '');
+  const [secondLastName, setSecondLastName] = useState(initial?.secondLastName ?? '');
   const [birthDate, setBirthDate] = useState('');
   const [sex, setSex] = useState('');
-  const [mobile, setMobile] = useState(pre.mobile);
-  const [email, setEmail] = useState('');
+  const [mobile, setMobile] = useState(pre.mobile ?? '');
+  const [email, setEmail] = useState(initial?.email ?? '');
   const [submitted, setSubmitted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

@@ -23,7 +23,7 @@ const CODE_TEXT: Record<string, string> = {
   SERVICE_NOT_OFFERED: 'Ese odontólogo no atiende el servicio elegido.',
   INVALID_TRANSITION: 'La cita ya no admite este cambio.',
 };
-const explain = (e: unknown): string => (e instanceof ApiError && e.code && CODE_TEXT[e.code]) || errorText(e);
+export const explain = (e: unknown): string => (e instanceof ApiError && e.code && CODE_TEXT[e.code]) || errorText(e);
 
 export function NewAppointmentDrawer({
   branchId, dentists, defaultDate, defaultDentist, defaultPatient, onClose, onCreated,

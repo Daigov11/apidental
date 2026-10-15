@@ -265,3 +265,11 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .auth-product { margin: var(--space-3) 0 0; font: 700 0.9rem var(--font-display); color: var(--color-brand-700); }
 .auth-mascot { width: 72px; height: 72px; object-fit: contain; flex: none; }
 .empty-art { width: 96px; height: 96px; object-fit: contain; }
+
+/* Solicitudes de cita */
+.nav-badge { margin-left: auto; min-width: 22px; height: 22px; padding: 0 var(--space-3); display: inline-grid; place-items: center; border-radius: var(--radius-full); background: var(--color-accent-500); color: #141e26; font: 800 0.75rem/1 var(--font-ui); }
+@media (max-width: 1023px) { .nav a { position: relative; } .nav-badge { position: absolute; top: 4px; right: 4px; margin: 0; min-width: 18px; height: 18px; font-size: 0.65rem; } }
+.row-actions { display: inline-flex; gap: var(--space-3); flex-wrap: wrap; }
+.request-data { display: grid; gap: var(--space-3); margin: 0 0 var(--space-4); padding: var(--space-5); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-subtle); }
+.request-data div { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: var(--space-4); }
+.request-data dt { color: var(--text-muted); } .request-data dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }

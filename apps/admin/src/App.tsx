@@ -10,6 +10,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { ContextPage, LoginPage } from './pages/Login';
 import { PatientDetailPage } from './pages/PatientDetail';
 import { PatientsPage } from './pages/Patients';
+import { RequestsPage } from './pages/Requests';
 import { VisitSheetPage } from './pages/VisitSheet';
 import { Loading } from './ui/feedback';
 
@@ -29,6 +30,7 @@ export function App() {
         <Route path="caja" element={<CashPage />} />
         <Route path="caja/:id" element={<ChargePage />} />
         <Route path="comprobantes" element={<DocumentsPage />} />
+        <Route path="solicitudes" element={<RequestsPage />} />
         <Route path="pacientes" element={<PatientsPage />} />
         <Route path="pacientes/:id" element={<PatientDetailPage />} />
         <Route path="pacientes/:id/atencion/:visitId" element={<VisitSheetPage />} />

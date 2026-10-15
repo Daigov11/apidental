@@ -98,3 +98,13 @@ export type LoyaltySummary =
       nfc: { cardLabel: string; status: string; tapsLast30Days: number; lastTapAt: string | null; tier: string };
     };
 export interface ReviewSummary { simulation: SimulationInfo; average: number; total: number; requestsSent: number; queued: number; recent: { rating: number; comment: string; label: string }[] }
+
+// ------------------------------------------------------------------ solicitudes de cita (web pública)
+export type BookingStatus = 'PENDING' | 'ACCEPTED' | 'REJECTED';
+export interface BookingRequest {
+  id: string; reference: string; status: BookingStatus; statusLabel: string; createdAt: string;
+  branch: { id: string; name: string }; service: { id: string; name: string; durationMinutes: number };
+  desiredStartsAt: string; date: string; time: string;
+  person: { firstName: string; lastName: string; secondLastName: string | null; documentType: string | null; documentNumber: string | null; mobile: string; email: string | null };
+  notes: string | null; appointmentId: string | null; patientId: string | null; rejectReason: string | null; decidedAt: string | null;
+}

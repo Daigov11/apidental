@@ -6,12 +6,12 @@ import { Loading, errorText } from '../ui/feedback';
 import { mobileFmt } from '../lib/format';
 import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../ui/Button';
-import { CreatePatientDialog } from './CreatePatientDialog';
+import { CreatePatientDialog, type PatientInitial } from './CreatePatientDialog';
 
 /** Buscador de pacientes (combobox): por DNI, nombre o celular. */
-export function PatientPicker({ onPick, error }: { onPick: (p: PatientSummary | null) => void; error?: string | null }) {
+export function PatientPicker({ onPick, error, createInitial, initialText = '' }: { onPick: (p: PatientSummary | null) => void; error?: string | null; createInitial?: PatientInitial; initialText?: string }) {
   const id = useId();
-  const [text, setText] = useState('');
+  const [text, setText] = useState(initialText);
   const [results, setResults] = useState<PatientSummary[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -77,17 +77,19 @@ export function PatientPicker({ onPick, error }: { onPick: (p: PatientSummary | 
         {failed ?? (picked ? 'Paciente elegido.' : text.trim().length >= 2 && searched && results.length === 0 ? 'Sin resultados. Revise el dato o cree al paciente.' : 'Escriba al menos 2 caracteres.')}
       </p>
       {error && <p className="field-error" role="alert">{error}</p>}
-      {creating && <CreatePatientDialog initialText={text} onClose={() => setCreating(false)} onCreated={(p) => { setCreating(false); choose(p); }} />}
+      {creating && <CreatePatientDialog initialText={text} initial={createInitial} onClose={() => setCreating(false)} onCreated={(p) => { setCreating(false); choose(p); }} />}
     </div>
   );
 }
 
 /** Horarios libres para un servicio, odontólogo y fecha (la API ya descuenta citas y bloqueos). */
 export function SlotPicker({
-  branchId, serviceId, dentistUserId, date, ignoreAppointmentId, value, onChange, reloadKey = 0,
+  branchId, serviceId, dentistUserId, date, ignoreAppointmentId, value, onChange, reloadKey = 0, preferredStartsAt, onPreferredChecked,
 }: {
   branchId: string; serviceId: string; dentistUserId: string; date: string; ignoreAppointmentId?: string;
   value: Slot | null; onChange: (s: Slot | null) => void; reloadKey?: number;
+  /** Si está libre al cargar, se elige solo; `onPreferredChecked` avisa si estaba libre. */
+  preferredStartsAt?: string; onPreferredChecked?: (found: boolean) => void;
 }) {
   const name = useId();
   const ready = Boolean(branchId && serviceId && dentistUserId && date);
@@ -95,6 +97,17 @@ export function SlotPicker({
     (signal) => (ready ? get<Availability>('/agenda/availability', { branchId, from: date, serviceId, dentistUserId, ignoreAppointmentId }, signal) : Promise.resolve(null)),
     [branchId, serviceId, dentistUserId, date, ignoreAppointmentId, reloadKey],
   );
+  const checked = useRef<string | null>(null);
+  useEffect(() => {
+    if (!preferredStartsAt || !res.data) return;
+    const key = `${dentistUserId}|${date}|${res.data.slots.length}`;
+    if (checked.current === key) return;
+    checked.current = key;
+    const match = res.data.slots.find((x) => x.startsAt === preferredStartsAt);
+    if (match) onChange(match);
+    onPreferredChecked?.(Boolean(match));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res.data, preferredStartsAt]);
   return (
     <fieldset>
       <legend>Horarios disponibles</legend>

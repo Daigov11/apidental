@@ -1,15 +1,16 @@
 import type { ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { BookOpen, CalendarDays, FileText, Home, LogOut, Repeat, Users, Wallet } from 'lucide-react';
+import { BookOpen, CalendarDays, FileText, Home, Inbox, LogOut, Repeat, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { BranchProvider } from '../lib/branch';
+import { usePendingRequests } from '../lib/bookingRequests';
 import { IntegrationsProvider, useIntegrations } from '../lib/integrations';
 import { SimulationBanner } from '../ui/SimulationBanner';
 import { Button } from '../ui/Button';
 import logoBlanco from '../assets/brand/apimedical-blanco.png';
 import mascota from '../assets/brand/mascota.png';
 
-interface Item { to: string; label: string; icon: ReactNode; show: boolean; end?: boolean }
+interface Item { to: string; label: string; icon: ReactNode; show: boolean; end?: boolean; badge?: number | null }
 
 export function AppShell() {
   return (
@@ -25,10 +26,12 @@ function Shell() {
   const clinicName = me?.context?.clinic?.name ?? 'ApiDental';
   const branchName = me?.context?.branch?.name ?? 'Todas las sedes';
   const hasClinic = Boolean(me?.context?.clinic);
+  const pending = usePendingRequests(hasClinic && can('appointment:manage'));
   // La ausencia de permiso oculta el módulo; nunca se muestra "deshabilitado".
   const items: Item[] = [
     { to: '/', label: 'Hoy', icon: <Home size={20} aria-hidden="true" />, show: true, end: true },
     { to: '/agenda', label: 'Agenda', icon: <CalendarDays size={20} aria-hidden="true" />, show: hasClinic && can('appointment:read') },
+    { to: '/solicitudes', label: 'Solicitudes', icon: <Inbox size={20} aria-hidden="true" />, show: hasClinic && can('appointment:manage'), badge: pending },
     { to: '/pacientes', label: 'Pacientes', icon: <Users size={20} aria-hidden="true" />, show: hasClinic && (can('patient:read_basic') || can('patient:read')) },
     { to: '/caja', label: 'Caja', icon: <Wallet size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('charge:read') },
     { to: '/comprobantes', label: 'Comprobantes', icon: <FileText size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('billing:read') },
@@ -48,6 +51,8 @@ function Shell() {
               <NavLink key={i.to} to={i.to} end={i.end} title={i.label}>
                 {i.icon}
                 <span className="nav-label">{i.label}</span>
+                {i.badge ? <span className="nav-badge" aria-hidden="true">{i.badge}</span> : null}
+                {i.badge ? <span className="sr-only">{i.badge} pendientes</span> : null}
               </NavLink>
             ))}
           </nav>
