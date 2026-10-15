@@ -7,7 +7,7 @@
 Cada tarea es una lista de pasos numerados con su captura al lado. Las capturas (img/) son del panel con datos demo ficticios;
 se recortan con CSS (sin tocar los archivos) para mostrar solo el contenido.
 """
-import base64, html, os, pathlib, re, shutil, struct, subprocess, sys, tempfile
+import base64, datetime, html, os, pathlib, re, shutil, struct, subprocess, sys, tempfile
 
 HERE = pathlib.Path(__file__).parent
 IMG = HERE / 'img'
@@ -76,11 +76,12 @@ START = [
         [fig('comun-02-elegir-sede.jpg', 'Selección de clínica y sede.', left=500, right=500, top=240, bottom=200)]),
     task('Conocer la pantalla', [
         'El **menú de la izquierda** muestra solo lo que su rol puede usar: por eso cada persona ve opciones distintas.',
+        '**Hoy** es la pantalla de inicio: resume las citas del día, cuántas faltan por confirmar, las ausencias y las próximas citas.',
         'La **barra amarilla «DEMO — NO VÁLIDO PARA SUNAT»** indica que cobros, comprobantes, puntos y reseñas son una simulación con datos ficticios. Siempre está visible.',
-        'Abajo a la izquierda está **Cerrar sesión**. Úsela siempre en equipos compartidos.',
+        'Abajo a la izquierda están **Guía de uso (PDF)**, que descarga esta guía, **Cambiar sede** y **Cerrar sesión**. Use siempre Cerrar sesión en equipos compartidos.',
         'Si ve **«Acceso denegado»**, su rol no incluye esa pantalla. No es un error: consulte con su administrador.'],
-        [fig('menu-3-opciones.png', 'Menú de un rol con tres opciones (asistente, odontólogo, director).', left=0, top=0, bottom=800, cls='narrow'),
-         fig('recepcion-01-hoy.jpg', 'Hoy: resumen del día (recepción).', left=248, top=96, bottom=250)]),
+        [fig('menu-cajero.png', 'Menú del cajero. Asistente, odontólogo y director ven solo Hoy, Agenda y Pacientes.', left=0, top=0, bottom=0, cls='narrow'),
+         ]),
 ]
 
 MATRIX = [
@@ -287,6 +288,7 @@ h2{font-size:19pt;font-weight:800;color:var(--brand-d)}
 .rolehead p{margin:1.5mm 0 0;color:var(--muted)}.rolehead .acct{font-size:8.5pt}
 .role{break-before:page}
 .role.first{break-before:auto}
+.keep{break-inside:avoid}
 section.task{break-inside:avoid;margin:0 0 6mm;padding-top:1mm}
 h3{font-size:12pt;font-weight:800;color:var(--fg);margin-bottom:2.4mm;padding:1.4mm 3mm;background:var(--tint);border-left:3px solid var(--brand);border-radius:2px}
 .cols{display:grid;grid-template-columns:42% 1fr;gap:6mm;align-items:start}
@@ -299,9 +301,10 @@ h3{font-size:12pt;font-weight:800;color:var(--fg);margin-bottom:2.4mm;padding:1.
 figure{margin:0}
 .crop{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:3px;background:#fff}
 .crop img{position:absolute;display:block;max-width:none}
-figure.narrow{width:46%}
+figure.narrow{width:34%}
 figcaption{font-size:7.6pt;color:var(--muted);margin-top:1mm}
-table{border-collapse:collapse;width:100%;font-size:8.4pt;margin-top:3mm}
+table{border-collapse:collapse;width:100%;font-size:8.4pt;margin-top:3mm;break-inside:avoid}
+tr{break-inside:avoid}
 th,td{border:1px solid var(--line);padding:1.6mm 2mm;text-align:left;vertical-align:top}
 thead th{background:var(--tint);font-size:7.8pt}tbody th{font-weight:700;background:#f7fafb}
 .faq dt{font-weight:700;margin-top:2.4mm}.faq dd{margin:.4mm 0 0;color:var(--muted)}
@@ -313,9 +316,13 @@ ul.pend{margin:2mm 0 0;padding-left:5mm}
 def build():
     logo = data_uri(ROOT / 'brand/logos/apimedical-negro.png')
     mascot = data_uri(ROOT / 'brand/mascota/ardilla-odontologa.png')
-    roles_toc = [('Antes de empezar', 'ingresar, sede y menú'), ('Qué puede hacer cada rol', 'tabla de permisos'), ('Recepción', 'citas, pacientes y cobros'),
+    roles_toc = [('Antes de empezar', 'ingresar y elegir sede'), ('Su pantalla y su rol', 'menú y permisos'), ('Recepción', 'citas, pacientes y cobros'),
                  ('Odontólogo', 'atención y odontograma'), ('Asistente y director clínico', 'consulta'), ('Cajero', 'pagos, comprobantes y puntos'),
                  ('Administradores', 'clínica y plataforma'), ('Preguntas frecuentes', 'y lo que falta')]
+    meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre']
+    hoy = datetime.date.today()
+    fecha = f'{hoy.day} de {meses[hoy.month - 1]} de {hoy.year}'
+    commit = subprocess.run(['git', '-C', str(ROOT), 'rev-parse', '--short', 'HEAD'], capture_output=True, text=True).stdout.strip() or 's/d'
     toc = ''.join(f'<li><b>{b(t)}</b> — {b(s)}</li>' for t, s in roles_toc)
     matrix = ('<table><thead><tr>' + ''.join(f'<th>{h}</th>' for h in ['Rol', 'Agenda', 'Pacientes', 'Historia clínica y odontograma', 'Caja', 'Comprobantes', 'Fidelización']) +
               '</tr></thead><tbody>' + ''.join('<tr><th>' + r[0] + '</th>' + ''.join(f'<td>{c}</td>' for c in r[1:]) + '</tr>' for r in MATRIX) + '</tbody></table>')
@@ -324,9 +331,9 @@ def build():
     body = f"""
 <section class="cover"><div class="top"><img class="logo" src="{logo}" alt="APIMedical"><img class="mascot" src="{mascot}" alt=""></div>
 <div><h1>Guía de uso de ApiDental</h1><p class="sub">Paso a paso, para cada rol de la clínica</p><ol>{toc}</ol></div>
-<div class="meta">Versión demostrativa · Panel: <b>https://dental.apiworking.com.pe/admin/</b><br>Los pacientes, citas y montos de las capturas son ficticios. Cobros, comprobantes, puntos y reseñas son simulaciones: no hay conexión con SUNAT ni con Apiworking.</div></section>
-<section class="role first" id="inicio"><header class="rolehead"><h2>Antes de empezar</h2><p>Lo que necesita saber todo el personal, sea cual sea su rol.</p></header>{''.join(START)}</section>
-<section class="role first" style="margin-top:8mm"><header class="rolehead"><h2>Qué puede hacer cada rol</h2><p>El menú muestra solo lo que su rol permite. Resumen del panel actual.</p></header>{matrix}</section>
+<div class="meta">Versión demostrativa · Panel: <b>https://dental.apiworking.com.pe/admin/</b> · Actualizada el <b>{fecha}</b> · Versión del panel <b>{commit}</b><br>Los pacientes, citas y montos de las capturas son ficticios. Cobros, comprobantes, puntos y reseñas son simulaciones: no hay conexión con SUNAT ni con Apiworking.</div></section>
+<section class="role first" id="inicio"><header class="rolehead"><h2>Antes de empezar</h2><p>Lo que necesita saber todo el personal, sea cual sea su rol.</p></header>{''.join(START[:2])}</section>
+<section class="role first" style="margin-top:6mm"><div class="keep"><header class="rolehead"><h2>Su pantalla y su rol</h2><p>El menú muestra solo lo que su rol permite. Resumen del panel actual.</p></header>{matrix}</div><div style="margin-top:6mm">{START[2]}</div></section>
 {role('recepcion', 'Recepción', 'recepcion.demo@apidental.test', 'Organiza la agenda, mantiene los datos del paciente y cobra la atención.', RECEPCION)}
 {role('odontologo', 'Odontólogo', 'odontologa.demo@apidental.test', 'Atiende a sus pacientes y registra el odontograma.', ODONTOLOGO)}
 {role('asistente', 'Asistente', 'asistente.demo@apidental.test', 'Apoya la atención: consulta la agenda y los datos básicos.', ASISTENTE)}
