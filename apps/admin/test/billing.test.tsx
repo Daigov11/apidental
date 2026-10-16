@@ -30,7 +30,7 @@ describe('Cobros, comprobantes y fidelización simulados', () => {
     expect(await screen.findByRole('note')).toHaveTextContent('DEMO — NO VÁLIDO PARA SUNAT');
     expect(screen.getByRole('note')).toHaveTextContent(/SIMULACIÓN/);
     const nav = screen.getByRole('navigation', { name: 'Principal' });
-    expect(within(nav).getAllByRole('link').map((l) => l.textContent)).toEqual(['Hoy', 'Agenda', 'Pacientes', 'Caja', 'Comprobantes']);
+    expect(within(nav).getAllByRole('link').map((l) => l.textContent)).toEqual(['Hoy', 'Agenda', 'Pacientes', 'Fotograma', 'Caja', 'Comprobantes']);
     expect(await screen.findByRole('heading', { name: 'Reseñas' })).toBeInTheDocument();
     expect(screen.getByText(/reseñas \(ficticias\)/)).toBeInTheDocument();
   });
@@ -40,7 +40,7 @@ describe('Cobros, comprobantes y fidelización simulados', () => {
     renderApp('/');
     await screen.findByRole('heading', { name: 'Hoy' });
     const nav = screen.getByRole('navigation', { name: 'Principal' });
-    expect(within(nav).getAllByRole('link').map((l) => l.textContent)).toEqual(['Hoy', 'Agenda', 'Pacientes']);
+    expect(within(nav).getAllByRole('link').map((l) => l.textContent)).toEqual(['Hoy', 'Agenda', 'Pacientes', 'Fotograma']);
     expect(screen.queryByRole('note')).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Reseñas' })).not.toBeInTheDocument();
   });

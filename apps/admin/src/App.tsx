@@ -6,6 +6,7 @@ import { AgendaPage } from './pages/Agenda';
 import { CashPage } from './pages/Cash';
 import { ChargePage } from './pages/Charge';
 import { DocumentsPage } from './pages/Documents';
+import { FotogramaPage } from './pages/Fotograma';
 import { DashboardPage } from './pages/Dashboard';
 import { ContextPage, LoginPage } from './pages/Login';
 import { PatientDetailPage } from './pages/PatientDetail';
@@ -27,6 +28,7 @@ export function App() {
       <Route element={<AppShell />}>
         <Route index element={<DashboardPage />} />
         <Route path="agenda" element={<AgendaPage />} />
+        <Route path="fotograma" element={<FotogramaPage />} />
         <Route path="caja" element={<CashPage />} />
         <Route path="caja/:id" element={<ChargePage />} />
         <Route path="comprobantes" element={<DocumentsPage />} />
