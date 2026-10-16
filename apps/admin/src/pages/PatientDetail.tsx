@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 import { ClipboardList, Plus, ShieldAlert } from 'lucide-react';
 import { ApiError, get } from '../api/client';
 import type { Appointment, PatientDetail, VisitRow } from '../api/types';
@@ -96,8 +96,12 @@ export function PatientDetailPage() {
 function ClinicalCard({ patientId, viewOnly }: { patientId: string; viewOnly: boolean }) {
   const visits = useAsync(() => get<VisitRow[]>(`/patients/${patientId}/clinical/visits`), [patientId]);
   const noRelation = visits.error instanceof ApiError && visits.error.status === 403;
+  const ref = useRef<HTMLElement>(null);
+  const { hash } = useLocation();
+  // El enlace «Historial de visitas» de la ficha de atención llega aquí con #atencion-clinica.
+  useEffect(() => { if (hash === '#atencion-clinica') ref.current?.scrollIntoView?.({ block: 'start' }); }, [hash, visits.data]);
   return (
-    <section className="card" aria-labelledby="clin-h" style={{ marginTop: 'var(--space-6)' }}>
+    <section ref={ref} id="atencion-clinica" className="card" aria-labelledby="clin-h" style={{ marginTop: 'var(--space-6)' }}>
       <div className="card-head">
         <h2 id="clin-h" className="h3">Atención clínica{viewOnly && <> <Badge tone="neutral">Solo lectura</Badge></>}</h2>
         {!noRelation && <Link className="btn btn-secondary btn-sm" to={`/pacientes/${patientId}/odontograma`}>Ver odontograma</Link>}

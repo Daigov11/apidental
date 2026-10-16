@@ -21,6 +21,9 @@ const sheet = (over: Record<string, unknown> = {}, actions: Record<string, unkno
 const routes = (s: unknown, extra: Record<string, unknown> = {}) => ({
   ...sessionRoutes([...DENTIST_PERMS, 'procedure:read'], ['DENTIST']),
   'GET /patients/p-1/clinical/visits/v-1/sheet': { json: s },
+  'GET /patients/p-1': { json: { id: 'p-1', fullName: 'Ingrid Demo Pasaporte', identifiers: [{ type: 'PASSPORT', number: 'P1234567' }], age: 39, isMinor: false } },
+  'GET /patients/p-1/clinical/odontogram': { json: { official: null, draft: null, versionsCount: 0, formatNotice: 'Formato clínico por validar.' } },
+  'GET /clinical/odontogram/spec': { json: { toothStatuses: [], surfaces: [], surfaceStates: [], marks: [] } },
   ...extra,
 }) as Parameters<typeof mockApi>[0];
 
@@ -40,16 +43,14 @@ describe('Ficha de atención editable', () => {
     await waitFor(() => expect(called('PUT', '/patients/p-1/clinical/allergy-assessment')).toHaveLength(1));
     expect(called('PUT', '/patients/p-1/clinical/allergy-assessment')[0]?.body).toMatchObject({ status: 'NO_KNOWN_ALLERGIES', source: 'PATIENT', expectedVersion: 0 });
 
-    const dx = screen.getByRole('region', { name: 'Diagnósticos' });
-    await user.click(within(dx).getByRole('button', { name: /Agregar/ }));
+    await user.click(screen.getByRole('button', { name: 'Agregar diagnóstico' }));
     dlg = await screen.findByRole('dialog', { name: 'Agregar diagnóstico' });
     await user.type(within(dlg).getByLabelText('Diagnóstico'), 'Caries en pieza 16');
     await user.click(within(dlg).getByRole('button', { name: 'Agregar' }));
     await waitFor(() => expect(called('POST', '/patients/p-1/clinical/visits/v-1/diagnoses')).toHaveLength(1));
     expect(called('POST', '/patients/p-1/clinical/visits/v-1/diagnoses')[0]?.body).toMatchObject({ description: 'Caries en pieza 16', certainty: 'PRESUMPTIVE' });
 
-    const pr = screen.getByRole('region', { name: 'Procedimientos' });
-    await user.click(within(pr).getByRole('button', { name: /Agregar/ }));
+    await user.click(screen.getByRole('button', { name: 'Agregar procedimiento' }));
     dlg = await screen.findByRole('dialog', { name: 'Agregar procedimiento' });
     await user.selectOptions(await within(dlg).findByLabelText('Procedimiento'), 'def-1');
     await user.click(within(dlg).getByRole('button', { name: 'Agregar' }));
@@ -100,12 +101,30 @@ describe('Ficha de atención editable', () => {
     expect(called('POST', '/patients/p-1/clinical/visits/v-1/close')[0]?.body).toEqual({ expectedVersion: 1 });
   });
 
+  it('es una sola vista: paciente, odontograma, hallazgos y nota de evolución; recepción de datos sin cobro para el odontólogo', async () => {
+    mockApi(routes(sheet({
+      diagnoses: [{ id: 'd-1', version: 1, description: 'Caries en pieza 16', certaintyLabel: 'Presuntivo', status: 'ACTIVE', statusLabel: 'Vigente' }],
+      procedures: [{ id: 'pr-1', version: 1, name: 'Limpieza dental', notes: null, status: 'OPEN', statusLabel: 'Abierto', closeBlockedMessage: null, canClose: true }],
+    })));
+    renderApp('/pacientes/p-1/atencion/v-1');
+    expect(await screen.findByRole('heading', { name: 'Ingrid Demo Pasaporte' })).toBeInTheDocument();
+    expect(await screen.findByText('PASSPORT P1234567')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Odontograma' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Iniciar odontograma' })).toBeInTheDocument();
+    const hall = screen.getByRole('region', { name: 'Hallazgos' });
+    expect(within(hall).getByText('Caries en pieza 16')).toBeInTheDocument();
+    expect(within(hall).getByRole('button', { name: 'Marcar realizado' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Nota de evolución' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Odontograma completo/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Cobros del paciente' })).not.toBeInTheDocument();
+  });
+
   it('sin permiso de edición (solo lectura) no aparece ningún control de registro', async () => {
     mockApi(routes(sheet({ evolution: { state: 'CLOSED', stateLabel: 'Cerrada', body: 'Texto', followUp: null, contentHidden: false, etag: '1.1' } }, {
       readOnly: true, canAddDiagnosis: false, canAddProcedure: false, canWriteEvolution: false, canCloseVisit: false,
     })));
     renderApp('/pacientes/p-1/atencion/v-1');
     expect(await screen.findByText('Texto')).toBeInTheDocument();
-    for (const name of [/Agregar/, 'Registrar evaluación', 'Guardar borrador', 'Cerrar la visita', 'Corregir evolución']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    for (const name of [/Agregar/, 'Iniciar odontograma', 'Registrar evaluación', 'Guardar borrador', 'Cerrar la visita', 'Corregir evolución']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
   });
 });

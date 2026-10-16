@@ -277,3 +277,28 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .request-data { display: grid; gap: var(--space-3); margin: 0 0 var(--space-4); padding: var(--space-5); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--bg-subtle); }
 .request-data div { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: var(--space-4); }
 .request-data dt { color: var(--text-muted); } .request-data dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+
+/* Ficha de atención: una sola vista (paciente · odontograma y hallazgos · cobro y evolución) */
+.ficha { display: grid; gap: var(--space-6); grid-template-columns: minmax(0, 1fr); align-items: start; }
+.ficha-main, .ficha-side, .ficha-aside { display: grid; gap: var(--space-6); min-width: 0; align-content: start; }
+.ficha .card + .card { margin-top: 0; }
+.ficha-person { text-align: center; display: grid; gap: var(--space-3); justify-items: center; }
+.ficha-avatar { width: 72px; height: 72px; border-radius: var(--radius-full); display: grid; place-items: center; background: var(--color-brand-700); color: var(--text-on-brand); font: 700 1.5rem/1 var(--font-display); }
+.ficha-facts { display: grid; gap: var(--space-3); margin: 0; width: 100%; text-align: left; }
+.ficha-facts div { display: flex; justify-content: space-between; gap: var(--space-4); }
+.ficha-facts dt { color: var(--text-muted); } .ficha-facts dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.ficha-nav { display: grid; background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); overflow: hidden; }
+.ficha-nav a { display: flex; align-items: center; gap: var(--space-4); min-height: var(--touch-target); padding: 0 var(--space-5); color: var(--text-default); text-decoration: none; font-weight: 600; border-bottom: 1px solid var(--border-subtle); }
+.ficha-nav a:last-child { border-bottom: 0; }
+.ficha-nav a:hover { background: var(--bg-subtle); }
+.ficha-alerts { display: grid; gap: 0 var(--space-5); grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.ficha-alerts .alert { margin-bottom: var(--space-4); }
+.ficha-bill .ficha-facts dd { font-variant-numeric: tabular-nums; }
+@media (min-width: 1360px) { .ficha { grid-template-columns: 210px minmax(0, 1fr) 310px; gap: var(--space-5); } }
+@media (min-width: 768px) and (max-width: 1359px) { .ficha { grid-template-columns: 220px minmax(0, 1fr); } .ficha-aside { grid-column: 1 / -1; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); } }
+.ficha-alerts .alert { flex-wrap: wrap; }
+.ficha-alerts .alert-body { flex: 1 1 11rem; min-width: 0; }
+.ficha-person .ficha-facts div { flex-direction: column; gap: 0; }
+.ficha-person .ficha-facts dd { text-align: left; }
+.ficha td:nth-child(2), .ficha th:nth-child(2) { width: 45%; }
+@media (max-width: 767px) { .ficha td:nth-child(2), .ficha th:nth-child(2) { width: auto; } }

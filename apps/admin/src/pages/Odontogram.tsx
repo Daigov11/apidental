@@ -1,18 +1,12 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { Download, Pencil } from 'lucide-react';
-import { get, post } from '../api/client';
-import type { Dentition, OdontogramSpecLite, OdontogramView } from '../api/types';
+import { Download } from 'lucide-react';
 import { downloadFile } from '../lib/download';
 import { fmtDateTime } from '../lib/format';
-import { useAsync } from '../lib/useAsync';
 import { Button } from '../ui/Button';
 import { useAuth } from '../auth/AuthProvider';
-import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
-import { ReasonDialog } from '../ui/overlays';
-import { OdontogramEditor } from './odontogram/OdontogramEditor';
-import { OdontogramFigure } from './odontogram/OdontogramFigure';
-import muela from '../assets/brand/muela.png';
+import { Alert, Badge, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
+import { OdontogramCanvas, useOdontogram } from './odontogram/useOdontogram';
 
 /** Vista básica del odontograma vigente: figura (SVG del servidor), tabla equivalente accesible y descarga del PDF. */
 export function OdontogramPage() {
@@ -20,12 +14,9 @@ export function OdontogramPage() {
   const toast = useToast();
   const { can } = useAuth();
   const canWrite = can('clinical:write');
-  const view = useAsync(() => get<OdontogramView>(`/patients/${id}/clinical/odontogram`), [id]);
-  const spec = useAsync(() => get<OdontogramSpecLite>('/clinical/odontogram/spec'), []);
+  const od = useOdontogram(id);
+  const { view, spec, official } = od;
   const [pdfBusy, setPdfBusy] = useState(false);
-  const [starting, setStarting] = useState(false);
-  const [correcting, setCorrecting] = useState<'CORRECTION' | 'RECTIFICATION' | null>(null);
-  const official = view.data?.official ?? null;
 
   const downloadPdf = async () => {
     setPdfBusy(true);
@@ -34,16 +25,6 @@ export function OdontogramPage() {
     } catch (e) { toast.error(errorText(e)); }
     finally { setPdfBusy(false); }
   };
-
-  const start = async (purpose?: 'UPDATE', reason?: string, kind?: 'CORRECTION' | 'RECTIFICATION') => {
-    setStarting(true);
-    try {
-      await post(`/patients/${id}/clinical/odontogram/draft`, { purpose: kind ?? purpose, ...(reason ? { reason } : {}), ...(!official ? { dentition: 'PERMANENT' } : {}) });
-      view.reload();
-    } catch (e) { toast.error(errorText(e)); }
-    finally { setStarting(false); }
-  };
-  const finished = (msg: string) => { toast.success(msg); view.reload(); };
 
   if (view.loading && !view.data) return <Loading rows={4} label="Cargando el odontograma" />;
   if (view.error != null) return <ErrorState error={view.error} onRetry={view.reload} />;
@@ -62,34 +43,9 @@ export function OdontogramPage() {
       </div>
       <Alert tone="info">{view.data?.formatNotice ?? 'Formato clínico por validar.'} El odontograma registra lo que el profesional observa; no genera tratamientos ni presupuestos.</Alert>
 
-      {view.data?.draft && view.data.draftIsMine && spec.data?.layout && (
-        <OdontogramEditor key={view.data.draft.version} patientId={id} draft={view.data.draft} spec={spec.data} onFinished={finished} />
-      )}
-      {view.data?.draft && !view.data.draftIsMine && <Alert tone="warning">Hay un borrador en curso de otro odontólogo.</Alert>}
-      {!canWrite && <Alert tone="info">Vista de solo lectura: este perfil puede ver el odontograma, no editarlo.</Alert>}
-      {canWrite && !view.data?.draft && (
-        <div className="toolbar" style={{ gap: 'var(--space-4)' }}>
-          <Button variant="primary" icon={<Pencil size={18} aria-hidden="true" />} loading={starting} loadingText="Abriendo…" onClick={() => void start(official ? 'UPDATE' : undefined)}>
-            {official ? 'Actualizar odontograma' : 'Iniciar odontograma'}
-          </Button>
-          {official && <Button onClick={() => setCorrecting('CORRECTION')}>Corregir la versión guardada</Button>}
-        </div>
-      )}
-      {correcting && (
-        <ReasonDialog
-          title="Corregir el odontograma" example="Se registró la pieza equivocada" confirmLabel="Abrir corrección" explain="Se abre un borrador nuevo a partir de la última versión guardada. Al guardarlo se pedirá su contraseña."
-          onClose={() => setCorrecting(null)}
-          onConfirm={async (reason) => { await start(undefined, reason, correcting); setCorrecting(null); }}
-        />
-      )}
-      {!official && !view.data?.draft && <EmptyState icon={<img className="empty-art" src={muela} alt="" aria-hidden="true" />} title="Todavía no hay un odontograma guardado">{canWrite ? 'Use «Iniciar odontograma» para registrarlo durante la atención.' : 'El odontólogo lo registra durante la atención.'}</EmptyState>}
+      <OdontogramCanvas patientId={id} od={od} canWrite={canWrite} />
       {official && !view.data?.draft && (
         <>
-          <div className="odonto-figure odonto-figure-edit">
-            {spec.data?.layout && official.data
-              ? <OdontogramFigure spec={spec.data} dentition={official.dentition as Dentition} teeth={official.data.teeth} selected={null} />
-              : official.contentHidden ? <p className="muted">El detalle no está disponible para su perfil.</p> : <Loading rows={2} label="Preparando el dibujo" />}
-          </div>
           <section className="card" aria-labelledby="od-table-h" style={{ marginTop: 'var(--space-6)' }}>
             <h2 id="od-table-h" className="h3" style={{ marginBottom: 'var(--space-4)' }}>Vista de tabla</h2>
             {official.contentHidden ? <p className="muted">El detalle no está disponible para su perfil.</p> : teeth.length === 0 ? <p className="muted">No hay piezas con hallazgos registrados: todas figuran sin novedades.</p> : (
