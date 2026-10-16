@@ -1,6 +1,6 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { BookOpen, CalendarDays, FileText, Home, Inbox, LogOut, Repeat, Users, Wallet } from 'lucide-react';
+import { BookOpen, CalendarDays, ChevronsLeft, ChevronsRight, FileText, Home, Inbox, LogOut, Repeat, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { BranchProvider } from '../lib/branch';
 import { usePendingRequests } from '../lib/bookingRequests';
@@ -20,7 +20,12 @@ export function AppShell() {
   );
 }
 
+const COLLAPSE_KEY = 'apidental.sidebar.collapsed';
+const readCollapsed = (): boolean => { try { return localStorage.getItem(COLLAPSE_KEY) === '1'; } catch { return false; } };
+
 function Shell() {
+  const [collapsed, setCollapsed] = useState(readCollapsed);
+  const toggle = () => setCollapsed((c) => { const next = !c; try { localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0'); } catch { /* sin almacenamiento: no se recuerda */ } return next; });
   const { me, can, logout, switchContext } = useAuth();
   const { mode } = useIntegrations();
   const clinicName = me?.context?.clinic?.name ?? 'ApiDental';
@@ -39,13 +44,17 @@ function Shell() {
   return (
     <BranchProvider>
       <a className="skip-link" href="#main">Saltar al contenido</a>
-      <div className="shell">
+      <div className={`shell${collapsed ? ' shell-collapsed' : ''}`}>
         <aside className="sidebar">
           <div className="brand">
             <img className="brand-logo" src={logoBlanco} alt="APIMedical" />
             <img className="brand-mini" src={mascota} alt="" aria-hidden="true" />
             <span className="brand-sub">ApiDental<small>by Apiworking</small></span>
           </div>
+          <button type="button" className="sidebar-toggle" onClick={toggle} aria-expanded={!collapsed} aria-label={collapsed ? 'Expandir el menú lateral' : 'Contraer el menú lateral'} title={collapsed ? 'Expandir el menú' : 'Contraer el menú'}>
+            {collapsed ? <ChevronsRight size={20} aria-hidden="true" /> : <ChevronsLeft size={20} aria-hidden="true" />}
+            <span className="nav-label">Contraer menú</span>
+          </button>
           <nav aria-label="Principal" className="nav">
             {items.filter((i) => i.show).map((i) => (
               <NavLink key={i.to} to={i.to} end={i.end} title={i.label}>
