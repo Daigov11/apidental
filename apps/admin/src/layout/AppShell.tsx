@@ -38,7 +38,7 @@ function Shell() {
     { to: '/agenda', label: 'Agenda', icon: <CalendarDays size={20} aria-hidden="true" />, show: hasClinic && can('appointment:read') },
     { to: '/solicitudes', label: 'Solicitudes', icon: <Inbox size={20} aria-hidden="true" />, show: hasClinic && can('appointment:manage'), badge: pending },
     { to: '/pacientes', label: 'Pacientes', icon: <Users size={20} aria-hidden="true" />, show: hasClinic && (can('patient:read_basic') || can('patient:read')) },
-    { to: '/fotograma', label: 'Fotograma', icon: <Film size={20} aria-hidden="true" />, show: hasClinic },
+    { to: '/fotoclinica', label: 'Fotoclinica', icon: <Film size={20} aria-hidden="true" />, show: hasClinic },
     { to: '/caja', label: 'Caja', icon: <Wallet size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('charge:read') },
     { to: '/comprobantes', label: 'Comprobantes', icon: <FileText size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('billing:read') },
   ];

@@ -28,7 +28,7 @@ describe('Agenda', () => {
     expect(await screen.findByText('Valeria Demo (odontóloga)', { selector: '.agenda-head' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '10:00, Lucía Demo Adulta, Control (demo), Reservado' })).toBeInTheDocument();
     const nav = screen.getByRole('navigation', { name: 'Principal' });
-    expect(within(nav).getAllByRole('link').map((l) => l.textContent)).toEqual(['Hoy', 'Agenda', 'Solicitudes', 'Pacientes', 'Fotograma']);
+    expect(within(nav).getAllByRole('link').map((l) => l.textContent)).toEqual(['Hoy', 'Agenda', 'Solicitudes', 'Pacientes', 'Fotoclinica']);
     // el panel no muestra identificadores internos
     expect(document.body.textContent).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/i);
   });
