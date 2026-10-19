@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   InternalServerErrorException,
@@ -19,7 +20,13 @@ import { PRISMA } from '../prisma/prisma.module.js';
 import type { RemoveAttachmentDto, UploadAttachmentDto } from './dto/attachment.dto.js';
 import { sanitizeFileName, sniffMime } from './files/file-sniff.js';
 import { LocalFileStorage } from './files/local-file-storage.js';
+import { ClinicalAccessService, type ClinicalIntent } from '../clinical/clinical-access.service.js';
+import { ClinicalAccessDeniedException } from '../clinical/clinical.errors.js';
 import { clinicScope, requirePatient } from './patient-access.js';
+
+/** Radiografías, fotos y estudios: además del permiso de adjuntos exigen acceso clínico al paciente. */
+export const CLINICAL_ATTACHMENT_CATEGORIES: readonly string[] = ['XRAY', 'CLINICAL_PHOTO', 'STUDY', 'OTHER_CLINICAL'];
+export const isClinicalCategory = (category: string): boolean => CLINICAL_ATTACHMENT_CATEGORIES.includes(category);
 
 /** Archivo recibido por multer (almacenamiento en memoria). */
 export interface UploadedFileLike {
@@ -74,7 +81,24 @@ export class AttachmentsService {
     private readonly audit: AuditService,
     private readonly storage: LocalFileStorage,
     private readonly config: AppConfig,
+    private readonly clinical: ClinicalAccessService,
   ) {}
+
+  /**
+   * Cargar o dar de baja: los administrativos exigen `attachment:write`; los clínicos, acceso clínico de escritura al paciente
+   * (el odontólogo con relación asistencial los gestiona sin necesitar el permiso administrativo).
+   */
+  private async authorizeWrite(actor: AuthPrincipal, patientId: string, category: string, meta: RequestMeta) {
+    if (isClinicalCategory(category)) {
+      await this.authorizeClinical(actor, patientId, 'write', meta);
+    } else if (!actor.permissions.has('attachment:write')) {
+      throw new ForbiddenException('Su rol no permite gestionar adjuntos administrativos');
+    }
+  }
+
+  private authorizeClinical(actor: AuthPrincipal, patientId: string, intent: ClinicalIntent, meta: RequestMeta) {
+    return this.clinical.authorize(actor, patientId, intent, ['attachments'], meta, { allowLimited: false });
+  }
 
   async upload(
     actor: AuthPrincipal,
@@ -85,6 +109,7 @@ export class AttachmentsService {
   ) {
     const { clinicId, branchId } = clinicScope(actor);
     await requirePatient(this.db, clinicId, patientId, { active: true });
+    await this.authorizeWrite(actor, patientId, dto.category, meta);
 
     if (!file) throw new BadRequestException('Falta el archivo (campo "file")');
     const data = file.buffer;
@@ -167,8 +192,23 @@ export class AttachmentsService {
   async list(actor: AuthPrincipal, patientId: string, includeRemoved: boolean, meta: RequestMeta) {
     const { clinicId, branchId } = clinicScope(actor);
     await requirePatient(this.db, clinicId, patientId);
+    // Los archivos clínicos solo se listan a quien tiene acceso clínico al paciente; los demás ven los administrativos.
+    let clinicalVisible = false;
+    if (['clinical:read', 'clinical:view', 'clinical:admin'].some((p) => actor.permissions.has(p as never))) {
+      try {
+        await this.authorizeClinical(actor, patientId, 'read', meta);
+        clinicalVisible = true;
+      } catch (error) {
+        if (!(error instanceof ClinicalAccessDeniedException)) throw error;
+      }
+    }
     const rows = await this.db.attachment.findMany({
-      where: { patientId, clinicId, ...(includeRemoved ? {} : { status: 'ACTIVE' }) },
+      where: {
+        patientId,
+        clinicId,
+        ...(includeRemoved ? {} : { status: 'ACTIVE' }),
+        ...(clinicalVisible ? {} : { category: { notIn: CLINICAL_ATTACHMENT_CATEGORIES as never[] } }),
+      },
       orderBy: { createdAt: 'desc' },
     });
     await this.audit.record({
@@ -191,6 +231,7 @@ export class AttachmentsService {
     const attachment = await this.db.attachment.findFirst({ where: { id: attachmentId, patientId, clinicId } });
     if (!attachment) throw new NotFoundException('Adjunto no encontrado');
     if (attachment.status === 'REMOVED') throw new NotFoundException('Adjunto no encontrado');
+    if (isClinicalCategory(attachment.category)) await this.authorizeClinical(actor, patientId, 'read', meta);
 
     // La descarga es un acceso a datos personales: se audita ANTES de entregar el archivo.
     await this.audit.record({
@@ -227,6 +268,7 @@ export class AttachmentsService {
     await requirePatient(this.db, clinicId, patientId);
     const attachment = await this.db.attachment.findFirst({ where: { id: attachmentId, patientId, clinicId } });
     if (!attachment) throw new NotFoundException('Adjunto no encontrado');
+    await this.authorizeWrite(actor, patientId, attachment.category, meta);
     if (attachment.status === 'REMOVED') throw new ConflictException('El adjunto ya fue dado de baja');
 
     await this.db.$transaction(async (tx) => {

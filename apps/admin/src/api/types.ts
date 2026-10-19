@@ -33,7 +33,7 @@ export interface Availability { durationMinutes: number; slots: Slot[] }
 
 export interface PatientSummary {
   id: string; fullName: string; firstName: string; lastName: string; status: string; age: number | null; isMinor: boolean;
-  identifiers: { type: string; number: string }[]; primaryMobile: string | null; birthDate: string | null;
+  identifiers: { type: string; number: string }[]; primaryMobile: string | null; primaryEmail?: string | null; birthDate: string | null;
 }
 export interface PatientDetail extends PatientSummary { guardianCount?: number; warnings?: unknown[] }
 
@@ -113,3 +113,31 @@ export interface BookingRequest {
   person: { firstName: string; lastName: string; secondLastName: string | null; documentType: string | null; documentNumber: string | null; mobile: string; email: string | null };
   notes: string | null; appointmentId: string | null; patientId: string | null; rejectReason: string | null; decidedAt: string | null;
 }
+
+export interface AttachmentRow {
+  id: string; category: string; originalName: string; mimeType: string; sizeBytes: number; description: string | null;
+  status: 'ACTIVE' | 'REMOVED'; uploadedAt: string;
+}
+export interface PrescriptionItem { medication: string; dose: string | null; frequency: string | null; duration: string | null; instructions: string | null }
+export interface Prescription {
+  id: string; number: string; patientId: string; patientName?: string; visitId: string | null; prescriber: { id: string; name: string };
+  diagnosis: string | null; notes: string | null; status: 'ACTIVE' | 'DELETED'; lastEmailedAt: string | null; createdAt: string; items: PrescriptionItem[];
+}
+
+export interface CashAccountRow { id: string; name: string; kind: string; kindLabel: string; active: boolean; allowNegative: boolean; openingCents: number | null; incomeCents: number; expenseCents: number; balanceCents: number }
+export interface CashSummary {
+  branch: { id: string; name: string }; register: { id: string; name: string } | null;
+  session: { id: string; openedAt: string; openedBy: string; openNotes: string | null } | null; lastClosedAt: string | null;
+  accounts: CashAccountRow[]; totals: { openingCents: number; incomeCents: number; expenseCents: number; balanceCents: number };
+}
+export interface CashConfig {
+  accounts: { id: string; name: string; kind: string; kindLabel: string; allowNegative: boolean; active: boolean }[];
+  categories: { id: string; flow: 'INCOME' | 'EXPENSE'; name: string; active: boolean }[];
+  users: { id: string; name: string }[];
+}
+export interface CashMovement {
+  id: string; flow: 'INCOME' | 'EXPENSE'; flowLabel: string; kind: 'NORMAL' | 'OPENING' | 'COUNT_ADJUSTMENT'; kindLabel: string; description: string; operationNumber: string | null;
+  amountCents: number; amountText: string; occurredAt: string; status: 'ACTIVE' | 'VOIDED'; voidReason: string | null; voidedBy: string | null;
+  account: { id: string; name: string; kind: string }; category: { id: string; name: string } | null; user: { id: string; name: string };
+}
+export interface CashMovementList { items: CashMovement[]; total: number; incomeCents: number; expenseCents: number }

@@ -10,6 +10,7 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
 import { RequestLoggingInterceptor } from './common/interceptors/request-logging.interceptor.js';
 import { CryptoModule } from './common/crypto/crypto.module.js';
 import { ClinicalModule } from './clinical/clinical.module.js';
+import { CashboxModule } from './cashbox/cashbox.module.js';
 import { AgendaModule } from './agenda/agenda.module.js';
 import { BookingModule } from './booking/booking.module.js';
 import { IntegrationsModule } from './integrations/integrations.module.js';
@@ -20,6 +21,7 @@ import { InvitationsModule } from './invitations/invitations.module.js';
 import { HealthModule } from './health/health.module.js';
 import { MaintenanceModule } from './maintenance/maintenance.module.js';
 import { PatientsModule } from './patients/patients.module.js';
+import { PrescriptionsModule } from './prescriptions/prescriptions.module.js';
 import { ProvisioningModule } from './provisioning/provisioning.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { TenancyModule } from './tenancy/tenancy.module.js';
@@ -70,6 +72,8 @@ const isLoginRoute = (req: Request): boolean => STRICT_ROUTES.some((r) => req.pa
     UsersModule,
     PatientsModule,
     ClinicalModule,
+    PrescriptionsModule,
+    CashboxModule,
     AgendaModule,
     BookingModule,
     IntegrationsModule,

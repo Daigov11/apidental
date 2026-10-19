@@ -313,3 +313,17 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .ficha-person .ficha-facts dd { text-align: left; }
 .ficha td:nth-child(2), .ficha th:nth-child(2) { width: 45%; }
 @media (max-width: 767px) { .ficha td:nth-child(2), .ficha th:nth-child(2) { width: auto; } }
+
+/* Menú desplegable de acciones */
+.menu-wrap { position: relative; display: inline-block; }
+.menu { position: absolute; right: 0; top: calc(100% + var(--space-2)); min-width: 240px; background: var(--bg-surface); border: 1px solid var(--border-default, var(--state-neutral-bg)); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); padding: var(--space-2); z-index: var(--z-sticky); }
+.menu-item { display: flex; align-items: center; gap: var(--space-3); width: 100%; padding: var(--space-3) var(--space-4); border: 0; background: transparent; color: inherit; font: inherit; text-align: left; border-radius: var(--radius-sm); cursor: pointer; min-height: 44px; }
+.menu-item:hover:not(:disabled), .menu-item:focus-visible { background: var(--state-brand-bg); color: var(--state-brand-fg); }
+.menu-item:disabled { opacity: 0.5; cursor: not-allowed; }
+.menu-sep { border: 0; border-top: 1px solid var(--state-neutral-bg); margin: var(--space-2) 0; }
+.stat-income { color: var(--state-success-fg); }
+.stat-expense { color: var(--state-danger-fg); }
+.amount-in { color: var(--state-success-fg); }
+.amount-out { color: var(--state-danger-fg); }
+tr.row-voided td { opacity: 0.55; text-decoration: line-through; }
+tr.row-voided td:last-child, tr.row-voided td[data-label='Estado'] { text-decoration: none; opacity: 1; }

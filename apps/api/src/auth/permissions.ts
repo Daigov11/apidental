@@ -61,6 +61,12 @@ export const PERMISSIONS = {
   'billing:manage': 'Emitir, reintentar y conciliar comprobantes; procesar la cola de integraciones',
   'loyalty:read': 'Ver saldo de fidelización, resumen NFC y reseñas de pacientes con autorización',
   'loyalty:manage': 'Canjear puntos de fidelización',
+  // --- Caja chica. Administrativos: sin datos clínicos ---
+  'cashbox:read': 'Ver la caja chica: saldos, movimientos y reportes',
+  'cashbox:write': 'Registrar ingresos y egresos de caja chica',
+  'cashbox:void': 'Anular movimientos de caja chica (con motivo)',
+  'cashbox:close': 'Abrir y cerrar la caja chica con conciliación del efectivo',
+  'cashbox:manage': 'Configurar cuentas o medios de pago y tipos de operación de la caja chica',
   'care:assign': 'Asignar y revocar la relación asistencial paciente–odontólogo (acto administrativo, no clínico)',
 } as const;
 
@@ -138,6 +144,7 @@ const PLATFORM_PERMISSIONS = ALL_PERMISSIONS.filter(
     !p.startsWith('charge:') &&
     !p.startsWith('billing:') &&
     !p.startsWith('loyalty:') &&
+    !p.startsWith('cashbox:') &&
     !(CLINIC_GOVERNANCE_PERMISSIONS as readonly string[]).includes(p),
 );
 
@@ -194,6 +201,11 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'billing:manage',
       'loyalty:read',
       'loyalty:manage',
+      'cashbox:read',
+      'cashbox:write',
+      'cashbox:void',
+      'cashbox:close',
+      'cashbox:manage',
       ...PATIENT_FULL_ACCESS,
     ],
   },
@@ -226,7 +238,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     name: 'Recepcionista',
     scope: 'CLINIC',
     description: 'Recepción y agenda. Ve (solo lectura) la información clínica; no la edita.',
-    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS, 'care:assign', 'clinical:view', 'appointment:read', 'appointment:manage', 'charge:read', 'charge:manage', 'billing:read', 'loyalty:read'],
+    permissions: [...BASIC_READ, ...PATIENT_FULL_ACCESS, 'care:assign', 'clinical:view', 'appointment:read', 'appointment:manage', 'charge:read', 'charge:manage', 'billing:read', 'loyalty:read', 'cashbox:read', 'cashbox:write'],
   },
   {
     code: 'DENTIST',
@@ -240,7 +252,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     name: 'Cajero',
     scope: 'CLINIC',
     description: 'Caja, cobros y comprobantes.',
-    permissions: [...BASIC_READ, 'patient:read_basic', 'appointment:read', 'charge:read', 'charge:manage', 'billing:read', 'billing:manage', 'loyalty:read', 'loyalty:manage'],
+    permissions: [...BASIC_READ, 'patient:read_basic', 'appointment:read', 'charge:read', 'charge:manage', 'billing:read', 'billing:manage', 'loyalty:read', 'loyalty:manage', 'cashbox:read', 'cashbox:write', 'cashbox:void', 'cashbox:close'],
   },
   {
     code: 'ASSISTANT',

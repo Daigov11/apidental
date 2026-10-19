@@ -18,7 +18,7 @@ import { IsBoolean, IsOptional } from 'class-validator';
 import type { Response } from 'express';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { CurrentPrincipal } from '../common/decorators/current-principal.decorator.js';
-import { RequirePermissions } from '../common/decorators/permissions.decorator.js';
+import { RequireAnyPermission, RequirePermissions } from '../common/decorators/permissions.decorator.js';
 import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
 import { AttachmentsService, type UploadedFileLike } from './attachments.service.js';
 import { RemoveAttachmentDto, UploadAttachmentDto } from './dto/attachment.dto.js';
@@ -45,7 +45,7 @@ export class AttachmentsController {
   constructor(private readonly attachments: AttachmentsService) {}
 
   @Post()
-  @RequirePermissions('attachment:write')
+  @RequireAnyPermission('attachment:write', 'clinical:write')
   @UseInterceptors(FileInterceptor('file'))
   upload(
     @CurrentPrincipal() a: AuthPrincipal,
@@ -92,7 +92,7 @@ export class AttachmentsController {
 
   @Post(':attachmentId/remove')
   @HttpCode(200)
-  @RequirePermissions('attachment:write')
+  @RequireAnyPermission('attachment:write', 'clinical:write')
   remove(
     @CurrentPrincipal() a: AuthPrincipal,
     @Param('id', new ParseUUIDPipe()) id: string,

@@ -31,6 +31,8 @@ export const onSessionLost = (fn: (() => void) | null): void => {
 
 interface Options {
   body?: unknown;
+  /** Carga de archivos (multipart): el navegador pone el Content-Type con su separador. */
+  form?: FormData;
   query?: Record<string, string | number | boolean | undefined | null>;
   signal?: AbortSignal;
   /** No intenta renovar ni envía el token (login, renovación). */
@@ -46,14 +48,14 @@ function url(path: string, query?: Options['query']): string {
 
 async function send(method: string, path: string, o: Options): Promise<Response> {
   const headers: Record<string, string> = { Accept: 'application/json' };
-  if (o.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (o.body !== undefined && !o.form) headers['Content-Type'] = 'application/json';
   if (!o.anonymous && accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
   // La cabecera de la protección CSRF se envía siempre; sin la cookie no hace nada.
   headers['X-Requested-With'] = 'ApiDental';
   return fetch(url(path, o.query), {
     method,
     headers,
-    body: o.body !== undefined ? JSON.stringify(o.body) : undefined,
+    body: o.form ?? (o.body !== undefined ? JSON.stringify(o.body) : undefined),
     credentials: 'same-origin',
     cache: 'no-store',
     signal: o.signal,
@@ -119,6 +121,8 @@ export async function api<T>(method: string, path: string, o: Options = {}): Pro
 
 export const get = <T>(path: string, query?: Options['query'], signal?: AbortSignal) => api<T>('GET', path, { query, signal });
 export const post = <T>(path: string, body: unknown = {}, o: Options = {}) => api<T>('POST', path, { ...o, body });
+export const put = <T>(path: string, body: unknown = {}, o: Options = {}) => api<T>('PUT', path, { ...o, body });
+export const postForm = <T>(path: string, form: FormData) => api<T>('POST', path, { form });
 
 /** Descarga autenticada (PDF/SVG del odontograma): devuelve el archivo como Blob; nunca hay URL pública. */
 export async function getBlob(path: string, query?: Options['query']): Promise<Blob> {

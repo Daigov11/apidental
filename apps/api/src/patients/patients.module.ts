@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MulterModule } from '@nestjs/platform-express';
+import { ClinicalModule } from '../clinical/clinical.module.js';
 import { AppConfig } from '../config/app-config.js';
 import { AttachmentsController } from './attachments.controller.js';
 import { AttachmentsService } from './attachments.service.js';
@@ -14,6 +15,7 @@ import { PatientsService } from './patients.service.js';
 
 @Module({
   imports: [
+    ClinicalModule,
     MulterModule.registerAsync({
       inject: [AppConfig],
       useFactory: (config: AppConfig) => ({

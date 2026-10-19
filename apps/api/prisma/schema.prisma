@@ -290,12 +290,21 @@ enum ConsentGrantedBy {
   GUARDIAN
 }
 
-/// Solo categorías administrativas. Radiografías, fotos clínicas y similares llegarán con el
-/// módulo clínico y con permisos propios; no se mezclan aquí.
+/// Administrativas (attachment:*) y clínicas (radiografías, fotos, estudios): estas últimas
+/// además pasan por el motor de acceso clínico (relación asistencial, auditoría).
 enum AttachmentCategory {
   CONSENT
   IDENTITY_DOCUMENT
   OTHER_ADMINISTRATIVE
+  XRAY
+  CLINICAL_PHOTO
+  STUDY
+  OTHER_CLINICAL
+}
+
+enum PrescriptionStatus {
+  ACTIVE
+  DELETED
 }
 
 enum AttachmentStatus {
@@ -338,6 +347,7 @@ model Patient {
   odontograms        ClinicalOdontogram[]
   appointments       Appointment[]
   clinicalAlerts     ClinicalAlert[]
+  prescriptions      Prescription[]
 
   @@unique([id, clinicId])
   @@index([clinicId, lastName, firstName])
@@ -507,6 +517,213 @@ model Attachment {
   @@index([consentId])
   @@index([clinicId, sha256])
   @@map("attachments")
+}
+
+/// Receta médica del paciente. Puede emitirse dentro de una atención (visitId) o por fuera de ella.
+/// Editable mientras esté ACTIVE; "eliminar" es baja lógica con motivo (el registro se conserva).
+model Prescription {
+  id            String             @id @default(uuid()) @db.Char(36)
+  clinicId      String             @map("clinic_id") @db.Char(36)
+  patientId     String             @map("patient_id") @db.Char(36)
+  visitId       String?            @map("visit_id") @db.Char(36)
+  /// Correlativo por clínica, visible en el PDF (RX-000001).
+  number        Int
+  prescriberId  String             @map("prescriber_id") @db.Char(36)
+  diagnosis     String?            @db.VarChar(300)
+  notes         String?            @db.VarChar(1000)
+  status        PrescriptionStatus @default(ACTIVE)
+  deletedAt     DateTime?          @map("deleted_at")
+  deletedById   String?            @map("deleted_by_id") @db.Char(36)
+  deleteReason  String?            @map("delete_reason") @db.VarChar(300)
+  lastEmailedAt DateTime?          @map("last_emailed_at")
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+
+  patient Patient            @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  items   PrescriptionItem[]
+
+  @@unique([clinicId, number])
+  @@index([patientId, status, createdAt])
+  @@index([clinicId, prescriberId, createdAt])
+  @@map("prescriptions")
+}
+
+model PrescriptionItem {
+  id             String  @id @default(uuid()) @db.Char(36)
+  prescriptionId String  @map("prescription_id") @db.Char(36)
+  position       Int
+  medication     String  @db.VarChar(200)
+  dose           String? @db.VarChar(120)
+  frequency      String? @db.VarChar(120)
+  duration       String? @db.VarChar(120)
+  instructions   String? @db.VarChar(300)
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+
+  @@index([prescriptionId, position])
+  @@map("prescription_items")
+}
+
+// ---------------------------------------------------------------------------
+// Caja chica: libro de movimientos por caja (una por sede) y por cuenta o medio de pago.
+// El saldo de una cuenta es la suma de sus movimientos vigentes; la apertura y el arqueo
+// generan ajustes automáticos (kind OPENING / COUNT_ADJUSTMENT) para que el libro siempre cuadre.
+// ---------------------------------------------------------------------------
+
+enum CashAccountKind {
+  CASH
+  CARD
+  YAPE_PLIN
+  TRANSFER
+  OTHER
+}
+
+enum CashFlow {
+  INCOME
+  EXPENSE
+}
+
+enum CashMovementKind {
+  NORMAL
+  OPENING
+  COUNT_ADJUSTMENT
+}
+
+enum CashSessionStatus {
+  OPEN
+  CLOSED
+}
+
+enum CashMovementStatus {
+  ACTIVE
+  VOIDED
+}
+
+/// Cuenta o medio de pago de la clínica (Efectivo, Yape/Plin, una cuenta bancaria…). Se desactiva, no se borra.
+model CashAccount {
+  id            String          @id @default(uuid()) @db.Char(36)
+  clinicId      String          @map("clinic_id") @db.Char(36)
+  name          String          @db.VarChar(80)
+  kind          CashAccountKind
+  /// Si es falso, un egreso no puede dejar el saldo de la cuenta por debajo de cero.
+  allowNegative Boolean         @default(false) @map("allow_negative")
+  active        Boolean         @default(true)
+  createdAt     DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+
+  movements CashMovement[]
+  sessions  CashSessionAccount[]
+
+  @@unique([clinicId, name])
+  @@map("cash_accounts")
+}
+
+/// Tipo de operación configurable (categoría de ingreso o de egreso).
+model CashCategory {
+  id        String   @id @default(uuid()) @db.Char(36)
+  clinicId  String   @map("clinic_id") @db.Char(36)
+  flow      CashFlow
+  name      String   @db.VarChar(80)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  movements CashMovement[]
+
+  @@unique([clinicId, flow, name])
+  @@map("cash_categories")
+}
+
+/// Caja de una sede (una por sede, se crea al abrir por primera vez).
+model CashRegister {
+  id        String   @id @default(uuid()) @db.Char(36)
+  clinicId  String   @map("clinic_id") @db.Char(36)
+  branchId  String   @map("branch_id") @db.Char(36)
+  name      String   @db.VarChar(80)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  sessions  CashSession[]
+  movements CashMovement[]
+
+  @@unique([branchId])
+  @@index([clinicId])
+  @@map("cash_registers")
+}
+
+/// Turno de caja: apertura y cierre con conciliación. Solo uno abierto por caja (open_key).
+model CashSession {
+  id         String            @id @default(uuid()) @db.Char(36)
+  clinicId   String            @map("clinic_id") @db.Char(36)
+  registerId String            @map("register_id") @db.Char(36)
+  status     CashSessionStatus @default(OPEN)
+  /// = registerId mientras esté abierta; NULL al cerrar. Impide dos aperturas simultáneas.
+  openKey    String?           @unique @map("open_key") @db.Char(36)
+  openedAt   DateTime          @default(now()) @map("opened_at") @db.DateTime(3)
+  openedById String            @map("opened_by_id") @db.Char(36)
+  openNotes  String?           @map("open_notes") @db.VarChar(300)
+  closedAt   DateTime?         @map("closed_at") @db.DateTime(3)
+  closedById String?           @map("closed_by_id") @db.Char(36)
+  closeNotes String?           @map("close_notes") @db.VarChar(300)
+  /// Se incrementa en cada escritura de la caja: serializa los movimientos concurrentes.
+  version    Int               @default(1)
+
+  register  CashRegister         @relation(fields: [registerId], references: [id], onDelete: Restrict)
+  accounts  CashSessionAccount[]
+  movements CashMovement[]
+
+  @@index([registerId, openedAt])
+  @@map("cash_sessions")
+}
+
+model CashSessionAccount {
+  id              String @id @default(uuid()) @db.Char(36)
+  sessionId       String @map("session_id") @db.Char(36)
+  accountId       String @map("account_id") @db.Char(36)
+  openingCents    Int    @map("opening_cents")
+  expectedCents   Int?   @map("expected_cents")
+  countedCents    Int?   @map("counted_cents")
+  differenceCents Int?   @map("difference_cents")
+
+  session CashSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  account CashAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@unique([sessionId, accountId])
+  @@map("cash_session_accounts")
+}
+
+model CashMovement {
+  id              String             @id @default(uuid()) @db.Char(36)
+  clinicId        String             @map("clinic_id") @db.Char(36)
+  registerId      String             @map("register_id") @db.Char(36)
+  sessionId       String             @map("session_id") @db.Char(36)
+  accountId       String             @map("account_id") @db.Char(36)
+  categoryId      String?            @map("category_id") @db.Char(36)
+  flow            CashFlow
+  kind            CashMovementKind   @default(NORMAL)
+  description     String             @db.VarChar(200)
+  operationNumber String?            @map("operation_number") @db.VarChar(40)
+  /// Siempre positivo; el signo lo da `flow`.
+  amountCents     Int                @map("amount_cents")
+  occurredAt      DateTime           @map("occurred_at") @db.DateTime(3)
+  createdById     String             @map("created_by_id") @db.Char(36)
+  createdAt       DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  status          CashMovementStatus @default(ACTIVE)
+  voidedAt        DateTime?          @map("voided_at") @db.DateTime(3)
+  voidedById      String?            @map("voided_by_id") @db.Char(36)
+  voidReason      String?            @map("void_reason") @db.VarChar(300)
+  /// Clave de idempotencia del formulario: reenviar el mismo envío nunca duplica el movimiento.
+  requestKey      String?            @map("request_key") @db.Char(36)
+  /// "cuenta|número" mientras esté vigente: un mismo número de operación no se registra dos veces en la cuenta.
+  operationKey    String?            @unique @map("operation_key") @db.VarChar(130)
+
+  register CashRegister  @relation(fields: [registerId], references: [id], onDelete: Restrict)
+  session  CashSession   @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  account  CashAccount   @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category CashCategory? @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+
+  @@unique([clinicId, requestKey])
+  @@index([registerId, status, occurredAt])
+  @@index([sessionId])
+  @@index([registerId, accountId, status])
+  @@map("cash_movements")
 }
 
 // ---------------------------------------------------------------------------

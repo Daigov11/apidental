@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthProvider';
 import { AppShell } from './layout/AppShell';
 import { AgendaPage } from './pages/Agenda';
+import { CashBoxPage } from './pages/CashBox';
 import { CashPage } from './pages/Cash';
 import { ChargePage } from './pages/Charge';
 import { DocumentsPage } from './pages/Documents';
@@ -11,6 +12,7 @@ import { DashboardPage } from './pages/Dashboard';
 import { ContextPage, LoginPage } from './pages/Login';
 import { PatientDetailPage } from './pages/PatientDetail';
 import { PatientsPage } from './pages/Patients';
+import { PrescriptionsPage } from './pages/Prescriptions';
 import { RequestsPage } from './pages/Requests';
 import { VisitSheetPage } from './pages/VisitSheet';
 import { Loading } from './ui/feedback';
@@ -29,6 +31,8 @@ export function App() {
         <Route index element={<DashboardPage />} />
         <Route path="agenda" element={<AgendaPage />} />
         <Route path="fotoclinica" element={<FotoclinicaPage />} />
+        <Route path="recetas" element={<PrescriptionsPage />} />
+        <Route path="caja-chica" element={<CashBoxPage />} />
         <Route path="caja" element={<CashPage />} />
         <Route path="caja/:id" element={<ChargePage />} />
         <Route path="comprobantes" element={<DocumentsPage />} />

@@ -12,6 +12,8 @@ import { Alert, Badge, EmptyState, ErrorState, Loading, StatusBadge } from '../u
 import { useIntegrations } from '../lib/integrations';
 import { AppointmentDrawer, NewAppointmentDrawer } from './AppointmentPanels';
 import { LoyaltyCard } from './LoyaltyCard';
+import { PatientFiles } from './PatientFiles';
+import { PatientPrescriptions } from './Prescriptions';
 
 export function PatientDetailPage() {
   const { id = '' } = useParams();
@@ -86,6 +88,9 @@ export function PatientDetailPage() {
           Su rol no incluye la historia clínica, la evolución ni el odontograma.
         </Alert>
       )}
+
+      {(can('clinical:read') || can('clinical:view')) && <PatientPrescriptions patient={p} />}
+      {can('attachment:read') && <PatientFiles patientId={id} />}
 
       {openId && <AppointmentDrawer id={openId} onClose={() => setOpenId(null)} onChanged={appts.reload} />}
       {creating && branchId && dentists.data && <NewAppointmentDrawer branchId={branchId} dentists={dentists.data} defaultDate={dayOf(new Date().toISOString())} defaultPatient={p} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); appts.reload(); }} />}

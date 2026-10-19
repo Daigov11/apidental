@@ -89,6 +89,18 @@ export const AuditAction = {
   AttachmentListed: 'ATTACHMENT_LISTED',
   AttachmentDownloaded: 'ATTACHMENT_DOWNLOADED',
   AttachmentRemoved: 'ATTACHMENT_REMOVED',
+  CashSessionOpened: 'CASH_SESSION_OPENED',
+  CashSessionClosed: 'CASH_SESSION_CLOSED',
+  CashMovementCreated: 'CASH_MOVEMENT_CREATED',
+  CashMovementVoided: 'CASH_MOVEMENT_VOIDED',
+  CashConfigChanged: 'CASH_CONFIG_CHANGED',
+  CashReportExported: 'CASH_REPORT_EXPORTED',
+  PrescriptionCreated: 'PRESCRIPTION_CREATED',
+  PrescriptionUpdated: 'PRESCRIPTION_UPDATED',
+  PrescriptionDeleted: 'PRESCRIPTION_DELETED',
+  PrescriptionListed: 'PRESCRIPTION_LISTED',
+  PrescriptionExported: 'PRESCRIPTION_EXPORTED',
+  PrescriptionEmailed: 'PRESCRIPTION_EMAILED',
 } as const;
 
 export interface AuditEntry {

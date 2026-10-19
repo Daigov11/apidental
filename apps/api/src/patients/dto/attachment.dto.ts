@@ -6,6 +6,10 @@ export enum AttachmentCategoryDto {
   CONSENT = 'CONSENT',
   IDENTITY_DOCUMENT = 'IDENTITY_DOCUMENT',
   OTHER_ADMINISTRATIVE = 'OTHER_ADMINISTRATIVE',
+  XRAY = 'XRAY',
+  CLINICAL_PHOTO = 'CLINICAL_PHOTO',
+  STUDY = 'STUDY',
+  OTHER_CLINICAL = 'OTHER_CLINICAL',
 }
 
 /** Campos de texto del formulario multipart que acompañan al archivo. */

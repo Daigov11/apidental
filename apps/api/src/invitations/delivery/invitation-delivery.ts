@@ -23,8 +23,21 @@ export interface PasswordRecoveryMessage {
   expiresAt: Date;
 }
 
-/** Todo lo que sale hacia el canal configurado (el mismo adaptador firmado sirve a ambos flujos). */
-export type DeliveryMessage = InvitationMessage | PasswordRecoveryMessage;
+/** Receta en PDF para el correo del paciente. El contenido viaja como adjunto; no se registra en ningún log. */
+export interface PrescriptionMessage {
+  type: 'prescription';
+  prescriptionId: string;
+  toEmail: string;
+  patientName: string;
+  clinicName: string;
+  /** Correlativo visible (RX-000001). */
+  number: string;
+  fileName: string;
+  pdf: Buffer;
+}
+
+/** Todo lo que sale hacia el canal configurado (el mismo adaptador firmado sirve a todos los flujos). */
+export type DeliveryMessage = InvitationMessage | PasswordRecoveryMessage | PrescriptionMessage;
 
 /** `reason` es siempre un código genérico y saneado: nunca la URL, el token ni la respuesta del canal. */
 export type DeliveryOutcome = { ok: true; devLink?: string } | { ok: false; reason: string };
@@ -48,7 +61,7 @@ export class DevDelivery implements InvitationDelivery {
   readonly outbox: { type: DeliveryMessage['type']; to: string; url: string; at: Date }[] = [];
 
   async deliver(message: DeliveryMessage): Promise<DeliveryOutcome> {
-    const url = message.type === 'invitation' ? message.acceptUrl : message.resetUrl;
+    const url = message.type === 'invitation' ? message.acceptUrl : message.type === 'password_recovery' ? message.resetUrl : '';
     this.outbox.push({ type: message.type, to: message.toEmail, url, at: new Date() });
     if (this.outbox.length > 200) this.outbox.shift();
     return message.type === 'invitation' ? { ok: true, devLink: url } : { ok: true };
@@ -66,6 +79,38 @@ export class DisabledDelivery implements InvitationDelivery {
   async deliver(_message?: DeliveryMessage): Promise<DeliveryOutcome> {
     return { ok: false, reason: 'disabled' };
   }
+}
+
+function webhookPayload(message: DeliveryMessage) {
+  if (message.type === 'invitation') {
+    return {
+      event: 'invitation.deliver',
+      invitationId: message.invitationId,
+      to: message.toEmail,
+      acceptUrl: message.acceptUrl,
+      clinicName: message.clinicName,
+      roleName: message.roleName,
+      expiresAt: message.expiresAt.toISOString(),
+    };
+  }
+  if (message.type === 'password_recovery') {
+    return {
+      event: 'password_recovery.deliver',
+      recoveryId: message.recoveryId,
+      to: message.toEmail,
+      resetUrl: message.resetUrl,
+      expiresAt: message.expiresAt.toISOString(),
+    };
+  }
+  return {
+    event: 'prescription.deliver',
+    prescriptionId: message.prescriptionId,
+    to: message.toEmail,
+    patientName: message.patientName,
+    clinicName: message.clinicName,
+    number: message.number,
+    attachment: { fileName: message.fileName, contentType: 'application/pdf', contentBase64: message.pdf.toString('base64') },
+  };
 }
 
 /**
@@ -87,25 +132,7 @@ export class WebhookDelivery implements InvitationDelivery {
   }
 
   async deliver(message: DeliveryMessage): Promise<DeliveryOutcome> {
-    const body = JSON.stringify(
-      message.type === 'invitation'
-        ? {
-            event: 'invitation.deliver',
-            invitationId: message.invitationId,
-            to: message.toEmail,
-            acceptUrl: message.acceptUrl,
-            clinicName: message.clinicName,
-            roleName: message.roleName,
-            expiresAt: message.expiresAt.toISOString(),
-          }
-        : {
-            event: 'password_recovery.deliver',
-            recoveryId: message.recoveryId,
-            to: message.toEmail,
-            resetUrl: message.resetUrl,
-            expiresAt: message.expiresAt.toISOString(),
-          },
-    );
+    const body = JSON.stringify(webhookPayload(message));
     const timestamp = String(Math.floor(Date.now() / 1000));
     try {
       const res = await fetch(this.url, {
@@ -117,7 +144,7 @@ export class WebhookDelivery implements InvitationDelivery {
         },
         body,
         redirect: 'error',
-        signal: AbortSignal.timeout(this.timeoutMs),
+        signal: AbortSignal.timeout(message.type === 'prescription' ? this.timeoutMs * 3 : this.timeoutMs),
       });
       return res.ok ? { ok: true } : { ok: false, reason: `http_${res.status}` };
     } catch (error) {
