@@ -1,0 +1,9 @@
+# PLANTILLA — copiar a /etc/nginx/snippets/apidental-proxy-headers.conf (una sola vez; la usan todas las instancias).
+# Solo cabeceras: el `proxy_pass` (puerto de cada instancia) va en el `server` de cada cliente.
+# Con este proxy delante, defina TRUST_PROXY=1 en el .env de cada instancia.
+# No reescriba ni elimine Set-Cookie ni Origin: la cookie __Host-apidental_rt depende de ello.
+proxy_set_header Host $host;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $remote_addr;   # no reenviar cabeceras del cliente
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_read_timeout 30s;

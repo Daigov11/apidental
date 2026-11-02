@@ -1,0 +1,33 @@
+# PLANTILLA — copiar a /etc/systemd/system/apidental-api@.service y ajustar rutas.
+# Una instancia por cliente: `systemctl enable --now apidental-api@demod1` lee /etc/apidental/demod1.env
+# y escribe adjuntos solo en /var/lib/apidental/demod1/files. El nombre de la instancia (%i) es el del cliente.
+[Unit]
+Description=ApiDental API (NestJS) — instancia %i
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=apidental
+Group=apidental
+WorkingDirectory=/opt/apidental/apps/api
+# Variables de entorno de ESTA instancia (NODE_ENV=production, PORT, DATABASE_URL, JWT_ACCESS_SECRET, ...).
+# Archivo con permisos 600 y propietario root:apidental; NUNCA dentro del repositorio ni compartido entre clientes.
+EnvironmentFile=/etc/apidental/%i.env
+ExecStart=/usr/bin/node dist/main.js
+Restart=on-failure
+RestartSec=5
+
+# Endurecimiento
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# Directorio privado de adjuntos de ESTA instancia (ATTACHMENTS_DIR): único lugar con escritura.
+ReadWritePaths=/var/lib/apidental/%i/files
+
+[Install]
+WantedBy=multi-user.target

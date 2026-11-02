@@ -1,0 +1,15 @@
+# PLANTILLA — copiar a /etc/systemd/system/apidental-maintenance@.timer y activar una vez por instancia:
+#   systemctl enable --now apidental-maintenance@demod1.timer
+# Revise el resultado con: journalctl -u apidental-maintenance@demod1.service
+[Unit]
+Description=ApiDental mantenimiento de seguridad (diario) — instancia %i
+
+[Timer]
+# Una vez al día, de madrugada (hora del servidor); si el equipo estuvo apagado, se ejecuta al volver.
+# El retraso aleatorio evita que todas las instancias corran a la vez contra MySQL.
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=30min
+
+[Install]
+WantedBy=timers.target
