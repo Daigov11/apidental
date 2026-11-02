@@ -322,4 +322,61 @@ describe('Cliente por documento', () => {
   });
 });
 
+describe('Contingencia', () => {
+  const CASH_PERMS = [...PERMS, 'cashbox:read', 'cashbox:write'];
+  const LOCAL = {
+    'GET /cashbox/config': { json: { accounts: [{ id: 'acc-1', name: 'Efectivo', kind: 'CASH', kindLabel: 'Efectivo', allowNegative: false, active: true }], categories: [{ id: 'cat-1', flow: 'INCOME', name: 'Cobro de atención', active: true }], users: [] } },
+    'GET /cashbox/summary': { json: { branch: { id: 'b', name: 'Sede' }, register: { id: 'r', name: 'Caja' }, session: { id: 'ses', openedAt: '2026-11-02T14:00:00.000Z', openedBy: 'Gina', openNotes: null }, lastClosedAt: null, accounts: [], totals: { openingCents: 0, incomeCents: 0, expenseCents: 0, balanceCents: 0 } } },
+  };
+
+  it('cobra en la caja local con aprobación y sin llamar a la venta de Apiworking', async () => {
+    const { called } = mockApi(routes({
+      ...sessionRoutes(CASH_PERMS, ['CLINIC_ADMIN']),
+      ...LOCAL,
+      'POST /apiworking/contingency': { json: { ...SALE, id: 'c-1', docStatus: 'PENDING_ISSUE', contingency: true } },
+    } as never));
+    renderApp('/ventas');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Apiworking no responde: cobrar en contingencia' }));
+    expect(await screen.findByText('Modo contingencia')).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: new RegExp(CUSTOMER.name) }));
+    await user.type(screen.getByLabelText('Descripción'), 'Limpieza dental');
+    await user.type(screen.getByLabelText('Concepto 1'), 'Profilaxis');
+    await user.type(screen.getByLabelText(/Precio unitario/), '50');
+    await user.selectOptions(await screen.findByLabelText('Cuenta o medio de pago'), 'acc-1');
+    await user.selectOptions(screen.getByLabelText('Tipo de operación'), 'cat-1');
+    const go = screen.getByRole('button', { name: 'Registrar cobro en contingencia' });
+    expect(go).toBeDisabled();
+    await user.click(screen.getByRole('checkbox', { name: /autorizo cobrar en la caja local/ }));
+    await user.click(go);
+    await waitFor(() => expect(called('POST', '/apiworking/contingency')).toHaveLength(1));
+    const body = called('POST', '/apiworking/contingency')[0]?.body as Record<string, unknown>;
+    expect(body).toMatchObject({ customerId: CUSTOMER.id, description: 'Limpieza dental', accountId: 'acc-1', categoryId: 'cat-1', lines: [{ name: 'Profilaxis', quantity: 1, unitPriceCents: 5000 }] });
+    expect(body['requestKey']).toMatch(/^[0-9a-f-]{36}$/);
+    expect(called('POST', '/apiworking/sales')).toHaveLength(0);
+  });
+
+  it('una venta por emitir ofrece «Emitir en Apiworking» y bloquea cliente y monto', async () => {
+    const pending = { ...SALE, id: 's-9', customerId: CUSTOMER.id, docStatus: 'PENDING_ISSUE', docStatusLabel: 'Cobrado en contingencia: por emitir', contingency: true, actions: { issue: true, verify: false, reconcile: false, void: false } };
+    mockApi(routes({ 'GET /apiworking/sales': { json: { items: [pending], total: 1 } } }));
+    renderApp('/ventas');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Emitir en Apiworking' }));
+    expect(await screen.findByText('Emitiendo una venta cobrada en contingencia')).toBeInTheDocument();
+    expect(screen.getByLabelText('Fecha del documento')).toHaveValue('2026-11-02');
+    expect(await screen.findByRole('button', { name: 'Cambiar' })).toBeInTheDocument();
+  });
+
+  it('desde una cita atendida: cliente, servicio y precio quedan prellenados', async () => {
+    mockApi(routes({
+      'GET /apiworking/billing-draft': { json: { patient: { id: 'p-1', name: 'Diego Mendieta' }, appointment: { id: 'a-1', status: 'ATTENDED' }, description: 'Limpieza dental', amountCents: 8000, identifier: { docType: '1', docTypeLabel: 'DNI', docNumber: '74908568' }, customer: CUSTOMER, alreadyBilled: null, canBill: true } },
+    }));
+    renderApp('/ventas?appointmentId=a-1');
+    expect(await screen.findByText('Cobro de Diego Mendieta')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Cambiar' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Descripción')).toHaveValue('Limpieza dental');
+    expect(screen.getByLabelText(/Precio unitario/)).toHaveValue('80.00');
+  });
+});
+
 void CLINIC;

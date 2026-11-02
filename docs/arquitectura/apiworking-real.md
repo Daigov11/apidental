@@ -108,3 +108,12 @@ Los clientes creados por `ClienteDoc` se guardan también en la BD local (tenant
 ## Almacén y unidad de medida automáticos
 
 Al vender, el almacén (`idAlmacen`) es la sucursal del usuario en Apiworking (`data.id_sucursal` del login) y la unidad de medida (`idUnidadMedida`) es `"1"` (NIU), según el responsable del tenant. `APIWORKING_WAREHOUSE_ID` y `APIWORKING_UNIT_ID` solo sobrescriben esos valores. Nota de la guía: `"1"` no se había enviado nunca en real (los documentos reales usaron `"15"`, ZZ); se confirma con la primera venta de prueba.
+
+## Cobrar desde la cita o el paciente, y contingencia
+
+- **Cobrar:** `GET /v1/apiworking/billing-draft?appointmentId=…|patientId=…` prellena la venta (cliente por el documento del paciente, servicio y precio de referencia de la cita). La venta queda enlazada a la cita (`apiworking_sales.appointment_id`, una sola vigente por cita, solo citas ATTENDED) y al paciente. Botones «Cobrar en Apiworking» en la cita atendida y en la ficha del paciente (solo con `AUTH_MODE=apiworking`). El módulo de cobros simulado (`Charge`) solo existe con `INTEGRATIONS_MODE=mock` y no interviene.
+- **Caja oficial:** la de Apiworking. La caja local solo se usa en **contingencia**.
+- **Contingencia** (`POST /v1/apiworking/contingency`, permisos `apiworking:sell` y `cashbox:write`): Apiworking no responde → la venta se guarda como `PENDING_ISSUE` («cobrado en contingencia: por emitir») y el dinero entra en la caja local (movimiento de ingreso, idempotente por `requestKey`; con la caja local cerrada no se registra nada). No se llama a Apiworking. Los clientes se buscan en el espejo local (`GET /v1/apiworking/clients?local=1`, sin sesión de Apiworking); todo cliente usado en una venta queda en el espejo.
+- **Emitir después:** «Emitir en Apiworking» completa ESA fila (`pendingSaleId`): el cliente y el monto no pueden cambiar, se elige caja, tipo, serie y forma de pago y se confirma la fecha del documento (por defecto la original; **decisión tributaria pendiente con el contador**). Mismo flujo controlado: vista previa, aprobación, un envío, sin reintentos ni envío automático. Un rechazo deja la venta otra vez por emitir.
+- **Aviso:** el comprobante interno NO es un comprobante de SUNAT; los plazos de SUNAT corren hasta emitirlo.
+- El estado «cobro sin confirmar» de Apiworking se ignora por ahora (decisión del responsable).

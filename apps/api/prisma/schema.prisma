@@ -1994,6 +1994,8 @@ model ExternalIdentity {
 
 /// Estado del DOCUMENTO en Apiworking. SENT solo con respuesta correcta y referencia (idComprobante).
 enum ApiworkingDocStatus {
+  /// Contingencia: se cobró en la caja local porque Apiworking no respondía; el documento está por emitir (a mano, con aprobación).
+  PENDING_ISSUE
   PENDING
   SENT
   REJECTED
@@ -2023,6 +2025,12 @@ model ApiworkingSale {
   /// SHA-256 del JSON exacto aprobado por la persona antes del envío.
   requestHash        String                  @map("request_hash") @db.Char(64)
   patientId          String?                 @map("patient_id") @db.Char(36)
+  /// Cita atendida que originó la venta (una sola venta vigente por cita).
+  appointmentId      String?                 @map("appointment_id") @db.Char(36)
+  /// Venta registrada en contingencia: el dinero entró en la caja local y el documento sigue por emitir.
+  contingency        Boolean                 @default(false)
+  /// Movimiento de la caja local que registró el cobro en contingencia.
+  cashMovementId     String?                 @map("cash_movement_id") @db.Char(36)
   externalCustomerId String                  @map("external_customer_id") @db.VarChar(40)
   customerName       String                  @map("customer_name") @db.VarChar(200)
   customerDocType    String                  @map("customer_doc_type") @db.VarChar(20)
@@ -2052,6 +2060,7 @@ model ApiworkingSale {
 
   @@index([clinicId, createdAt])
   @@index([tenant, attemptedAt])
+  @@index([appointmentId])
   @@map("apiworking_sales")
 }
 

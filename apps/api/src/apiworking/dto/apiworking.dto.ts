@@ -27,6 +27,8 @@ export class ApiworkingLoginDto {
 }
 
 export class ListExternalClientsQuery extends PaginationQuery {
+  /// Solo el espejo local (sin consultar Apiworking): para la contingencia.
+  @IsOptional() @Matches(/^(1|true)$/) local?: string;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(80) search?: string;
 }
 
@@ -55,6 +57,10 @@ export class SaleDraftDto {
   /// AAAA-MM-DD; por defecto, hoy (hora de Lima).
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) docDate?: string;
   @IsOptional() @IsUUID() patientId?: string;
+  /// Cita atendida que se cobra (una sola venta vigente por cita).
+  @IsOptional() @IsUUID() appointmentId?: string;
+  /// Venta de contingencia que se está emitiendo ahora: no puede cambiar el cliente ni el monto.
+  @IsOptional() @IsUUID() pendingSaleId?: string;
 }
 
 export class CreateSaleDto extends SaleDraftDto {
@@ -111,4 +117,24 @@ export class CashCloseDto extends CashCloseDraftDto {
 export class CashOpenDto extends CashOpenDraftDto {
   /// SHA-256 de la vista previa que la persona aprobó.
   @Matches(/^[0-9a-f]{64}$/) approvedHash!: string;
+}
+
+/// Cobro en contingencia (Apiworking no responde): se guarda aquí y el dinero entra en la caja local.
+export class ContingencyDto {
+  @Matches(EXT_ID) customerId!: string;
+  @Transform(trim) @IsString() @MinLength(3) @MaxLength(200) description!: string;
+  @IsArray() @ArrayMinSize(1) @ArrayMaxSize(30) @ValidateNested({ each: true }) @Type(() => SaleLineDto) lines!: SaleLineDto[];
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) docDate?: string;
+  @IsOptional() @IsUUID() patientId?: string;
+  @IsOptional() @IsUUID() appointmentId?: string;
+  /// Cuenta y tipo de operación de la caja local donde entra el cobro.
+  @IsUUID() accountId!: string;
+  @IsUUID() categoryId!: string;
+  /// Clave de idempotencia: un reenvío no duplica ni la venta ni el movimiento de caja.
+  @IsUUID() requestKey!: string;
+}
+
+export class BillingDraftQuery {
+  @IsOptional() @IsUUID() appointmentId?: string;
+  @IsOptional() @IsUUID() patientId?: string;
 }

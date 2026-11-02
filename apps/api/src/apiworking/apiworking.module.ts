@@ -2,6 +2,8 @@ import { Global, Module } from '@nestjs/common';
 import { ApiworkingClient } from './apiworking.client.js';
 import { ApiworkingAuthController, ApiworkingController } from './apiworking.controller.js';
 import { ApiworkingAuthService } from './apiworking-auth.service.js';
+import { CashboxModule } from '../cashbox/cashbox.module.js';
+import { ApiworkingContingencyService } from './apiworking-contingency.service.js';
 import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
@@ -14,8 +16,9 @@ import { ApiworkingSessionStore } from './apiworking-session.store.js';
  */
 @Global()
 @Module({
+  imports: [CashboxModule],
   controllers: [ApiworkingAuthController, ApiworkingController],
-  providers: [ApiworkingClient, ApiworkingSessionStore, ApiworkingAuthService, ApiworkingClientsService, ApiworkingSalesService, ApiworkingCashService],
+  providers: [ApiworkingClient, ApiworkingSessionStore, ApiworkingAuthService, ApiworkingClientsService, ApiworkingSalesService, ApiworkingCashService, ApiworkingContingencyService],
   exports: [ApiworkingSessionStore],
 })
 export class ApiworkingModule {}

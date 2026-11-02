@@ -155,23 +155,29 @@ export interface AwLine { name: string; quantity: number; unitPriceCents: number
 export interface AwDraft {
   customerId: string; idCaja: string; idTipoDocumento: string; idSerie: string; idMetodoPago: string;
   description: string; lines: AwLine[]; docDate?: string;
+  patientId?: string; appointmentId?: string; pendingSaleId?: string;
 }
 export interface AwPreview {
   request: unknown; hash: string; totalCents: number; totalText: string; serie: string;
   customer: AwCustomer; suggestedDocument: 'FACTURA' | 'BOLETA' | 'NOTA_DE_VENTA'; mode: 'LIVE' | 'READ_ONLY'; writeEnabled: boolean; warnings: string[];
 }
-export type AwDocStatus = 'PENDING' | 'SENT' | 'REJECTED' | 'PENDING_RECONCILIATION';
+export type AwDocStatus = 'PENDING_ISSUE' | 'PENDING' | 'SENT' | 'REJECTED' | 'PENDING_RECONCILIATION';
 export interface AwSale {
-  id: string; description: string; customer: { name: string; docType: string; docNumber: string };
+  id: string; description: string; customerId: string; contingency: boolean; appointmentId: string | null; patientId: string | null;
+  customer: { name: string; docType: string; docNumber: string };
   totalCents: number; totalText: string; lines: AwLine[]; docDate: string; serie: string | null;
   docStatus: AwDocStatus; docStatusLabel: string; paymentStatus: 'NO_EVIDENCE' | 'CONFIRMED_REMOTE' | 'CONFIRMED_RECONCILED'; paymentStatusLabel: string;
   voidStatus: 'IN_PROGRESS' | 'VOIDED' | 'TO_RECONCILE' | null; voidStatusLabel: string | null;
   externalDocId: string | null; externalNumber: string | null; failureReason: string | null; attemptedAt: string | null; createdAt: string;
-  actions: { verify: boolean; reconcile: boolean; void: boolean };
+  actions: { issue: boolean; verify: boolean; reconcile: boolean; void: boolean };
 }
 export interface AwVerify { sale: AwSale; paidCents?: number; paymentMessage?: string; candidates?: { number: string; status: string; totalCents: number | null; balanceCents: number | null }[] }
 export interface AwCustomerPreview { hash: string; docType: string; docTypeLabel: string; docNumber: string; exists: { id: string; name: string } | null; write: boolean }
 export interface AwCustomerResult { status: 'CREATED' | 'UNKNOWN'; id?: string; customer?: AwCustomer | null; message?: string }
+export interface AwBillingDraft {
+  patient: { id: string; name: string }; appointment: { id: string; status: string } | null; description: string | null; amountCents: number | null;
+  identifier: { docType: string; docTypeLabel: string; docNumber: string } | null; customer: AwCustomer | null; alreadyBilled: AwSale | null; canBill: boolean;
+}
 export interface AwCash {
   cajas: { id: string; name: string; branch: string; opened: boolean }[]; turnos: AwOption[]; defaultTurn: string; write: boolean;
 }

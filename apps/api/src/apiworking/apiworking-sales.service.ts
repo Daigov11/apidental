@@ -5,7 +5,8 @@ import type { AuthPrincipal } from '../auth/auth.types.js';
 import type { RequestMeta } from '../common/utils/request-meta.js';
 import { AppConfig } from '../config/app-config.js';
 import type { Prisma } from '../generated/prisma/client.js';
-import { clinicScope, isUniqueViolation, requirePatient } from '../patients/patient-access.js';
+import { clinicScope, isUniqueViolation } from '../patients/patient-access.js';
+import { resolveBillingLink } from './billing-link.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { ApiworkingClient, ApiworkingError, asRecord, asRows, cajaId, cajaName, allowed, clip, isNoData, moneyToCents, optText, reqId } from './apiworking.client.js';
@@ -15,7 +16,7 @@ import type { ReconcileSaleDto, SaleDraftDto } from './dto/apiworking.dto.js';
 
 type SaleRow = Prisma.ApiworkingSaleGetPayload<object>;
 
-const DOC_LABELS = { PENDING: 'Enviando', SENT: 'Registrado en Apiworking', REJECTED: 'Rechazado', PENDING_RECONCILIATION: 'Resultado desconocido: conciliar' } as const;
+const DOC_LABELS = { PENDING_ISSUE: 'Cobrado en contingencia: por emitir', PENDING: 'Enviando', SENT: 'Registrado en Apiworking', REJECTED: 'Rechazado', PENDING_RECONCILIATION: 'Resultado desconocido: conciliar' } as const;
 const PAYMENT_LABELS = { NO_EVIDENCE: 'Cobro sin confirmar', CONFIRMED_REMOTE: 'Cobro confirmado en Apiworking', CONFIRMED_RECONCILED: 'Cobro conciliado' } as const;
 const VOID_LABELS = { IN_PROGRESS: 'Anulación en curso', VOIDED: 'Anulado', TO_RECONCILE: 'Anulación por conciliar' } as const;
 /** Unidad de medida por defecto: «1» = NIU (según el responsable del tenant). */
@@ -36,11 +37,15 @@ export function presentSale(s: SaleRow) {
   return {
     id: s.id,
     description: s.description,
+    customerId: s.externalCustomerId,
     customer: { name: s.customerName, docType: s.customerDocType, docNumber: s.customerDocNumber },
     totalCents: s.totalCents,
     totalText: money(s.totalCents),
     lines: s.lines,
     docDate: s.docDate.toISOString().slice(0, 10),
+    contingency: s.contingency,
+    appointmentId: s.appointmentId,
+    patientId: s.patientId,
     serie: s.serie,
     docStatus: s.docStatus,
     docStatusLabel: DOC_LABELS[s.docStatus],
@@ -54,6 +59,7 @@ export function presentSale(s: SaleRow) {
     attemptedAt: s.attemptedAt?.toISOString() ?? null,
     createdAt: s.createdAt.toISOString(),
     actions: {
+      issue: s.docStatus === 'PENDING_ISSUE',
       verify: s.docStatus === 'SENT' || s.docStatus === 'PENDING_RECONCILIATION' || s.voidStatus === 'IN_PROGRESS',
       reconcile: s.docStatus === 'PENDING_RECONCILIATION' || s.docStatus === 'PENDING',
       void: s.docStatus === 'SENT' && (s.voidStatus === null || s.voidStatus === 'TO_RECONCILE'),
@@ -185,6 +191,7 @@ export class ApiworkingSalesService {
     for (const id of [draft.customerId, draft.idSerie]) {
       if (!Number.isSafeInteger(Number(id))) throw new BadRequestException('Identificador de Apiworking fuera de rango');
     }
+    const link = await resolveBillingLink(this.db, principal, { patientId: draft.patientId, appointmentId: draft.appointmentId, excludeSaleId: draft.pendingSaleId });
     const customer = await this.clients.find(principal, draft.customerId);
     if (!customer) throw new BadRequestException('El cliente no existe (o está inactivo) en Apiworking');
 
@@ -231,7 +238,9 @@ export class ApiworkingSalesService {
       // El total lo calcula Apiworking; el total local se muestra y se guarda aparte.
       totalVenta: 0,
     };
-    return { body, hash: sha256(JSON.stringify(body)), totalCents, customer, serie: serie.serie, docDate };
+    // El enlace con paciente y cita también queda aprobado: cambiarlo invalida la vista previa.
+    const linkSuffix = link.appointmentId || link.patientId ? `|p:${link.patientId ?? ''}|a:${link.appointmentId ?? ''}` : '';
+    return { body, hash: sha256(JSON.stringify(body) + linkSuffix), totalCents, customer, serie: serie.serie, docDate, patientId: link.patientId, appointmentId: link.appointmentId };
   }
 
   // --- Registro: un solo envío, con aprobación, tope y sin reintentos ---
@@ -246,10 +255,20 @@ export class ApiworkingSalesService {
       if (existing.clinicId !== clinicId || existing.requestHash !== dto.approvedHash) throw new ConflictException({ message: 'La clave de idempotencia ya se usó con otra venta', code: 'IDEMPOTENCY_MISMATCH' });
       return presentSale(existing);
     }
-    if (dto.patientId) await requirePatient(this.db, clinicId, dto.patientId);
+
+    // Emisión de una venta cobrada en contingencia: se completa ESA fila; no puede cambiar el cliente ni el monto cobrado.
+    let pending: SaleRow | null = null;
+    if (dto.pendingSaleId) {
+      pending = await this.db.apiworkingSale.findFirst({ where: { id: dto.pendingSaleId, clinicId } });
+      if (!pending) throw new NotFoundException('Venta pendiente no encontrada');
+      if (pending.docStatus !== 'PENDING_ISSUE') throw new ConflictException({ message: 'Esa venta ya no está pendiente de emitir', code: 'NOT_PENDING_ISSUE' });
+    }
 
     const built = await this.build(principal, dto);
     if (built.hash !== dto.approvedHash) throw new ConflictException({ message: 'La venta cambió después de la vista previa: revise y apruebe de nuevo', code: 'PREVIEW_CHANGED' });
+    if (pending && (built.customer.id !== pending.externalCustomerId || built.totalCents !== pending.totalCents)) {
+      throw new ConflictException({ message: 'El cliente y el monto de una venta cobrada en contingencia no se pueden cambiar al emitirla', code: 'PENDING_CHANGED' });
+    }
 
     const tenant = cfg.expectedDatabase!;
     const recent = await this.db.apiworkingSale.count({ where: { tenant, attemptedAt: { gte: new Date(Date.now() - WINDOW_MS) } } });
@@ -260,30 +279,48 @@ export class ApiworkingSalesService {
     let sale: SaleRow;
     try {
       // La fila nace ANTES de llamar a Apiworking, con la marca de intento: si el proceso muere a mitad, queda constancia.
-      sale = await this.db.apiworkingSale.create({
-        data: {
-          clinicId,
-          tenant,
-          idempotencyKey: dto.idempotencyKey,
-          requestHash: built.hash,
-          patientId: dto.patientId ?? null,
-          externalCustomerId: built.customer.id,
-          customerName: built.customer.name.slice(0, 200),
-          customerDocType: built.customer.docType.slice(0, 20),
-          customerDocNumber: built.customer.docNumber.slice(0, 20),
-          idCaja: dto.idCaja,
-          idSerie: dto.idSerie,
-          serie: built.serie,
-          documentTypeId: dto.idTipoDocumento,
-          paymentMethodId: dto.idMetodoPago,
-          description: dto.description,
-          lines: dto.lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.unitPriceCents })),
-          totalCents: built.totalCents,
-          docDate: new Date(`${built.docDate}T00:00:00Z`),
-          attemptedAt: new Date(),
-          createdById: principal.user.id,
-        },
-      });
+      sale = pending
+        ? await this.db.apiworkingSale.update({
+            where: { id: pending.id },
+            data: {
+              idempotencyKey: dto.idempotencyKey,
+              requestHash: built.hash,
+              idCaja: dto.idCaja,
+              idSerie: dto.idSerie,
+              serie: built.serie,
+              documentTypeId: dto.idTipoDocumento,
+              paymentMethodId: dto.idMetodoPago,
+              docDate: new Date(`${built.docDate}T00:00:00Z`),
+              docStatus: 'PENDING',
+              failureReason: null,
+              attemptedAt: new Date(),
+            },
+          })
+        : await this.db.apiworkingSale.create({
+            data: {
+              clinicId,
+              tenant,
+              idempotencyKey: dto.idempotencyKey,
+              requestHash: built.hash,
+              patientId: built.patientId,
+              appointmentId: built.appointmentId,
+              externalCustomerId: built.customer.id,
+              customerName: built.customer.name.slice(0, 200),
+              customerDocType: built.customer.docType.slice(0, 20),
+              customerDocNumber: built.customer.docNumber.slice(0, 20),
+              idCaja: dto.idCaja,
+              idSerie: dto.idSerie,
+              serie: built.serie,
+              documentTypeId: dto.idTipoDocumento,
+              paymentMethodId: dto.idMetodoPago,
+              description: dto.description,
+              lines: dto.lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.unitPriceCents })),
+              totalCents: built.totalCents,
+              docDate: new Date(`${built.docDate}T00:00:00Z`),
+              attemptedAt: new Date(),
+              createdById: principal.user.id,
+            },
+          });
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
       const raced = await this.db.apiworkingSale.findUnique({ where: { idempotencyKey: dto.idempotencyKey } });
@@ -304,7 +341,7 @@ export class ApiworkingSalesService {
         await this.log(AuditAction.ApiworkingSaleUnknown, updated, principal, meta, { reason: 'unexpected_shape' });
       } else {
         updated = await this.settle(sale.id, { docStatus: 'SENT', externalDocId: reqId(r, 'idComprobante', 'el registro del documento'), externalNumber: optText(r, 'nroComprobante') || null });
-        await this.log(AuditAction.ApiworkingSaleSent, updated, principal, meta, {});
+        await this.log(updated.contingency ? AuditAction.ApiworkingContingencyIssued : AuditAction.ApiworkingSaleSent, updated, principal, meta, {});
       }
     } catch (error) {
       updated = await this.settleFailure(sale.id, error, principal, meta);
@@ -317,7 +354,9 @@ export class ApiworkingSalesService {
     // Duplicado (409), respuesta incompleta o tiempo agotado: puede existir en Apiworking -> conciliación humana.
     const unknown = kind === 'UNKNOWN_RESULT' || kind === 'DUPLICATE' || kind === 'BAD_RESPONSE';
     const reason = unknown ? 'Resultado desconocido: Apiworking pudo registrar el documento. Verifique antes de reenviar' : error instanceof ApiworkingError ? error.message : 'Rechazado';
-    const sale = await this.settle(id, { docStatus: unknown ? 'PENDING_RECONCILIATION' : 'REJECTED', failureReason: clip(reason) });
+    // Una venta de contingencia rechazada vuelve a «por emitir»: el dinero ya está en la caja local y se puede corregir y emitir.
+    const wasContingency = (await this.db.apiworkingSale.findUnique({ where: { id }, select: { contingency: true } }))?.contingency ?? false;
+    const sale = await this.settle(id, { docStatus: unknown ? 'PENDING_RECONCILIATION' : wasContingency ? 'PENDING_ISSUE' : 'REJECTED', failureReason: clip(reason) });
     await this.log(unknown ? AuditAction.ApiworkingSaleUnknown : AuditAction.ApiworkingSaleRejected, sale, principal, meta, { kind });
     return sale;
   }

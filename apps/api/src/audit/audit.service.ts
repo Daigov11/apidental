@@ -69,6 +69,8 @@ export const AuditAction = {
   ApiworkingCashClosed: 'APIWORKING_CASH_CLOSED',
   ApiworkingCashCloseRejected: 'APIWORKING_CASH_CLOSE_REJECTED',
   ApiworkingCashCloseUnknown: 'APIWORKING_CASH_CLOSE_UNKNOWN_RESULT',
+  ApiworkingContingencyRecorded: 'APIWORKING_CONTINGENCY_RECORDED',
+  ApiworkingContingencyIssued: 'APIWORKING_CONTINGENCY_ISSUED',
   ApiworkingCustomerAttempt: 'APIWORKING_CUSTOMER_ATTEMPT',
   ApiworkingCustomerCreated: 'APIWORKING_CUSTOMER_CREATED',
   ApiworkingCustomerRejected: 'APIWORKING_CUSTOMER_REJECTED',

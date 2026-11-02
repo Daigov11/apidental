@@ -8,10 +8,11 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator.j
 import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
 import { AppConfig } from '../config/app-config.js';
 import { ApiworkingAuthService } from './apiworking-auth.service.js';
+import { ApiworkingContingencyService } from './apiworking-contingency.service.js';
 import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
-import { ApiworkingLoginDto, CashCloseDraftDto, CashCloseDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, VoidSaleDto } from './dto/apiworking.dto.js';
+import { ApiworkingLoginDto, BillingDraftQuery, CashCloseDraftDto, CashCloseDto, ContingencyDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, VoidSaleDto } from './dto/apiworking.dto.js';
 
 const uuid = () => new ParseUUIDPipe();
 
@@ -44,6 +45,7 @@ export class ApiworkingController {
     private readonly clients: ApiworkingClientsService,
     private readonly sales: ApiworkingSalesService,
     private readonly cash: ApiworkingCashService,
+    private readonly contingency: ApiworkingContingencyService,
     private readonly config: AppConfig,
   ) {}
 
@@ -65,6 +67,20 @@ export class ApiworkingController {
   @RequirePermissions('apiworking:read')
   listClients(@CurrentPrincipal() a: AuthPrincipal, @Query() q: ListExternalClientsQuery) {
     return this.clients.list(a, q);
+  }
+
+  /** Datos para cobrar desde una cita atendida o un paciente (no consulta a Apiworking: sirve también en contingencia). */
+  @Get('billing-draft')
+  @RequirePermissions('apiworking:sell')
+  billingDraft(@CurrentPrincipal() a: AuthPrincipal, @Query() q: BillingDraftQuery) {
+    return this.contingency.billingDraft(a, q);
+  }
+
+  /** Cobro en contingencia: Apiworking no responde; el dinero entra en la caja local y el documento queda por emitir. */
+  @Post('contingency')
+  @RequirePermissions('apiworking:sell', 'cashbox:write')
+  recordContingency(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: ContingencyDto, @Meta() m: RequestMeta) {
+    return this.contingency.record(a, dto, m);
   }
 
   @Post('clients/preview')

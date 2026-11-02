@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
+import { AppConfig } from '../src/config/app-config.js';
 import { ApiworkingClientsService } from '../src/apiworking/apiworking-clients.service.js';
 import { ApiworkingSessionStore } from '../src/apiworking/apiworking-session.store.js';
 import { bearer, createTestContext, Fixtures, type TestContext } from './helpers/app.js';
@@ -403,7 +404,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     const created = await ctx.http().post('/v1/apiworking/clients').set(bearer(t)).send({ ...draftC, name: 'Paciente Local', approvedHash: p.body.hash }).expect(200);
     expect(created.body).toMatchObject({ status: 'CREATED', id: '202600000099' });
     expect(created.body.customer).toMatchObject({ name: 'Paciente Local', docNumber: '12345678' });
-    expect(await ctx.db.apiworkingCustomer.count()).toBe(1);
+    expect(await ctx.db.apiworkingCustomer.count({ where: { externalCustomerId: '202600000099' } })).toBe(1);
     const call = seen.filter((x) => x.path === '/api/Cliente/ClienteDoc').at(-1)!;
     expect(call.query.get('tipoDoc')).toBe('1');
     expect(call.query.get('nroDoc')).toBe('12345678');
@@ -518,6 +519,91 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     const rt = (await ctx.http().post('/v1/auth/login').send({ email: reception.user.email, password: 'Clave-De-Prueba-123' }).expect(200)).body.accessToken as string;
     const rsel = await ctx.http().post('/v1/auth/select-context').set(bearer(rt)).send({ clinicId, branchId: null }).expect(200);
     await ctx.http().post('/v1/apiworking/cash/preview').set(bearer(rsel.body.accessToken)).send(draftCash).expect(403);
+  });
+
+  it('contingencia: cobra en la caja LOCAL sin llamar a Apiworking, el cliente se recuerda y el documento se emite después con aprobación', async () => {
+    const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
+    const savedCap = appCfg.maxRealOperations;
+    appCfg.maxRealOperations = 50; // el tope ya lo agotaron las pruebas anteriores
+    try {
+      await ctx.db.apiworkingSale.updateMany({ data: { attemptedAt: new Date(Date.now() - 48 * 3_600_000) } });
+      const branch = (await ctx.db.branch.findFirst({ where: { clinicId } })) ?? (await fx.branch(clinicId));
+      const login = await enter();
+      const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: branch.id }).expect(200);
+      const t = sel.body.accessToken as string;
+      const cfg = (await ctx.http().get('/v1/cashbox/config').set(bearer(t)).expect(200)).body as { accounts: { id: string; name: string }[]; categories: { id: string; flow: string }[] };
+      const accountId = cfg.accounts.find((a) => a.name === 'Efectivo')!.id;
+      const categoryId = cfg.categories.find((c) => c.flow === 'INCOME')!.id;
+      const registros = () => seen.filter((x) => x.path === '/api/Facturacion/registro-documento').length;
+      scenario.cajaOpen = true;
+      scenario.registro = 'ok';
+
+      // Mientras Apiworking responde, usar al cliente en una vista previa lo deja en el espejo local.
+      await ctx.http().post('/v1/apiworking/sales/preview').set(bearer(t)).send(draft()).expect(200);
+      expect(await ctx.db.apiworkingCustomer.count({ where: { externalCustomerId: '202600000038' } })).toBe(1);
+
+      const body = { customerId: '202600000038', description: 'Limpieza dental', lines: [{ name: 'Profilaxis', quantity: 2, unitPriceCents: 5000 }], accountId, categoryId, requestKey: randomUUID() };
+      // Con la caja local cerrada no se registra nada.
+      const closed = await ctx.http().post('/v1/apiworking/contingency').set(bearer(t)).send(body);
+      expect(closed.status).toBe(409);
+      expect(await ctx.db.apiworkingSale.count({ where: { contingency: true } })).toBe(0);
+
+      await ctx.http().post('/v1/cashbox/open').set(bearer(t)).send({ openings: [{ accountId, amountCents: 0 }] }).expect(201);
+      const before = registros();
+      const rec = await ctx.http().post('/v1/apiworking/contingency').set(bearer(t)).send(body).expect(201);
+      expect(rec.body).toMatchObject({ docStatus: 'PENDING_ISSUE', contingency: true, totalCents: 10_000 });
+      expect(rec.body.actions).toMatchObject({ issue: true, void: false, verify: false });
+      expect(registros()).toBe(before); // jamás se llamó a Apiworking
+
+      // Reenviar la misma clave no duplica ni la venta ni el movimiento de caja.
+      const again = await ctx.http().post('/v1/apiworking/contingency').set(bearer(t)).send(body).expect(201);
+      expect(again.body.id).toBe(rec.body.id);
+      expect(await ctx.db.apiworkingSale.count({ where: { contingency: true } })).toBe(1);
+      const movements = await ctx.http().get('/v1/cashbox/movements').set(bearer(t)).expect(200);
+      expect(JSON.stringify(movements.body)).toContain('Cobro en contingencia: Limpieza dental');
+
+      // Un cliente que no está en el espejo no se puede cobrar en contingencia.
+      await ctx.http().post('/v1/apiworking/contingency').set(bearer(t)).send({ ...body, customerId: '202600000041', requestKey: randomUUID() }).expect(400);
+
+      // Emisión posterior: no se puede cambiar el monto cobrado…
+      const pendingId = rec.body.id as string;
+      const dChanged = draft({ pendingSaleId: pendingId, lines: [{ name: 'Profilaxis', quantity: 2, unitPriceCents: 6000 }] });
+      const pChanged = await ctx.http().post('/v1/apiworking/sales/preview').set(bearer(t)).send(dChanged).expect(200);
+      const changed = { ...dChanged, approvedHash: pChanged.body.hash as string, idempotencyKey: randomUUID() };
+      const bad = await ctx.http().post('/v1/apiworking/sales').set(bearer(t)).send(changed);
+      expect(bad.status).toBe(409);
+      expect(bad.body.code).toBe('PENDING_CHANGED');
+      expect(registros()).toBe(before);
+
+      // …y con lo mismo se emite a mano, completando ESA fila (no crea otra).
+      const same = await ctx.http().post('/v1/apiworking/sales/preview').set(bearer(t)).send({ ...draft(), pendingSaleId: pendingId }).expect(200);
+      const issued = await ctx.http().post('/v1/apiworking/sales').set(bearer(t)).send({ ...draft(), pendingSaleId: pendingId, approvedHash: same.body.hash, idempotencyKey: randomUUID() }).expect(201);
+      expect(issued.body).toMatchObject({ id: pendingId, docStatus: 'SENT', externalNumber: 'B001-00000123', contingency: true });
+      expect(registros()).toBe(before + 1);
+      expect(await ctx.db.apiworkingSale.count({ where: { contingency: true } })).toBe(1);
+      // Ya emitida: no se vuelve a emitir.
+      const dup = await ctx.http().post('/v1/apiworking/sales/preview').set(bearer(t)).send({ ...draft(), pendingSaleId: pendingId });
+      expect(dup.status).toBe(200); // la vista previa no envía nada
+      const reissue = await ctx.http().post('/v1/apiworking/sales').set(bearer(t)).send({ ...draft(), pendingSaleId: pendingId, approvedHash: dup.body.hash, idempotencyKey: randomUUID() });
+      expect(reissue.status).toBe(409);
+      expect(reissue.body.code).toBe('NOT_PENDING_ISSUE');
+    } finally {
+      appCfg.maxRealOperations = savedCap;
+    }
+  });
+
+  it('el borrador de cobro toma al paciente por su documento y el espejo de clientes', async () => {
+    const author = (await ctx.db.user.findFirstOrThrow()).id;
+    const patient = await ctx.db.patient.create({ data: { clinicId, firstName: 'Diego', lastName: 'Mendieta', secondLastName: 'Huaroto', createdById: author } });
+    await ctx.db.patientIdentifier.create({ data: { clinicId, patientId: patient.id, type: 'DNI', number: '74908568', activeKey: `${clinicId}|DNI|74908568`, patientTypeKey: `${patient.id}|DNI`, createdById: author } });
+    const login = await enter();
+    const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);
+    const d = await ctx.http().get(`/v1/apiworking/billing-draft?patientId=${patient.id}`).set(bearer(sel.body.accessToken)).expect(200);
+    expect(d.body.patient).toEqual({ id: patient.id, name: 'Diego Mendieta Huaroto' });
+    expect(d.body.identifier).toEqual({ docType: '1', docTypeLabel: 'DNI', docNumber: '74908568' });
+    expect(d.body.customer).toMatchObject({ id: '202600000038', docNumber: '74908568' });
+    expect(d.body).toMatchObject({ appointment: null, description: null, canBill: true });
+    await ctx.http().get('/v1/apiworking/billing-draft').set(bearer(sel.body.accessToken)).expect(400);
   });
 
   it('la auditoría registra la operación sin tokens, contraseñas ni cuerpos', async () => {

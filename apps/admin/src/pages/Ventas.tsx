@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Plus, RefreshCw, Search, Send, Trash2 } from 'lucide-react';
 import { get, post } from '../api/client';
-import type { AwCash, AwCustomerPreview, AwCustomerResult, AwCashClosePreview, AwCashPreview, AwCashResult, AwContext, AwCustomer, AwDiscovery, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify } from '../api/types';
+import type { AwBillingDraft, AwCash, AwCustomerPreview, AwCustomerResult, AwCashClosePreview, AwCashPreview, AwCashResult, AwContext, AwCustomer, AwDiscovery, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify, CashConfig, CashSummary } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { fmtDateTime } from '../lib/format';
 import { fmtMoney, parseSoles } from '../lib/money';
@@ -13,7 +14,7 @@ import { Dialog, ReasonDialog } from '../ui/overlays';
 
 interface LineField { name: string; quantity: string; price: string }
 const emptyLine = (): LineField => ({ name: '', quantity: '1', price: '' });
-const DOC_TONE = { PENDING: 'info', SENT: 'success', REJECTED: 'danger', PENDING_RECONCILIATION: 'warning' } as const;
+const DOC_TONE = { PENDING_ISSUE: 'warning', PENDING: 'info', SENT: 'success', REJECTED: 'danger', PENDING_RECONCILIATION: 'warning' } as const;
 const PAY_TONE = { NO_EVIDENCE: 'neutral', CONFIRMED_REMOTE: 'success', CONFIRMED_RECONCILED: 'success' } as const;
 const SUGGESTED = { FACTURA: 'Factura', BOLETA: 'Boleta', NOTA_DE_VENTA: 'Nota de venta' } as const;
 
@@ -25,6 +26,18 @@ export function VentasPage() {
   const sales = useAsync(() => get<{ items: AwSale[]; total: number }>('/apiworking/sales', { limit: 30 }), []);
   const session = status.data?.session ?? false;
   const canSell = can('apiworking:sell');
+  const [params, setParams] = useSearchParams();
+  const urlAppointmentId = params.get('appointmentId') ?? undefined;
+  const urlPatientId = params.get('patientId') ?? undefined;
+  // Contingencia: Apiworking no responde; el cobro entra en la caja local y el documento queda por emitir.
+  const [contingency, setContingency] = useState(false);
+  // Venta cobrada en contingencia que se está emitiendo ahora (completa ESA fila).
+  const [pendingSale, setPendingSale] = useState<AwSale | null>(null);
+  const [docDate, setDocDate] = useState('');
+  const link = pendingSale
+    ? { appointmentId: pendingSale.appointmentId ?? undefined, patientId: pendingSale.patientId ?? undefined }
+    : { appointmentId: urlAppointmentId, patientId: urlPatientId };
+  const billing = useAsync(() => (urlAppointmentId || urlPatientId ? get<AwBillingDraft>('/apiworking/billing-draft', { appointmentId: urlAppointmentId, patientId: urlPatientId }) : Promise.resolve(null)), [urlAppointmentId, urlPatientId]);
 
   // --- Cliente ---
   const [query, setQuery] = useState('');
@@ -32,8 +45,8 @@ export function VentasPage() {
   useEffect(() => { const t = setTimeout(() => setDebounced(query.trim()), 300); return () => clearTimeout(t); }, [query]);
   const [customer, setCustomer] = useState<AwCustomer | null>(null);
   const found = useAsync(
-    () => (session && !customer ? get<{ items: AwCustomer[]; total: number; offline?: boolean }>('/apiworking/clients', { search: debounced, limit: 8 }) : Promise.resolve({ items: [], total: 0 })),
-    [debounced, session, customer],
+    () => ((session || contingency) && !customer ? get<{ items: AwCustomer[]; total: number; offline?: boolean }>('/apiworking/clients', { search: debounced, limit: 8, ...(contingency ? { local: 1 } : {}) }) : Promise.resolve({ items: [], total: 0 })),
+    [debounced, session, customer, contingency],
   );
 
   // --- Caja, documento, serie y forma de pago (siempre dentro de lo autorizado) ---
@@ -41,7 +54,7 @@ export function VentasPage() {
   const [idTipoDocumento, setIdTipoDocumento] = useState('');
   const [idSerie, setIdSerie] = useState('');
   const [idMetodoPago, setIdMetodoPago] = useState('');
-  const ctx = useAsync(() => (session ? get<AwContext>('/apiworking/sales/context', { idCaja, idTipoDocumento }) : Promise.resolve(null)), [session, idCaja, idTipoDocumento]);
+  const ctx = useAsync(() => (session && !contingency ? get<AwContext>('/apiworking/sales/context', { idCaja, idTipoDocumento }) : Promise.resolve(null)), [session, contingency, idCaja, idTipoDocumento]);
   const c = ctx.data;
 
   // --- Detalle ---
@@ -52,9 +65,24 @@ export function VentasPage() {
   const total = parsed.reduce((s, l) => s + (l.cents ?? 0) * (Number.isFinite(l.quantity) ? l.quantity : 0), 0);
 
   const draft: AwDraft | null = customer && idCaja && idTipoDocumento && idSerie && idMetodoPago && description.trim().length >= 3 && validLines
-    ? { customerId: customer.id, idCaja, idTipoDocumento, idSerie, idMetodoPago, description: description.trim(), lines: parsed.map((l): AwLine => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.cents! })) }
+    ? {
+      customerId: customer.id, idCaja, idTipoDocumento, idSerie, idMetodoPago, description: description.trim(), lines: parsed.map((l): AwLine => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.cents! })),
+      ...(link.appointmentId ? { appointmentId: link.appointmentId } : {}), ...(link.patientId ? { patientId: link.patientId } : {}),
+      ...(pendingSale ? { pendingSaleId: pendingSale.id } : {}), ...(docDate ? { docDate } : {}),
+    }
     : null;
   const signature = JSON.stringify(draft);
+
+  // Cobro desde una cita atendida o un paciente: cliente por su documento, servicio y precio de referencia.
+  const prefilled = useRef<string | null>(null);
+  useEffect(() => {
+    const b = billing.data;
+    if (!b || prefilled.current === (b.appointment?.id ?? b.patient.id)) return;
+    prefilled.current = b.appointment?.id ?? b.patient.id;
+    if (b.customer) setCustomer(b.customer);
+    if (b.description) setDescription(b.description);
+    if (b.description && b.amountCents) setLines([{ name: b.description, quantity: '1', price: (b.amountCents / 100).toFixed(2) }]);
+  }, [billing.data]);
 
   // --- Vista previa y envío ---
   const [preview, setPreview] = useState<{ data: AwPreview; signature: string; key: string } | null>(null);
@@ -75,7 +103,7 @@ export function VentasPage() {
     finally { setBusy(null); }
   };
 
-  const reset = () => { setCustomer(null); setQuery(''); setDescription(''); setLines([emptyLine()]); setPreview(null); setApproved(false); setIdSerie(''); setIdMetodoPago(''); };
+  const reset = () => { setPendingSale(null); setDocDate(''); setCustomer(null); setQuery(''); setDescription(''); setLines([emptyLine()]); setPreview(null); setApproved(false); setIdSerie(''); setIdMetodoPago(''); };
   // Una sola clave por envío: un doble clic o un reintento no registra dos veces la misma venta.
   const sending = useRef(false);
   const send = async () => {
@@ -88,6 +116,7 @@ export function VentasPage() {
       else if (sale.docStatus === 'PENDING_RECONCILIATION') toast.error('No se sabe si Apiworking registró la venta. Verifíquela y concilie antes de volver a enviarla.');
       else toast.error(`Apiworking rechazó la venta: ${sale.failureReason ?? 'sin detalle'}`);
       reset();
+      if (urlAppointmentId || urlPatientId) setParams({}, { replace: true });
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(null); sending.current = false; sales.reload(); status.reload(); }
   };
@@ -104,6 +133,15 @@ export function VentasPage() {
     finally { setRowBusy(null); }
   };
 
+  const startIssue = (s: AwSale) => {
+    setContingency(false); setPendingSale(s); setPreview(null); setApproved(false); setIdCaja(''); setIdTipoDocumento(''); setIdSerie(''); setIdMetodoPago('');
+    setCustomer({ id: s.customerId, personId: '', name: s.customer.name, email: '', docType: s.customer.docType, docNumber: s.customer.docNumber, phone: '', whatsapp: '', personType: '', active: true });
+    setDescription(s.description);
+    setLines(s.lines.map((l) => ({ name: l.name, quantity: String(l.quantity), price: (l.unitPriceCents / 100).toFixed(2) })));
+    setDocDate(s.docDate);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   if (status.loading && !status.data) return <Loading label="Consultando Apiworking" rows={3} />;
   if (status.error != null) return <ErrorState error={status.error} onRetry={status.reload} />;
   const st = status.data!;
@@ -111,13 +149,37 @@ export function VentasPage() {
 
   return (
     <>
-      <div className="page-head"><div><h1>Ventas Apiworking</h1><p className="muted">Tenant: <span className="tabular">{st.tenant ?? '—'}</span></p></div></div>
+      <div className="page-head">
+        <div><h1>Ventas Apiworking</h1><p className="muted">Tenant: <span className="tabular">{st.tenant ?? '—'}</span></p></div>
+        {canSell && can('cashbox:write') && st.read && (
+          <Button size="sm" variant={contingency ? 'primary' : 'tertiary'} onClick={() => { setContingency((v) => !v); setPendingSale(null); setPreview(null); setApproved(false); }}>
+            {contingency ? 'Salir de contingencia' : 'Apiworking no responde: cobrar en contingencia'}
+          </Button>
+        )}
+      </div>
       {!st.configured && <Alert tone="warning" title="Apiworking no está configurado">Esta instalación no tiene el tenant de Apiworking configurado.</Alert>}
       {st.configured && !st.read && <Alert tone="warning" title="Lecturas desactivadas">Las consultas reales a Apiworking están apagadas en esta instalación.</Alert>}
       {st.configured && st.read && !session && <Alert tone="warning" title="Vuelva a ingresar">Su sesión de Apiworking ya no está disponible (por ejemplo, tras reiniciar el servidor). Cierre sesión e ingrese de nuevo con su cuenta de Apiworking.</Alert>}
       {st.configured && st.read && readOnly && <Alert tone="info" title="Modo de solo lectura">Puede preparar y revisar ventas, pero el envío a Apiworking está desactivado en esta instalación.</Alert>}
 
-      {canSell && st.read && session && (
+      {billing.data && (
+        <Alert tone="info" title={`Cobro de ${billing.data.patient.name}`}>
+          {billing.data.appointment ? 'Cita atendida. ' : ''}
+          {billing.data.customer ? `Cliente en Apiworking: ${billing.data.customer.name}.` : billing.data.identifier ? `${billing.data.identifier.docTypeLabel} ${billing.data.identifier.docNumber}: todavía no es cliente en Apiworking; créelo abajo con «Crear cliente por documento».` : 'El paciente no tiene documento registrado: elija o cree un cliente manualmente.'}
+          {billing.data.alreadyBilled && ` Esta cita ya tiene una venta (${billing.data.alreadyBilled.docStatusLabel}).`}
+        </Alert>
+      )}
+      {billing.error != null && <ErrorState error={billing.error} onRetry={billing.reload} />}
+      {pendingSale && (
+        <Alert tone="warning" title="Emitiendo una venta cobrada en contingencia">
+          El dinero ya entró en la caja local: el cliente y el monto no se pueden cambiar. Elija la caja, el tipo de documento, la serie y la forma de pago de Apiworking y confirme la fecha del documento.
+          <div style={{ marginTop: 'var(--space-3)', maxWidth: 220 }}><TextField label="Fecha del documento" type="date" value={docDate} onChange={(e) => { setDocDate(e.target.value); setPreview(null); setApproved(false); }} /></div>
+          <Button size="sm" variant="tertiary" onClick={reset}>Cancelar la emisión</Button>
+        </Alert>
+      )}
+      {contingency && <Alert tone="warning" title="Modo contingencia">Apiworking no responde. El cobro se guarda aquí y entra en la caja local; el comprobante interno NO es un comprobante de SUNAT: la Boleta o Factura queda pendiente de emitir en Apiworking.</Alert>}
+
+      {canSell && st.read && (session || contingency) && (
         <section className="card" aria-labelledby="new-h" style={{ marginTop: 'var(--space-5)' }}>
           <div className="card-head"><h2 id="new-h" className="h3">Nueva venta</h2></div>
 
@@ -141,10 +203,11 @@ export function VentasPage() {
                 </ul>
               )}
               {found.data && found.data.items.length === 0 && !found.loading && <p className="caption muted">No hay clientes que coincidan.</p>}
-              <NewCustomer write={st.write} onCreated={(cu) => { setCustomer(cu); setPreview(null); found.reload(); }} />
+              <NewCustomer write={st.write} initial={billing.data && !billing.data.customer && billing.data.identifier ? { docType: billing.data.identifier.docType, docNumber: billing.data.identifier.docNumber, name: billing.data.patient.name } : undefined} onCreated={(cu) => { setCustomer(cu); setPreview(null); found.reload(); }} />
             </>
           )}
 
+          {!contingency && (<>
           <h3 className="h3" style={{ margin: 'var(--space-5) 0 var(--space-3)' }}>2. Caja y documento</h3>
           {c && c.cajas.length === 0 && <Alert tone="warning">No hay cajas autorizadas para esta instalación.</Alert>}
           <SelectField label="Caja" value={idCaja} onChange={(e) => { setIdCaja(e.target.value); setIdTipoDocumento(''); setIdSerie(''); setIdMetodoPago(''); }}>
@@ -171,6 +234,8 @@ export function VentasPage() {
             </SelectField>
           )}
 
+          </>)}
+
           <h3 className="h3" style={{ margin: 'var(--space-5) 0 var(--space-3)' }}>3. Detalle de la venta o del servicio</h3>
           <TextField label="Descripción" help="Por ejemplo: Limpieza dental y control." value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} />
           {lines.map((l, i) => (
@@ -186,6 +251,11 @@ export function VentasPage() {
             <p className="money" style={{ margin: 0 }}>Total {fmtMoney(total)}</p>
           </div>
 
+          {contingency && customer && (
+            <ContingencyBlock customer={customer} description={description.trim()} lines={parsed} validLines={validLines && description.trim().length >= 3} link={link} docDate={docDate} onDone={() => { reset(); sales.reload(); if (urlAppointmentId || urlPatientId) setParams({}, { replace: true }); }} />
+          )}
+
+          {!contingency && (<>
           {error && <div style={{ marginTop: 'var(--space-4)' }}><Alert tone="danger">{error}</Alert></div>}
           <div className="chip-row" style={{ marginTop: 'var(--space-5)' }}>
             <Button variant="primary" disabled={!draft || c?.opened === false} loading={busy === 'preview'} loadingText="Preparando…" onClick={() => void review()}>Revisar venta</Button>
@@ -216,6 +286,7 @@ export function VentasPage() {
               </div>
             </div>
           )}
+          </>)}
         </section>
       )}
 
@@ -248,6 +319,7 @@ export function VentasPage() {
                     <td data-label="Cobro"><Badge tone={PAY_TONE[s.paymentStatus]}>{s.paymentStatusLabel}</Badge></td>
                     <td data-label="Acciones">
                       <div className="chip-row">
+                        {s.actions.issue && canSell && !readOnly && <Button size="sm" variant="primary" onClick={() => startIssue(s)}>Emitir en Apiworking</Button>}
                         {s.actions.verify && canSell && <Button size="sm" loading={rowBusy === s.id} loadingText="Consultando…" onClick={() => void verify(s)}>Verificar</Button>}
                         {s.actions.reconcile && canSell && <Button size="sm" onClick={() => setReconcileOf(s)}>Conciliar</Button>}
                         {s.actions.void && can('apiworking:void') && !readOnly && <Button size="sm" variant="danger" onClick={() => setVoidOf(s)}>Anular</Button>}
@@ -512,12 +584,12 @@ function CashCard() {
 }
 
 /** Alta de cliente por documento (ClienteDoc): vista previa, aprobación explícita y un solo envío. */
-function NewCustomer({ write, onCreated }: { write: boolean; onCreated: (c: AwCustomer) => void }) {
+function NewCustomer({ write, initial, onCreated }: { write: boolean; initial?: { docType: string; docNumber: string; name: string }; onCreated: (c: AwCustomer) => void }) {
   const toast = useToast();
-  const [openForm, setOpenForm] = useState(false);
-  const [docType, setDocType] = useState('1');
-  const [docNumber, setDocNumber] = useState('');
-  const [name, setName] = useState('');
+  const [openForm, setOpenForm] = useState(Boolean(initial));
+  const [docType, setDocType] = useState(initial?.docType ?? '1');
+  const [docNumber, setDocNumber] = useState(initial?.docNumber ?? '');
+  const [name, setName] = useState(initial?.name ?? '');
   const [prev, setPrev] = useState<{ data: AwCustomerPreview; signature: string } | null>(null);
   const [ok, setOk] = useState(false);
   const [busy, setBusy] = useState<'preview' | 'create' | null>(null);
@@ -574,6 +646,65 @@ function NewCustomer({ write, onCreated }: { write: boolean; onCreated: (c: AwCu
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Cobro en contingencia: se guarda la venta «por emitir» y el dinero entra en la caja LOCAL. No se llama a Apiworking. */
+function ContingencyBlock({ customer, description, lines, validLines, link, docDate, onDone }: {
+  customer: AwCustomer; description: string; lines: { name: string; quantity: number; cents: number | null }[]; validLines: boolean;
+  link: { appointmentId?: string; patientId?: string }; docDate: string; onDone: () => void;
+}) {
+  const toast = useToast();
+  const cfg = useAsync(() => get<CashConfig>('/cashbox/config'), []);
+  const summary = useAsync(() => get<CashSummary>('/cashbox/summary'), []);
+  const [accountId, setAccountId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [ok, setOk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const key = useRef(crypto.randomUUID());
+  const accounts = cfg.data?.accounts.filter((a) => a.active) ?? [];
+  const categories = cfg.data?.categories.filter((x) => x.flow === 'INCOME' && x.active) ?? [];
+  const closed = summary.data ? summary.data.session === null : false;
+  const total = lines.reduce((s, l) => s + (l.cents ?? 0) * l.quantity, 0);
+
+  const submit = async () => {
+    setBusy(true); setError(null);
+    try {
+      await post('/apiworking/contingency', {
+        customerId: customer.id, description, accountId, categoryId, requestKey: key.current,
+        lines: lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.cents! })),
+        ...(link.appointmentId ? { appointmentId: link.appointmentId } : {}), ...(link.patientId ? { patientId: link.patientId } : {}), ...(docDate ? { docDate } : {}),
+      });
+      toast.success('Cobro registrado en la caja local. El documento queda por emitir en Apiworking.');
+      key.current = crypto.randomUUID();
+      onDone();
+    } catch (e) { setError(errorText(e)); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="card" style={{ marginTop: 'var(--space-5)' }}>
+      <h3 className="h3">4. Cobrar en la caja local</h3>
+      {closed && <Alert tone="danger">La caja local está cerrada. <Link to="/caja">Ábrala en Caja</Link> antes de cobrar en contingencia.</Alert>}
+      <SelectField label="Cuenta o medio de pago" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
+        <option value="">Elija la cuenta</option>
+        {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </SelectField>
+      <SelectField label="Tipo de operación" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
+        <option value="">Elija el tipo</option>
+        {categories.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+      </SelectField>
+      <p>Se cobrarán <strong>{fmtMoney(total)}</strong> a <strong>{customer.name}</strong>.</p>
+      <label className="check" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+        <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} />
+        <span>Apiworking no responde: autorizo cobrar en la caja local. El comprobante de SUNAT queda pendiente de emitir.</span>
+      </label>
+      {error && <Alert tone="danger">{error}</Alert>}
+      <div className="chip-row" style={{ marginTop: 'var(--space-4)' }}>
+        <Button variant="primary" disabled={!ok || !validLines || !accountId || !categoryId || closed} loading={busy} loadingText="Registrando…" onClick={() => void submit()}>Registrar cobro en contingencia</Button>
+      </div>
     </div>
   );
 }

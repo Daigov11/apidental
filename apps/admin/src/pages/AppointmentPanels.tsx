@@ -89,7 +89,7 @@ export function NewAppointmentDrawer({
 }
 
 export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onClose: () => void; onChanged: () => void }) {
-  const { can } = useAuth();
+  const { can, authMode } = useAuth();
   const { mode } = useIntegrations();
   const navigate = useNavigate();
   const toast = useToast();
@@ -164,6 +164,7 @@ export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onCl
               {a.actions.noShow && <Button onClick={() => setDialog('noShow')}>Marcar ausencia</Button>}
               {a.actions.cancel && <Button variant="danger" onClick={() => setDialog('cancel')}>Cancelar cita</Button>}
               {mode === 'mock' && a.status === 'ATTENDED' && can('charge:manage') && <Button variant="primary" loading={busy === 'charge'} loadingText="Abriendo…" onClick={() => void charge()}>Registrar cobro</Button>}
+              {authMode === 'apiworking' && a.status === 'ATTENDED' && can('apiworking:sell') && <Button variant="primary" onClick={() => navigate(`/ventas?appointmentId=${id}`)}>Cobrar en Apiworking</Button>}
               {can('patient:read_basic') && <Button variant="tertiary" onClick={() => navigate(`/pacientes/${a.patient.id}`)}>Ver paciente</Button>}
             </div>
           </>

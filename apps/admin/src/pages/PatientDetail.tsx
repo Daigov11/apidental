@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useNavigate } from 'react-router-dom';
 import { ClipboardList, Plus, ShieldAlert } from 'lucide-react';
 import { ApiError, get } from '../api/client';
 import type { Appointment, PatientDetail, VisitRow } from '../api/types';
@@ -17,7 +17,8 @@ import { PatientPrescriptions } from './Prescriptions';
 
 export function PatientDetailPage() {
   const { id = '' } = useParams();
-  const { can } = useAuth();
+  const { can, authMode } = useAuth();
+  const navigate = useNavigate();
   const { mode } = useIntegrations();
   const { branchId } = useBranch();
   const [openId, setOpenId] = useState<string | null>(null);
@@ -46,9 +47,12 @@ export function PatientDetailPage() {
             {p.isMinor && <Badge tone="warning">Menor de edad</Badge>}
           </div>
         </div>
-        {can('appointment:manage') && branchId && p.status === 'ACTIVE' && (
-          <Button variant="primary" icon={<Plus size={18} aria-hidden="true" />} onClick={() => setCreating(true)}>Nueva cita</Button>
-        )}
+        <div className="chip-row">
+          {authMode === 'apiworking' && can('apiworking:sell') && p.status === 'ACTIVE' && <Button onClick={() => navigate(`/ventas?patientId=${p.id}`)}>Cobrar en Apiworking</Button>}
+          {can('appointment:manage') && branchId && p.status === 'ACTIVE' && (
+            <Button variant="primary" icon={<Plus size={18} aria-hidden="true" />} onClick={() => setCreating(true)}>Nueva cita</Button>
+          )}
+        </div>
       </div>
 
       <div className="grid-2">

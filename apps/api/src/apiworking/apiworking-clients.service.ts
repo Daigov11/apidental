@@ -32,6 +32,8 @@ const DOC_TYPES: Record<string, { label: string; pattern: RegExp }> = {
   '7': { label: 'Pasaporte', pattern: /^[A-Za-z0-9]{6,12}$/ },
   '0': { label: 'No domiciliado', pattern: /^[A-Za-z0-9]{1,15}$/ },
 };
+/** Etiqueta de tipoDoc de Apiworking (sin puntos) → código. */
+const DOC_LABEL_TO_CODE: Record<string, string> = { DNI: '1', RUC: '6', CE: '4', CARNET: '4', PASAPORTE: '7' };
 const personTypeOf = (docType: string) => (docType === '6' ? 'J' : 'N');
 /** Fila del espejo local con la forma de un cliente de Apiworking. */
 const fromMirror = (m: { externalCustomerId: string; name: string; docType: string; docNumber: string }): ExternalCustomer => ({
@@ -95,8 +97,9 @@ export class ApiworkingClientsService {
     return session;
   }
 
-  async list(principal: AuthPrincipal, q: { search?: string; limit: number; offset: number }) {
-    const { rows: all, offline } = await this.loadAll(principal);
+  async list(principal: AuthPrincipal, q: { search?: string; limit: number; offset: number; local?: string }) {
+    // Contingencia: solo el espejo local, sin consultar a Apiworking ni exigir su sesión.
+    const { rows: all, offline } = q.local ? { rows: await this.mirrorRows(principal), offline: true } : await this.loadAll(principal);
     const term = q.search?.trim().toLowerCase();
     const filtered = term
       ? all.filter((c) => c.name.toLowerCase().includes(term) || c.docNumber.toLowerCase().includes(term) || c.phone.includes(term))
@@ -106,9 +109,47 @@ export class ApiworkingClientsService {
 
   async find(principal: AuthPrincipal, id: string): Promise<ExternalCustomer | null> {
     const cached = (await this.loadAll(principal)).rows.find((c) => c.id === id);
-    if (cached) return cached;
     // Pudo crearse hace instantes: se vuelve a consultar una vez antes de darlo por inexistente.
-    return (await this.loadAll(principal, true)).rows.find((c) => c.id === id) ?? null;
+    const found = cached ?? (await this.loadAll(principal, true)).rows.find((c) => c.id === id) ?? null;
+    if (found) await this.remember(principal, found);
+    return found;
+  }
+
+  /** Cliente del espejo local (sin Apiworking): lo usa la contingencia. */
+  async findLocal(principal: AuthPrincipal, id: string): Promise<ExternalCustomer | null> {
+    return (await this.mirrorRows(principal)).find((c) => c.id === id) ?? null;
+  }
+
+  /** Cliente por número de documento: primero el espejo y, si hay sesión y Apiworking responde, su lista. */
+  async findByDocument(principal: AuthPrincipal, docNumber: string): Promise<ExternalCustomer | null> {
+    const wanted = docNumber.trim().toUpperCase();
+    const local = (await this.mirrorRows(principal)).find((c) => c.docNumber.toUpperCase() === wanted);
+    if (local) return local;
+    try {
+      return (await this.loadAll(principal)).rows.find((c) => c.docNumber.toUpperCase() === wanted) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async mirrorRows(principal: AuthPrincipal): Promise<ExternalCustomer[]> {
+    const rows = await this.db.apiworkingCustomer.findMany({ where: { tenant: this.config.apiworking.expectedDatabase!, clinicId: clinicScope(principal).clinicId } });
+    return rows.map(fromMirror).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+  }
+
+  /** Todo cliente que se usa en una venta queda en el espejo: así la contingencia lo encuentra aunque Apiworking no responda. */
+  private async remember(principal: AuthPrincipal, c: ExternalCustomer): Promise<void> {
+    const tenant = this.config.apiworking.expectedDatabase!;
+    const docType = Object.entries(DOC_LABEL_TO_CODE).find(([k]) => c.docType.toUpperCase().replace(/[.\s]/g, '').startsWith(k))?.[1] ?? '0';
+    try {
+      await this.db.apiworkingCustomer.upsert({
+        where: { tenant_externalCustomerId: { tenant, externalCustomerId: c.id } },
+        create: { clinicId: clinicScope(principal).clinicId, tenant, externalCustomerId: c.id, docType, docNumber: c.docNumber.slice(0, 20), name: c.name.slice(0, 200), createdById: principal.user.id },
+        update: {},
+      });
+    } catch {
+      // Un documento repetido con otro id no debe impedir la venta: el espejo es solo un respaldo.
+    }
   }
 
   /** Clientes de Apiworking + el espejo local (los creados aquí). Si Apiworking no responde, se sirve solo el espejo (`offline`). */
