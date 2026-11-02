@@ -10,6 +10,9 @@ PORT="${2:?Puerto local de la API, p. ej. 3001}"
 PANEL_HOST="${3:?Host del panel, p. ej. demod1.apiworking.com.pe}"
 API_HOST="${4:?Host de la API, p. ej. api.demod1.apiworking.com.pe}"
 MODE="${5:-off}"
+# Rutas y hosts de MySQL/MariaDB del servidor (por defecto, los del VPS de producción).
+FILES_BASE="${FILES_BASE:-/var/www/apidental/files}"
+DB_USER_HOST="${DB_USER_HOST:-localhost}"
 
 [[ "$NAME" =~ ^[a-z][a-z0-9]{1,30}$ ]] || { echo "Nombre inválido (a-z y 0-9, empieza con letra)" >&2; exit 1; }
 [[ "$PORT" =~ ^[0-9]{4,5}$ ]] || { echo "Puerto inválido" >&2; exit 1; }
@@ -37,7 +40,7 @@ sed \
   -e "s|__NAME__|$NAME|g" -e "s|__PORT__|$PORT|g" -e "s|__PANEL_HOST__|$PANEL_HOST|g" \
   -e "s|__DB_NAME__|$DB_NAME|g" -e "s|__DB_USER__|$DB_USER|g" -e "s|__DB_PASSWORD__|$DB_PASSWORD|g" \
   -e "s|__DB_MIGRATE_USER__|$DB_MIGRATE_USER|g" -e "s|__DB_MIGRATE_PASSWORD__|$DB_MIGRATE_PASSWORD|g" \
-  -e "s|__JWT_SECRET__|$JWT_SECRET|g" -e "s|__INTEGRATIONS_MODE__|$MODE|g" -e "s|__MOCK_PRODUCTION_FLAG__|$MOCK_FLAG|g" \
+  -e "s|__FILES_BASE__|$FILES_BASE|g" -e "s|__JWT_SECRET__|$JWT_SECRET|g" -e "s|__INTEGRATIONS_MODE__|$MODE|g" -e "s|__MOCK_PRODUCTION_FLAG__|$MOCK_FLAG|g" \
   "$HERE/env/instancia.env.template" > "$OUT/$NAME.env"
 
 sed -e "s|__NAME__|$NAME|g" -e "s|__PORT__|$PORT|g" -e "s|__PANEL_HOST__|$PANEL_HOST|g" -e "s|__API_HOST__|$API_HOST|g" \
@@ -46,9 +49,9 @@ sed -e "s|__NAME__|$NAME|g" -e "s|__PORT__|$PORT|g" -e "s|__PANEL_HOST__|$PANEL_
 cat > "$OUT/crear-bd.sql" <<SQL
 -- Ejecutar como administrador de MySQL: sudo mysql < crear-bd.sql
 CREATE DATABASE \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER '$DB_MIGRATE_USER'@'127.0.0.1' IDENTIFIED BY '$DB_MIGRATE_PASSWORD';
-CREATE USER '$DB_USER'@'127.0.0.1' IDENTIFIED BY '$DB_PASSWORD';
-GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_MIGRATE_USER'@'127.0.0.1';
+CREATE USER '$DB_MIGRATE_USER'@'$DB_USER_HOST' IDENTIFIED BY '$DB_MIGRATE_PASSWORD';
+CREATE USER '$DB_USER'@'$DB_USER_HOST' IDENTIFIED BY '$DB_PASSWORD';
+GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_MIGRATE_USER'@'$DB_USER_HOST';
 FLUSH PRIVILEGES;
 -- Los permisos del usuario de la aplicación se dan DESPUÉS de migrar con permisos-app.sh (por tabla).
 SQL
@@ -58,8 +61,8 @@ cat > "$OUT/permisos-app.sh" <<SH
 # audit_logs (y _prisma_migrations) quedan fuera del permiso general: la app solo hace SELECT e INSERT en audit_logs.
 set -euo pipefail
 {
-  mysql -N -e "SELECT CONCAT('GRANT SELECT, INSERT, UPDATE, DELETE ON \\\`$DB_NAME\\\`.\\\`', table_name, '\\\` TO ''$DB_USER''@''127.0.0.1'';') FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_type = 'BASE TABLE' AND table_name NOT IN ('audit_logs', '_prisma_migrations');"
-  echo "GRANT SELECT, INSERT ON \\\`$DB_NAME\\\`.\\\`audit_logs\\\` TO '$DB_USER'@'127.0.0.1';"
+  mysql -N -e "SELECT CONCAT('GRANT SELECT, INSERT, UPDATE, DELETE ON \\\`$DB_NAME\\\`.\\\`', table_name, '\\\` TO ''$DB_USER''@''$DB_USER_HOST'';') FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_type = 'BASE TABLE' AND table_name NOT IN ('audit_logs', '_prisma_migrations');"
+  echo "GRANT SELECT, INSERT ON \\\`$DB_NAME\\\`.\\\`audit_logs\\\` TO '$DB_USER'@'$DB_USER_HOST';"
   echo "FLUSH PRIVILEGES;"
 } | mysql
 SH
@@ -72,7 +75,7 @@ Archivos generados en $OUT (contienen secretos: no los suba a Git ni los compart
 Pasos en el servidor (a mano, revisando cada uno):
   1. sudo mysql < $OUT/crear-bd.sql
   2. sudo install -m 600 -o root -g apidental $OUT/$NAME.env /etc/apidental/$NAME.env
-  3. sudo install -d -m 700 -o apidental -g apidental /var/lib/apidental/$NAME/files
+  3. sudo install -d -m 700 -o apidental -g apidental $FILES_BASE/$NAME
   4. Migre (sin arrancar aún): MIGRATE_ONLY=yes INSTANCES="$NAME" BACKUP_DONE=yes ./deploy/scripts/deploy.sh <tag>
   5. sudo bash $OUT/permisos-app.sh   (permisos por tabla del usuario de la app)
   6. Cree el administrador (con el usuario de migración):

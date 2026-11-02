@@ -50,7 +50,7 @@ server {
     client_max_body_size 1m;   # por defecto, cuerpos pequeños (JSON)
 
     # Carga de adjuntos de pacientes: único lugar con un límite mayor (ATTACHMENT_MAX_BYTES + márgenes del multipart).
-    location ~ ^/v1/patients/[0-9a-fA-F-]{36}/attachments$ {
+    location ~ "^/v1/patients/[0-9a-fA-F-]{36}/attachments$" {
         client_max_body_size 11m;
         include /etc/nginx/snippets/apidental-api-proxy.conf;
     }

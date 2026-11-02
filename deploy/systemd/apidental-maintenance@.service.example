@@ -3,17 +3,17 @@
 # Se ejecuta y termina (oneshot): systemd no la solapa consigo misma. Es idempotente y procesa por lotes.
 [Unit]
 Description=ApiDental mantenimiento de seguridad — instancia %i
-After=network.target mysql.service
-Wants=mysql.service
+After=network.target mariadb.service
+Wants=mariadb.service
 
 [Service]
 Type=oneshot
 User=apidental
 Group=apidental
-WorkingDirectory=/opt/apidental/apps/api
+WorkingDirectory=/var/www/apidental/app/apps/api
 EnvironmentFile=/etc/apidental/%i.env
 # Primero pruébelo a mano con --dry-run. Imprime un JSON con los contadores y sale con código != 0 si falla.
-ExecStart=/usr/bin/node dist/maintenance/cli.js
+ExecStart=/var/www/apidental/node/bin/node dist/maintenance/cli.js
 TimeoutStartSec=15min
 
 # Endurecimiento (no necesita escribir en disco)

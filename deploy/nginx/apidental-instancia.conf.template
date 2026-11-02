@@ -1,6 +1,8 @@
 # PLANTILLA POR CLIENTE — no se aplica sola. La genera deploy/scripts/instance-new.sh sustituyendo:
 #   __NAME__ nombre de la instancia · __PANEL_HOST__ panel y sitio · __API_HOST__ API · __PORT__ puerto local de la API
-# Copiar a /etc/nginx/sites-available/apidental-__NAME__.conf, emitir los certificados con certbot, revisar y habilitar.
+# Un solo certificado por instancia con los dos nombres (panel y API):
+#   certbot certonly --nginx -d __PANEL_HOST__ -d __API_HOST__
+# Copiar a /etc/nginx/sites-available/apidental-__NAME__.conf, revisar con `nginx -t` y habilitar.
 # Requiere una sola vez en el servidor (compartido por todas las instancias):
 #   - limit_req_zone $binary_remote_addr zone=apidental_login:10m rate=10r/m;   (ya existe en apidental.conf.example)
 #   - /etc/nginx/snippets/apidental-proxy-headers.conf  (ver deploy/nginx/apidental-proxy-headers.conf.example)
@@ -42,14 +44,14 @@ server {
     listen 443 ssl http2;
     server_name __API_HOST__;
 
-    ssl_certificate     /etc/letsencrypt/live/__API_HOST__/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/__API_HOST__/privkey.pem;
+    ssl_certificate     /etc/letsencrypt/live/__PANEL_HOST__/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/__PANEL_HOST__/privkey.pem;
 
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     client_max_body_size 1m;
 
-    location ~ ^/v1/patients/[0-9a-fA-F-]{36}/attachments$ {
+    location ~ "^/v1/patients/[0-9a-fA-F-]{36}/attachments$" {
         client_max_body_size 11m;
         proxy_pass http://127.0.0.1:__PORT__;
         include /etc/nginx/snippets/apidental-proxy-headers.conf;
