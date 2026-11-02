@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react';
+import { ApiError } from '../api/client';
 import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../ui/Button';
 import { TextField } from '../ui/fields';
@@ -7,7 +8,10 @@ import logoNegro from '../assets/brand/apimedical-negro.png';
 import mascota from '../assets/brand/mascota.png';
 
 export function LoginPage() {
-  const { login, notice } = useAuth();
+  const { login, loginApiworking, authMode, notice } = useAuth();
+  // Con Apiworking activo, el acceso principal es la cuenta de Apiworking; el local queda para el administrador de la clínica.
+  const [localAccess, setLocalAccess] = useState(false);
+  const external = authMode === 'apiworking' && !localAccess;
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
@@ -23,11 +27,13 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await login(email.trim(), password);
+      if (external) await loginApiworking(email.trim(), password);
+      else await login(email.trim(), password);
     } catch (err) {
-      // Mensaje genérico: no revela si el correo existe.
-      const text = errorText(err);
-      setError(/credencial|incorrect|inválid|invalid/i.test(text) || (err as { status?: number }).status === 401 ? 'Correo o contraseña incorrectos.' : text);
+      // Mensaje genérico: no revela si el usuario existe.
+      // «Sin accesos asignados» es un aviso propio (no un 403 genérico): se muestra tal cual.
+      const text = err instanceof ApiError && err.code === 'NO_ACCESS' ? err.message : errorText(err);
+      setError(/credencial|incorrect|inválid|invalid/i.test(text) || (err as { status?: number }).status === 401 ? (external ? 'Usuario o contraseña de Apiworking incorrectos.' : 'Correo o contraseña incorrectos.') : text);
       setBusy(false);
     }
   };
@@ -44,9 +50,10 @@ export function LoginPage() {
         {error && <Alert tone="danger">{error}</Alert>}
         <form onSubmit={submit} noValidate>
           <TextField
-            label="Correo" type="email" name="username" autoComplete="username" inputMode="email" autoFocus
+            key={external ? 'usuario' : 'correo'}
+            label={external ? 'Usuario de Apiworking' : 'Correo'} type={external ? 'text' : 'email'} name="username" autoComplete="username" inputMode={external ? 'text' : 'email'} autoFocus
             value={email} onChange={(e) => setEmail(e.target.value)}
-            error={touched && !email.trim() ? 'Escriba su correo, por ejemplo nombre@clinica.pe' : null}
+            error={touched && !email.trim() ? (external ? 'Escriba su usuario de Apiworking' : 'Escriba su correo, por ejemplo nombre@clinica.pe') : null}
           />
           <TextField
             label="Contraseña" type={show ? 'text' : 'password'} name="password" autoComplete="current-password"
@@ -62,6 +69,13 @@ export function LoginPage() {
             Ingresar
           </Button>
         </form>
+        {authMode === 'apiworking' && (
+          <p style={{ marginTop: 'var(--space-4)' }}>
+            <button type="button" className="btn btn-tertiary btn-sm" onClick={() => { setLocalAccess((v) => !v); setError(null); setTouched(false); setEmail(''); }}>
+              {localAccess ? 'Ingresar con mi cuenta de Apiworking' : 'Acceso del administrador local'}
+            </button>
+          </p>
+        )}
         <p className="caption muted" style={{ marginTop: 'var(--space-5)' }}>Los datos de esta pantalla son de uso exclusivo del personal autorizado de la clínica.</p>
       </div>
     </main>

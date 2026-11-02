@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { ApiError, get, onSessionLost, post, refreshAccessToken, setAccessToken } from '../api/client';
-import type { ContextSelected, LoginBody, LoginContext, Me } from '../api/types';
+import { api, ApiError, get, onSessionLost, post, refreshAccessToken, setAccessToken } from '../api/client';
+import type { AuthMode, ContextSelected, LoginBody, LoginContext, Me } from '../api/types';
 
 export type AuthStatus = 'loading' | 'anonymous' | 'choose-context' | 'ready';
 
@@ -9,7 +9,11 @@ interface AuthValue {
   me: Me | null;
   contexts: LoginContext[];
   notice: string | null;
+  /** Cómo inicia sesión esta instalación (null mientras se consulta). */
+  authMode: AuthMode | null;
   login: (email: string, password: string) => Promise<void>;
+  /** Ingreso con la cuenta de Apiworking del tenant. */
+  loginApiworking: (usuario: string, password: string) => Promise<void>;
   chooseContext: (c: LoginContext) => Promise<void>;
   switchContext: () => Promise<void>;
   logout: () => Promise<void>;
@@ -31,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [contexts, setContexts] = useState<LoginContext[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const started = useRef(false);
 
   const reset = useCallback((message: string | null) => {
@@ -58,6 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => onSessionLost(null);
   }, [reset]);
 
+  // Cómo se inicia sesión (público): si falla, se asume el acceso local.
+  useEffect(() => {
+    void api<{ mode: AuthMode }>('GET', '/auth/config', { anonymous: true }).then((c) => setAuthMode(c.mode), () => setAuthMode('local'));
+  }, []);
+
   // Al abrir el panel: si hay cookie de sesión válida se retoma sin pedir la contraseña.
   useEffect(() => {
     if (started.current) return;
@@ -81,14 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [enter],
   );
 
-  const login = useCallback(
-    async (email: string, password: string) => {
-      setNotice(null);
-      const res = await post<LoginBody>('/auth/login', { email, password }, { anonymous: true });
+  /** Después de autenticar (por cualquier vía): sin accesos asignados no se entra; con uno solo, se entra directo. */
+  const finishLogin = useCallback(
+    async (res: LoginBody, noAccess: string) => {
       setAccessToken(res.accessToken);
       if (res.contexts.length === 0) {
         setAccessToken(null);
-        throw new ApiError(403, 'Su cuenta todavía no tiene accesos asignados. Consulte con el administrador de su clínica.');
+        throw new ApiError(403, noAccess, 'NO_ACCESS');
       }
       setContexts(res.contexts);
       if (res.contexts.length === 1) await selectAndEnter(res.contexts[0]!);
@@ -99,6 +108,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     },
     [selectAndEnter],
+  );
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      setNotice(null);
+      const res = await post<LoginBody>('/auth/login', { email, password }, { anonymous: true });
+      await finishLogin(res, 'Su cuenta todavía no tiene accesos asignados. Consulte con el administrador de su clínica.');
+    },
+    [finishLogin],
+  );
+
+  const loginApiworking = useCallback(
+    async (usuario: string, password: string) => {
+      setNotice(null);
+      const res = await post<LoginBody>('/auth/apiworking-login', { usuario, password }, { anonymous: true });
+      await finishLogin(res, 'Su cuenta de Apiworking es válida, pero todavía no tiene un rol en esta clínica. Pida al administrador que se lo asigne e ingrese de nuevo.');
+    },
+    [finishLogin],
   );
 
   const logout = useCallback(async () => {
@@ -117,10 +144,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthValue>(
     () => ({
-      status, me, contexts, notice, login, chooseContext: selectAndEnter, switchContext, logout,
+      status, me, contexts, notice, authMode, login, loginApiworking, chooseContext: selectAndEnter, switchContext, logout,
       can: (p) => me?.permissions.includes(p) ?? false,
     }),
-    [status, me, contexts, notice, login, selectAndEnter, switchContext, logout],
+    [status, me, contexts, notice, authMode, login, loginApiworking, selectAndEnter, switchContext, logout],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

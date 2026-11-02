@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Banknote, BookOpen, CalendarDays, ChevronsLeft, ChevronsRight, FileText, Film, Home, Inbox, LogOut, Pill, Repeat, Users, Wallet } from 'lucide-react';
+import { Banknote, BookOpen, CalendarDays, ChevronsLeft, ChevronsRight, FileText, Film, Home, Inbox, LogOut, Pill, Receipt, Repeat, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { BranchProvider } from '../lib/branch';
 import { usePendingRequests } from '../lib/bookingRequests';
@@ -42,6 +42,7 @@ function Shell() {
     { to: '/fotoclinica', label: 'Fotoclinica', icon: <Film size={20} aria-hidden="true" />, show: hasClinic },
     { to: '/caja-chica', label: 'Caja chica', icon: <Banknote size={20} aria-hidden="true" />, show: hasClinic && can('cashbox:read') },
     { to: '/caja', label: 'Caja', icon: <Wallet size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('charge:read') },
+    { to: '/ventas', label: 'Ventas', icon: <Receipt size={20} aria-hidden="true" />, show: hasClinic && can('apiworking:read') },
     { to: '/comprobantes', label: 'Comprobantes', icon: <FileText size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('billing:read') },
   ];
   return (

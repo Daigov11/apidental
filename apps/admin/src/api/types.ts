@@ -2,7 +2,8 @@ export interface UserInfo { id: string; email: string; firstName: string; lastNa
 export interface ContextInfo { platform: boolean; clinic: { id: string; name: string } | null; branch: { id: string; name: string } | null }
 export interface Me { user: UserInfo; context: ContextInfo | null; roles: string[]; permissions: string[] }
 export interface LoginContext { assignmentId: string; role: { code: string; name: string }; clinic: { id: string; name: string } | null; branch: { id: string; name: string } | null }
-export interface LoginBody { accessToken: string; user: UserInfo; contexts: LoginContext[] }
+export interface LoginBody { accessToken: string; user: UserInfo; contexts: LoginContext[]; pendingAccess?: boolean }
+export type AuthMode = 'local' | 'apiworking'
 export interface ContextSelected { accessToken: string }
 
 export interface Branch { id: string; name: string }
@@ -141,3 +142,31 @@ export interface CashMovement {
   account: { id: string; name: string; kind: string }; category: { id: string; name: string } | null; user: { id: string; name: string };
 }
 export interface CashMovementList { items: CashMovement[]; total: number; incomeCents: number; expenseCents: number }
+
+// --- Apiworking real: clientes y ventas por registro-documento ---
+export interface AwStatus { configured: boolean; read: boolean; write: boolean; tenant: string | null; session: boolean }
+export interface AwCustomer { id: string; personId: string; name: string; email: string; docType: string; docNumber: string; phone: string; whatsapp: string; personType: string; active: boolean }
+export interface AwOption { id: string; name: string }
+export interface AwContext {
+  cajas: { id: string; name: string; branch: string }[]; authorizedConfigured: boolean;
+  opened?: boolean; documentTypes?: AwOption[]; series?: { id: string; serie: string }[]; paymentMethods?: AwOption[];
+}
+export interface AwLine { name: string; quantity: number; unitPriceCents: number }
+export interface AwDraft {
+  customerId: string; idCaja: string; idTipoDocumento: string; idSerie: string; idMetodoPago: string;
+  description: string; lines: AwLine[]; docDate?: string;
+}
+export interface AwPreview {
+  request: unknown; hash: string; totalCents: number; totalText: string; serie: string;
+  customer: AwCustomer; suggestedDocument: 'FACTURA' | 'BOLETA' | 'NOTA_DE_VENTA'; mode: 'LIVE' | 'READ_ONLY'; writeEnabled: boolean; warnings: string[];
+}
+export type AwDocStatus = 'PENDING' | 'SENT' | 'REJECTED' | 'PENDING_RECONCILIATION';
+export interface AwSale {
+  id: string; description: string; customer: { name: string; docType: string; docNumber: string };
+  totalCents: number; totalText: string; lines: AwLine[]; docDate: string; serie: string | null;
+  docStatus: AwDocStatus; docStatusLabel: string; paymentStatus: 'NO_EVIDENCE' | 'CONFIRMED_REMOTE' | 'CONFIRMED_RECONCILED'; paymentStatusLabel: string;
+  voidStatus: 'IN_PROGRESS' | 'VOIDED' | 'TO_RECONCILE' | null; voidStatusLabel: string | null;
+  externalDocId: string | null; externalNumber: string | null; failureReason: string | null; attemptedAt: string | null; createdAt: string;
+  actions: { verify: boolean; reconcile: boolean; void: boolean };
+}
+export interface AwVerify { sale: AwSale; paidCents?: number; paymentMessage?: string; candidates?: { number: string; status: string; totalCents: number | null; balanceCents: number | null }[] }
