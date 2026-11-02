@@ -8,7 +8,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { clinicScope, isUniqueViolation, requirePatient } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
-import { ApiworkingClient, ApiworkingError, asRecord, asRows, cajaId, cajaName, clip, moneyToCents, optText, reqId } from './apiworking.client.js';
+import { ApiworkingClient, ApiworkingError, asRecord, asRows, cajaId, cajaName, clip, isNoData, moneyToCents, optText, reqId } from './apiworking.client.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import type { ExternalSession } from './apiworking-session.store.js';
 import type { ReconcileSaleDto, SaleDraftDto } from './dto/apiworking.dto.js';
@@ -125,7 +125,10 @@ export class ApiworkingSalesService {
   }
 
   private async openMovement(session: ExternalSession, idCaja: string): Promise<string | null> {
-    const data = await this.client.call('cajaApertura', { token: session.token, query: { idCaja } });
+    const data = await this.client.call('cajaApertura', { token: session.token, query: { idCaja } }).catch((e: unknown) => {
+      if (isNoData(e)) return [];
+      throw e;
+    });
     const row = asRows(data, 'la apertura de caja')[0];
     const id = row ? optText(row, 'id_movimiento_caja') : '';
     return id || null;

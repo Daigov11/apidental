@@ -7,7 +7,7 @@ import { AppConfig } from '../config/app-config.js';
 import { clinicScope } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
-import { ApiworkingClient, ApiworkingError, asRows, cajaId, cajaName, clip, optText, reqId } from './apiworking.client.js';
+import { ApiworkingClient, ApiworkingError, asRows, cajaId, cajaName, clip, isNoData, optText, reqId } from './apiworking.client.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import type { CashCloseDraftDto, CashOpenDraftDto } from './dto/apiworking.dto.js';
 
@@ -188,7 +188,11 @@ export class ApiworkingCashService {
   }
 
   private async openMovement(token: string, idCaja: string): Promise<string | null> {
-    const row = asRows(await this.client.call('cajaApertura', { token, query: { idCaja } }), 'la apertura de caja')[0];
+    const data = await this.client.call('cajaApertura', { token, query: { idCaja } }).catch((e: unknown) => {
+      if (isNoData(e)) return [];
+      throw e;
+    });
+    const row = asRows(data, 'la apertura de caja')[0];
     return (row ? optText(row, 'id_movimiento_caja') : '') || null;
   }
 

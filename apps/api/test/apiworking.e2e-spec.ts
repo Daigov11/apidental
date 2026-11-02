@@ -45,7 +45,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
         return { status: 200, body: ok({ token: EXTERNAL_TOKEN, id_usuario: 77, id_persona: 201900000001, usuario: b['usuario'], nombrecompleto: 'GINA PAREDES YAURI', id_sucursal: 1, roles: ['ADMIN'], empresa: { base_datos: scenario.tenant } }) };
       }
       case 'GET /api/Caja': return { status: 200, body: ok([{ idCaja: 5, caja: 'Caja Glow', sucursal: 'Principal' }, { idCaja: 6, caja: 'Caja ajena', sucursal: 'Otra' }]) };
-      case 'GET /api/CajaChica/consulta-aperturada': return { status: 200, body: ok(scenario.cajaOpen ? { id_movimiento_caja: 9001 } : []) };
+      case 'GET /api/CajaChica/consulta-aperturada': return { status: 200, body: scenario.cajaOpen ? ok({ id_movimiento_caja: 9001 }) : { codResponse: 0, message: 'No se encontraron datos registrados' } };
       case 'GET /api/CajaChica/turnos': return { status: 200, body: ok([{ idTurno: 1, turno: 'Mañana' }, { idTurno: 2, turno: 'Tarde' }]) };
       case 'GET /api/Caja/tipo-documentos': return { status: 200, body: ok([{ id_tipo_documento: 2, tipo_documento: 'Boleta' }, { id_tipo_documento: 9, tipo_documento: 'No autorizado' }]) };
       case 'GET /api/Facturacion/series': return { status: 200, body: ok([{ id_serie: 11, serie: 'B001' }, { id_serie: 12, serie: 'B002' }]) };

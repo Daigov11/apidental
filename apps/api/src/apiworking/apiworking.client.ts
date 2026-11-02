@@ -212,6 +212,9 @@ export function reqIdAny(r: Record<string, unknown>, keys: readonly string[], wh
   return reqId(r, keys[0]!, what);
 }
 
+/** `consulta-aperturada` responde «No se encontraron datos registrados» (codResponse distinto de 1) cuando la caja NO está abierta: es un estado, no un fallo. */
+export const isNoData = (error: unknown): boolean => error instanceof ApiworkingError && error.kind === 'REJECTED' && /no se encontr/i.test(error.message);
+
 const CAJA_ID_KEYS = ['idCaja', 'id', 'id_caja', 'IdCaja', 'idcaja'] as const;
 const CAJA_NAME_KEYS = ['caja', 'nombreCaja', 'nombre_caja', 'nombre', 'descripcion'] as const;
 export const cajaId = (r: Record<string, unknown>) => reqIdAny(r, CAJA_ID_KEYS, 'una caja');
