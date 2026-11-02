@@ -44,10 +44,10 @@ export PATH="$R/node/bin:$PATH"
 chown -R root:root "$API/dist.new" "$API/prisma" "$API/prisma.config.ts" "$R/admin.new"
 chmod -R u=rwX,go=rX "$API/dist.new" "$API/prisma" "$API/prisma.config.ts" "$R/admin.new"
 
-# Dónde vive cada instancia (dental conserva el esquema histórico: api.env y apidental-api).
-envfile()  { [[ "$1" == dental ]] && echo /etc/apidental/api.env || echo "/etc/apidental/$1.env"; }
-service()  { [[ "$1" == dental ]] && echo apidental-api || echo "apidental-api@$1"; }
-migurl()   { if [[ "$1" == dental ]]; then cut -d= -f2- /etc/apidental/dental.migrate.env; else grep -m1 '^MIGRATE_DATABASE_URL=' "/etc/apidental/$1.env" | cut -d= -f2-; fi; }
+# Todas las instancias siguen el mismo esquema: /etc/apidental/<nombre>.env y el servicio apidental-api@<nombre>.
+envfile()  { echo "/etc/apidental/$1.env"; }
+service()  { echo "apidental-api@$1"; }
+migurl()   { grep -m1 '^MIGRATE_DATABASE_URL=' "/etc/apidental/$1.env" | cut -d= -f2-; }
 getenv()   { grep -m1 "^$2=" "$1" | cut -d= -f2-; }
 dbname()   { local u; u="$(getenv "$(envfile "$1")" DATABASE_URL)"; echo "${u##*/}"; }
 dbuser()   { local u; u="$(getenv "$(envfile "$1")" DATABASE_URL)"; u="${u#mysql://}"; echo "${u%%:*}"; }

@@ -5,7 +5,7 @@ directorio de adjuntos y sus dominios. No se comparten datos, secretos JWT ni cr
 
 | Instancia | Panel | API | Puerto | Servicio | BD | Uso |
 |---|---|---|---|---|---|---|
-| `dental` | `dental.apiworking.com.pe` | `api.dental.apiworking.com.pe` | 3100 | `apidental-api` | `apidental` | Dra. Gina Paredes Yauri (RUC 10074654016); tenant Apiworking `prod_ti_tiendaglowsmile` |
+| `dental` | `dental.apiworking.com.pe` | `api.dental.apiworking.com.pe` | 3100 | `apidental-api@dental` | `apidental_dental` | Dra. Gina Paredes Yauri (RUC 10074654016); tenant Apiworking `prod_ti_tiendaglowsmile` |
 | `demod1` | `demod1.apiworking.com.pe` | `api.demod1.apiworking.com.pe` | 3101 | `apidental-api@demod1` | `apidental_demod1` | Demo / próximo cliente |
 | `demod2` | `demod2.apiworking.com.pe` | `api.demod2.apiworking.com.pe` | 3102 | `apidental-api@demod2` | `apidental_demod2` | Demo / próximo cliente |
 
@@ -16,7 +16,7 @@ El VPS (`vision-support-vps`) es **compartido con otros proyectos** y usa **Mari
 ## Cómo se separa todo
 - **BD:** `apidental_<nombre>`, con usuario de aplicación (`app_<nombre>`) y de migración (`mig_<nombre>`) distintos.
 - **Entorno:** `/etc/apidental/<nombre>.env` (600). `JWT_ACCESS_SECRET`, `JWT_ISSUER` y `JWT_AUDIENCE` propios: un token de un cliente no vale en otro.
-- **Adjuntos:** `/var/www/apidental/files/<nombre>` (la unidad systemd solo permite escribir ahí). `dental` conserva el esquema histórico (`/var/www/apidental/files`, `/etc/apidental/api.env`, servicio `apidental-api`).
+- **Adjuntos:** `/var/www/apidental/files/<nombre>` (la unidad systemd solo permite escribir ahí). Todas las instancias, incluida `dental`, usan `/etc/apidental/<nombre>.env` y `apidental-api@<nombre>`.
 - **Panel:** el build es el mismo para todos y llama a rutas relativas `/v1/...`; cada `server` de nginx las envía a su instancia.
 - **Servicios:** `apidental-api@<nombre>` y `apidental-maintenance@<nombre>.timer`.
 
@@ -30,16 +30,21 @@ imprime los pasos a ejecutar a mano en el servidor. No toca el servidor.
 (mysqldump + `dist` y panel actuales), migra **todas** las BD antes de tocar el código, da permisos de las tablas nuevas,
 intercambia el código y reinicia y comprueba cada instancia (si una no responde, devuelve el código anterior). `DRY_RUN=1` solo
 muestra qué subiría. Los respaldos quedan en `/var/www/apidental/backups`.
-Las migraciones usan `MIGRATE_DATABASE_URL` (usuario `mig_<nombre>`; en `dental`, `/etc/apidental/dental.migrate.env`), nunca el
+Las migraciones usan `MIGRATE_DATABASE_URL` (usuario `mig_<nombre>`, dentro de su propio `.env`), nunca el
 usuario de la aplicación. El usuario de la app recibe CRUD por tabla y solo `SELECT, INSERT` sobre `audit_logs`.
 
 ## Estado (2026-11-02)
-- Hecho: `dental`, `demod1` y `demod2` corren el mismo código con BD, `.env`, secreto JWT, puerto, certificado y adjuntos propios.
-  `demod1` y `demod2` son **clones** de los datos que tenía `dental` (respaldo previo: `/var/www/apidental/backups/pre-instancias-apiworking-20261102-1650.sql`).
-- **Pendiente (decisión del titular): dejar `dental` limpio para la Dra. Gina Paredes.** Hoy `dental` aún muestra los datos de
-  demostración. Pasos: BD nueva `apidental_dental` (usuarios `app_dental`/`mig_dental`), migrar, `db:seed`, `db:create-clinic` con el
-  RUC, variables `APIWORKING_*` en su `.env`, `db:create-admin` y `db:grant-role` (ver `apiworking-real.md`), y apuntar el servicio a
-  ese `.env`. La BD `apidental` actual se conserva (respaldo) hasta confirmar.
+- `dental`, `demod1` y `demod2` corren el mismo código con BD, `.env`, secreto JWT, puerto, certificado y adjuntos propios.
+- `demod1` y `demod2` son **clones** de los datos de demostración que tenía `dental` (respaldo previo:
+  `/var/www/apidental/backups/pre-instancias-apiworking-20261102-1650.sql`).
+- `dental` quedó **limpio** para la Dra. Gina Paredes Yauri: BD `apidental_dental` nueva (clínica con RUC 10074654016, catálogo de
+  roles, sin usuarios ni pacientes), `AUTH_MODE=apiworking` con el tenant `prod_ti_tiendaglowsmile`, lecturas activadas y
+  **escrituras apagadas** (`APIWORKING_AUTHZ_WRITE=false`, tope 0). Simuladores apagados.
+- Vuelta atrás de `dental` (si hiciera falta): `systemctl stop apidental-api@dental && systemctl enable --now apidental-api`. El
+  servicio y el `.env` anteriores (`apidental-api`, `/etc/apidental/api.env`, BD `apidental`) se conservaron sin cambios.
+- **Pendiente:** que la persona de Gina ingrese una vez con su usuario de Apiworking y luego asignarle el rol
+  (`db:grant-role --role CLINIC_ADMIN --clinic add4f313-62b5-4730-b4e1-a78ed521e292`); fijar cajas/series autorizadas y activar la
+  escritura según `apiworking-real.md`.
 - Sin mantenimiento programado todavía: instalar `apidental-maintenance@<nombre>.timer` por instancia cuando se carguen datos reales.
 - Limitación: todas las instancias corren con el mismo usuario del sistema (`apidental`); el aislamiento es por BD, secretos y
   directorio, no por usuario de SO.
