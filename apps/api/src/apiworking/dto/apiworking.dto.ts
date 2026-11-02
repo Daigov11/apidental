@@ -94,6 +94,8 @@ export class CustomerDraftDto {
 }
 
 export class CustomerCreateDto extends CustomerDraftDto {
+  /// Nombre de referencia para el espejo local (Apiworking completa el suyo y no lo devuelve).
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(200) name?: string;
   @Matches(/^[0-9a-f]{64}$/) approvedHash!: string;
 }
 

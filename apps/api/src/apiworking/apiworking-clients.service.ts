@@ -6,6 +6,7 @@ import type { RequestMeta } from '../common/utils/request-meta.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
+import { clinicScope } from '../patients/patient-access.js';
 import { AppConfig } from '../config/app-config.js';
 import { ApiworkingClient, ApiworkingError, asRows, clip, optText, reqId, reqIdAny } from './apiworking.client.js';
 import { enforceRealOperationsCap } from './real-operations.js';
@@ -31,6 +32,20 @@ const DOC_TYPES: Record<string, { label: string; pattern: RegExp }> = {
   '7': { label: 'Pasaporte', pattern: /^[A-Za-z0-9]{6,12}$/ },
   '0': { label: 'No domiciliado', pattern: /^[A-Za-z0-9]{1,15}$/ },
 };
+const personTypeOf = (docType: string) => (docType === '6' ? 'J' : 'N');
+/** Fila del espejo local con la forma de un cliente de Apiworking. */
+const fromMirror = (m: { externalCustomerId: string; name: string; docType: string; docNumber: string }): ExternalCustomer => ({
+  id: m.externalCustomerId,
+  personId: '',
+  name: m.name,
+  email: '',
+  docType: DOC_TYPES[m.docType]?.label ?? m.docType,
+  docNumber: m.docNumber,
+  phone: '',
+  whatsapp: '',
+  personType: personTypeOf(m.docType),
+  active: true,
+});
 const sha256 = (v: string) => createHash('sha256').update(v).digest('hex');
 /** Apiworking responde esto cuando el tenant aún no tiene clientes: es una lista vacía, no un fallo. */
 const isEmptyList = (e: unknown) => e instanceof ApiworkingError && e.kind === 'REJECTED' && /no se pudo listar|no se encontr/i.test(e.message);
@@ -81,34 +96,58 @@ export class ApiworkingClientsService {
   }
 
   async list(principal: AuthPrincipal, q: { search?: string; limit: number; offset: number }) {
-    const all = await this.loadAll(principal);
+    const { rows: all, offline } = await this.loadAll(principal);
     const term = q.search?.trim().toLowerCase();
     const filtered = term
       ? all.filter((c) => c.name.toLowerCase().includes(term) || c.docNumber.toLowerCase().includes(term) || c.phone.includes(term))
       : all;
-    return { items: filtered.slice(q.offset, q.offset + q.limit), total: filtered.length };
+    return { items: filtered.slice(q.offset, q.offset + q.limit), total: filtered.length, offline };
   }
 
   async find(principal: AuthPrincipal, id: string): Promise<ExternalCustomer | null> {
-    const cached = (await this.loadAll(principal)).find((c) => c.id === id);
+    const cached = (await this.loadAll(principal)).rows.find((c) => c.id === id);
     if (cached) return cached;
     // Pudo crearse hace instantes: se vuelve a consultar una vez antes de darlo por inexistente.
-    return (await this.loadAll(principal, true)).find((c) => c.id === id) ?? null;
+    return (await this.loadAll(principal, true)).rows.find((c) => c.id === id) ?? null;
   }
 
-  private async loadAll(principal: AuthPrincipal, force = false): Promise<ExternalCustomer[]> {
+  /** Clientes de Apiworking + el espejo local (los creados aquí). Si Apiworking no responde, se sirve solo el espejo (`offline`). */
+  private async loadAll(principal: AuthPrincipal, force = false): Promise<{ rows: ExternalCustomer[]; offline: boolean }> {
     // La sesión de Apiworking se exige SIEMPRE, también cuando la lista sale del caché.
+    this.requireSession(principal);
+    let remote: ExternalCustomer[] = [];
+    let offline = false;
+    try {
+      remote = await this.loadRemote(principal, force);
+    } catch (error) {
+      if (!(error instanceof ApiworkingError) || error.kind === 'AUTH') throw error;
+      offline = true;
+      this.logger.warn(`clientes: Apiworking no respondió (${error.kind}); se usa el espejo local`);
+    }
+    const seen = new Set(remote.map((c) => c.id));
+    const local = (await this.db.apiworkingCustomer.findMany({ where: { tenant: this.config.apiworking.expectedDatabase!, clinicId: clinicScope(principal).clinicId } }))
+      .filter((c) => !seen.has(c.externalCustomerId))
+      .map(fromMirror);
+    const rows = [...remote, ...local].sort((a, b) => a.name.localeCompare(b.name, 'es'));
+    return { rows, offline };
+  }
+
+  private async loadRemote(principal: AuthPrincipal, force: boolean): Promise<ExternalCustomer[]> {
     const session = this.requireSession(principal);
     const tenant = this.config.apiworking.expectedDatabase!;
     const now = Date.now();
     if (!force && this.cache && this.cache.tenant === tenant && now - this.cache.at < CACHE_MS) return this.cache.rows;
-    const data = await this.client
-      .call('clientes', { token: session.token, query: { bd: tenant, displayStart: 1, displayLength: PAGE_SIZE } })
-      .catch((e: unknown) => {
-        if (isEmptyList(e)) return [];
-        throw e;
-      });
-    const raw = asRows(data, 'la lista de clientes');
+    const fetchPage = (displayStart: number) =>
+      this.client
+        .call('clientes', { token: session.token, query: { bd: tenant, displayStart, displayLength: PAGE_SIZE } })
+        .then((d) => asRows(d, 'la lista de clientes'))
+        .catch((e: unknown) => {
+          if (isEmptyList(e)) return [];
+          throw e;
+        });
+    let raw = await fetchPage(1);
+    // Si el desplazamiento es 0-based, displayStart=1 se salta el primer cliente: con una lista vacía se prueba también 0.
+    if (raw.length === 0) raw = await fetchPage(0);
     // Diagnóstico sin datos personales: cantidades y nombres de campo.
     this.logger.log(`clientes: ${raw.length} filas recibidas; campos: ${Object.keys(raw[0] ?? {}).slice(0, 20).join(', ') || 'ninguno'}`);
     const rows = raw
@@ -129,7 +168,7 @@ export class ApiworkingClientsService {
   }
 
   private async existing(principal: AuthPrincipal, docNumber: string): Promise<ExternalCustomer | null> {
-    return (await this.loadAll(principal, true)).find((c) => c.docNumber.toUpperCase() === docNumber) ?? null;
+    return (await this.loadAll(principal, true)).rows.find((c) => c.docNumber.toUpperCase() === docNumber) ?? null;
   }
 
   async previewCreate(principal: AuthPrincipal, draft: { docType: string; docNumber: string }) {
@@ -140,7 +179,7 @@ export class ApiworkingClientsService {
     return { hash, docType: n.docType, docTypeLabel: n.label, docNumber: n.docNumber, exists: exists ? { id: exists.id, name: exists.name } : null, write: this.config.apiworking.write };
   }
 
-  async create(principal: AuthPrincipal, dto: { docType: string; docNumber: string; approvedHash: string }, meta: RequestMeta) {
+  async create(principal: AuthPrincipal, dto: { docType: string; docNumber: string; approvedHash: string; name?: string }, meta: RequestMeta) {
     const cfg = this.config.apiworking;
     if (!cfg.write) throw new ServiceUnavailableException({ message: 'Las escrituras reales de Apiworking están desactivadas en esta instalación', code: 'WRITE_DISABLED' });
     const session = this.requireSession(principal);
@@ -171,7 +210,16 @@ export class ApiworkingClientsService {
     }
     this.cache = null;
     await log(AuditAction.ApiworkingCustomerCreated, { customerId: id });
-    const found = (await this.loadAll(principal, true).catch(() => [])).find((c) => c.id === id) ?? null;
+    // Espejo local: así el cliente se encuentra aunque Apiworking no lo liste o no responda.
+    const tenant = cfg.expectedDatabase!;
+    const name = (dto.name?.trim() || `${n.label} ${n.docNumber}`).slice(0, 200);
+    const clinicId = clinicScope(principal).clinicId;
+    const mirror = await this.db.apiworkingCustomer.upsert({
+      where: { tenant_externalCustomerId: { tenant, externalCustomerId: id } },
+      create: { clinicId, tenant, externalCustomerId: id, docType: n.docType, docNumber: n.docNumber, name, createdById: principal.user.id },
+      update: { docType: n.docType, docNumber: n.docNumber, ...(dto.name?.trim() ? { name } : {}) },
+    });
+    const found = fromMirror(mirror);
     return { status: 'CREATED' as const, id, customer: found };
   }
 }

@@ -32,7 +32,7 @@ export function VentasPage() {
   useEffect(() => { const t = setTimeout(() => setDebounced(query.trim()), 300); return () => clearTimeout(t); }, [query]);
   const [customer, setCustomer] = useState<AwCustomer | null>(null);
   const found = useAsync(
-    () => (session && !customer ? get<{ items: AwCustomer[]; total: number }>('/apiworking/clients', { search: debounced, limit: 8 }) : Promise.resolve({ items: [], total: 0 })),
+    () => (session && !customer ? get<{ items: AwCustomer[]; total: number; offline?: boolean }>('/apiworking/clients', { search: debounced, limit: 8 }) : Promise.resolve({ items: [], total: 0 })),
     [debounced, session, customer],
   );
 
@@ -132,6 +132,7 @@ export function VentasPage() {
               <TextField label="Buscar cliente" help="Por nombre, documento o teléfono. Solo aparecen clientes ya creados en Apiworking." value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
               {found.loading && <p className="caption muted"><Search size={14} aria-hidden="true" /> Buscando…</p>}
               {found.error != null && <ErrorState error={found.error} onRetry={found.reload} />}
+              {found.data?.offline && <Alert tone="warning">Apiworking no respondió: se muestran solo los clientes guardados en este sistema.</Alert>}
               {found.data && found.data.items.length > 0 && (
                 <ul className="context-list">
                   {found.data.items.map((cu) => (
@@ -516,6 +517,7 @@ function NewCustomer({ write, onCreated }: { write: boolean; onCreated: (c: AwCu
   const [openForm, setOpenForm] = useState(false);
   const [docType, setDocType] = useState('1');
   const [docNumber, setDocNumber] = useState('');
+  const [name, setName] = useState('');
   const [prev, setPrev] = useState<{ data: AwCustomerPreview; signature: string } | null>(null);
   const [ok, setOk] = useState(false);
   const [busy, setBusy] = useState<'preview' | 'create' | null>(null);
@@ -536,8 +538,8 @@ function NewCustomer({ write, onCreated }: { write: boolean; onCreated: (c: AwCu
     if (!current || sending.current) return;
     sending.current = true; setBusy('create'); setError(null);
     try {
-      const r = await post<AwCustomerResult>('/apiworking/clients', { docType, docNumber: docNumber.trim(), approvedHash: current.data.hash });
-      if (r.status === 'CREATED' && r.customer) { toast.success('Cliente creado'); onCreated(r.customer); setOpenForm(false); setDocNumber(''); setPrev(null); setOk(false); }
+      const r = await post<AwCustomerResult>('/apiworking/clients', { docType, docNumber: docNumber.trim(), approvedHash: current.data.hash, ...(name.trim() ? { name: name.trim() } : {}) });
+      if (r.status === 'CREATED' && r.customer) { toast.success('Cliente creado'); onCreated(r.customer); setOpenForm(false); setDocNumber(''); setName(''); setPrev(null); setOk(false); }
       else setNote(r.status === 'CREATED' ? 'Cliente creado. Búsquelo en la lista para elegirlo.' : r.message ?? 'No se pudo confirmar el alta. Búsquelo antes de intentarlo de nuevo.');
     } catch (e) { setError(errorText(e)); }
     finally { sending.current = false; setBusy(null); }
@@ -560,7 +562,8 @@ function NewCustomer({ write, onCreated }: { write: boolean; onCreated: (c: AwCu
       {current && current.data.exists && <Alert tone="warning">Este documento ya existe en Apiworking ({current.data.exists.name}). Búsquelo en la lista para elegirlo.</Alert>}
       {current && !current.data.exists && (
         <div style={{ marginTop: 'var(--space-4)' }}>
-          <p>Se creará un cliente con <strong>{current.data.docTypeLabel} {current.data.docNumber}</strong> en Apiworking. Apiworking completa el nombre.</p>
+          <p>Se creará un cliente con <strong>{current.data.docTypeLabel} {current.data.docNumber}</strong> en Apiworking. Apiworking completa su propio nombre; el de abajo es solo la referencia que se guarda aquí.</p>
+          <TextField label="Nombre (opcional)" value={name} autoComplete="off" onChange={(e) => setName(e.target.value)} />
           {!write && <Alert tone="info">Las escrituras reales están desactivadas en esta instalación.</Alert>}
           <label className="check" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
             <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} />

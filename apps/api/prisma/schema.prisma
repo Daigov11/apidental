@@ -2054,3 +2054,25 @@ model ApiworkingSale {
   @@index([tenant, attemptedAt])
   @@map("apiworking_sales")
 }
+
+/// Espejo local de los clientes de Apiworking (los que se crean por ClienteDoc y los que se usan en ventas): permite buscar
+/// aunque Apiworking no responda o no devuelva el cliente. Apiworking sigue siendo la fuente de verdad del id.
+model ApiworkingCustomer {
+  id                 String   @id @default(uuid()) @db.Char(36)
+  clinicId           String   @map("clinic_id") @db.Char(36)
+  tenant             String   @db.VarChar(120)
+  externalCustomerId String   @map("external_customer_id") @db.VarChar(40)
+  /// Código de tipoDoc de Apiworking: DNI 1, RUC 6, CE 4, pasaporte 7, no domiciliado 0.
+  docType            String   @map("doc_type") @db.VarChar(2)
+  docNumber          String   @map("doc_number") @db.VarChar(20)
+  /// Nombre de referencia: Apiworking completa el suyo y no lo devuelve al crear.
+  name               String   @db.VarChar(200)
+  createdById        String   @map("created_by_id") @db.Char(36)
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@unique([tenant, externalCustomerId])
+  @@unique([tenant, docType, docNumber])
+  @@index([clinicId, name])
+  @@map("apiworking_customers")
+}

@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { randomUUID } from 'node:crypto';
+import { ApiworkingClientsService } from '../src/apiworking/apiworking-clients.service.js';
 import { ApiworkingSessionStore } from '../src/apiworking/apiworking-session.store.js';
 import { bearer, createTestContext, Fixtures, type TestContext } from './helpers/app.js';
 
@@ -17,7 +18,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
   const seen: Seen[] = [];
   const saved: Record<string, string | undefined> = {};
   /** Escenarios que la prueba activa en el servidor simulado. */
-  const scenario = { registro: 'ok' as 'ok' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject' };
+  const scenario = { registro: 'ok' as 'ok' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject', clientes: 'ok' as 'ok' | 'boom' };
 
   const customers = [
     { total: 3, id_cliente: 202600000038, id_persona: 202600000049, nombrecompleto: 'ROBERTO CARLOS ESPINAR VICHARRA', email: '', tipoDoc: 'D.N.I.', numerodocumento: '74908568', telefono: '', tipo_persona: 'N', estado: 'A', limite_credito: '0.00', saldo: 0, whatsapp: '', saldo_restante: '0.00' },
@@ -55,7 +56,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       case 'GET /api/Caja/tipo-documentos': return { status: 200, body: ok([{ id_tipo_documento: 2, tipo_documento: 'Boleta' }, { id_tipo_documento: 9, tipo_documento: 'No autorizado' }]) };
       case 'GET /api/Facturacion/series': return { status: 200, body: ok([{ id_serie: 11, serie: 'B001' }, { id_serie: 12, serie: 'B002' }]) };
       case 'GET /api/CajaChica/formas-pago': return { status: 200, body: ok([{ id_metodo_pago: 1, metodoPago: 'Efectivo' }]) };
-      case 'GET /api/Cliente/clientes': return { status: 200, body: ok(customers) };
+      case 'GET /api/Cliente/clientes': return scenario.clientes === 'boom' ? { status: 500, body: { error: 'x' } } : { status: 200, body: ok(customers) };
       case 'POST /api/Facturacion/registro-documento':
         if (scenario.registro === 'boom') return { status: 500, body: { error: 'x' } };
         if (scenario.registro === 'reject') return { status: 200, body: { codResponse: 0, message: 'Serie sin correlativo' } };
@@ -399,9 +400,10 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     expect(stale.body.code).toBe('PREVIEW_CHANGED');
     expect(altas()).toBe(0);
 
-    const created = await ctx.http().post('/v1/apiworking/clients').set(bearer(t)).send({ ...draftC, approvedHash: p.body.hash }).expect(200);
+    const created = await ctx.http().post('/v1/apiworking/clients').set(bearer(t)).send({ ...draftC, name: 'Paciente Local', approvedHash: p.body.hash }).expect(200);
     expect(created.body).toMatchObject({ status: 'CREATED', id: '202600000099' });
-    expect(created.body.customer).toMatchObject({ name: 'PACIENTE NUEVO', docNumber: '12345678' });
+    expect(created.body.customer).toMatchObject({ name: 'Paciente Local', docNumber: '12345678' });
+    expect(await ctx.db.apiworkingCustomer.count()).toBe(1);
     const call = seen.filter((x) => x.path === '/api/Cliente/ClienteDoc').at(-1)!;
     expect(call.query.get('tipoDoc')).toBe('1');
     expect(call.query.get('nroDoc')).toBe('12345678');
@@ -415,6 +417,18 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     expect(dup.status).toBe(409);
     expect(dup.body.code).toBe('ALREADY_EXISTS');
     expect(altas()).toBe(1);
+
+    // Si Apiworking no responde (o no lo lista), el cliente se encuentra en el espejo local.
+    scenario.clientes = 'boom';
+    (ctx.app.get(ApiworkingClientsService) as unknown as { cache: unknown }).cache = null; // sin el caché de 60 s
+    const offline = await ctx.http().get('/v1/apiworking/clients?search=12345678').set(bearer(t)).expect(200);
+    expect(offline.body.offline).toBe(true);
+    expect(offline.body.items.map((c: { name: string }) => c.name)).toEqual(['Paciente Local']);
+    scenario.clientes = 'ok';
+    (ctx.app.get(ApiworkingClientsService) as unknown as { cache: unknown }).cache = null;
+    const online = await ctx.http().get('/v1/apiworking/clients?search=paciente').set(bearer(t)).expect(200);
+    expect(online.body.offline).toBe(false);
+    expect(online.body.items).toHaveLength(1); // el mismo id no se duplica entre Apiworking y el espejo
 
     // El número de documento no queda en la auditoría.
     const audit = JSON.stringify(await ctx.db.auditLog.findMany({ where: { action: { startsWith: 'APIWORKING_CUSTOMER' } } }));
