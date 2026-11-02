@@ -29,6 +29,6 @@ import { TokenService } from './token.service.js';
     JwtAuthGuard,
     PermissionsGuard,
   ],
-  exports: [AccessService, TokenService, SessionService, ReauthService, LoginAttemptsService, PasswordRecoveryService, JwtAuthGuard, PermissionsGuard],
+  exports: [AuthService, AccessService, TokenService, SessionService, ReauthService, LoginAttemptsService, PasswordRecoveryService, JwtAuthGuard, PermissionsGuard],
 })
 export class AuthModule {}

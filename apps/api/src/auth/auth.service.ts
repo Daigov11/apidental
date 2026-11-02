@@ -1,4 +1,5 @@
-import { ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
+import { ApiworkingSessionStore } from '../apiworking/apiworking-session.store.js';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
 import type { RequestMeta } from '../common/utils/request-meta.js';
 import {
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly audit: AuditService,
     private readonly attempts: LoginAttemptsService,
     private readonly sessions: SessionService,
+    @Optional() private readonly externalSessions?: ApiworkingSessionStore,
   ) {}
 
   /**
@@ -63,15 +65,26 @@ export class AuthService {
     }
 
     const newHash = passwordNeedsRehash(user.passwordHash) ? await hashPassword(dto.password) : null;
+    const { sessionId: _sessionId, ...started } = await this.startSession(user, meta, {}, newHash ? { passwordHash: newHash } : {}, now);
+    return started;
+  }
+
+  /**
+   * Abre la sesión de un usuario ya autenticado (por cualquier vía: contraseña local o Apiworking): reinicia los
+   * contadores de bloqueo, crea la sesión, audita el ingreso y firma el access token. `sessionId` lo usa quien
+   * necesite atar algo a la sesión (p. ej. el JWT externo, que nunca sale del servidor).
+   */
+  async startSession(
+    user: PublicUser & { id: string },
+    meta: RequestMeta,
+    auditExtra: Record<string, unknown> = {},
+    userUpdate: { passwordHash?: string } = {},
+    now = new Date(),
+  ) {
     const session = await this.db.$transaction(async (tx) => {
       await tx.user.update({
         where: { id: user.id },
-        data: {
-          failedLoginAttempts: 0,
-          lockedUntil: null,
-          lastLoginAt: now,
-          ...(newHash ? { passwordHash: newHash } : {}),
-        },
+        data: { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: now, ...userUpdate },
       });
       const created = await this.sessions.create(user.id, meta, tx);
       await this.audit.record(
@@ -81,7 +94,7 @@ export class AuthService {
           entityId: user.id,
           userId: user.id,
           meta,
-          summary: { sessionId: created.sessionId },
+          summary: { sessionId: created.sessionId, ...auditExtra },
         },
         tx,
       );
@@ -89,6 +102,7 @@ export class AuthService {
     });
 
     return {
+      sessionId: session.sessionId,
       refreshToken: session.refreshToken,
       body: {
         accessToken: await this.tokens.sign(user.id, session.sessionId),
@@ -126,6 +140,7 @@ export class AuthService {
     for (const s of sessionIds) {
       if (seen.has(s.sessionId)) continue;
       seen.add(s.sessionId);
+      this.externalSessions?.delete(s.sessionId);
       const revoked = await this.sessions.revokeSession(s.sessionId, 'LOGOUT');
       if (revoked) {
         await this.audit.recordSafely({
@@ -141,6 +156,7 @@ export class AuthService {
   }
 
   async logoutAll(principal: AuthPrincipal, meta: RequestMeta): Promise<number> {
+    this.externalSessions?.deleteForUser(principal.user.id);
     const count = await this.sessions.revokeAllForUser(principal.user.id, 'LOGOUT_ALL');
     await this.audit.recordSafely({
       action: AuditAction.SessionLogoutAll,

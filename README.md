@@ -242,6 +242,8 @@ curl -s localhost:3000/v1/branches -H "Authorization: Bearer $CTX"
 
 Plantillas en `deploy/`. **Nada se despliega ni se ejecuta desde este repositorio.**
 
+- **Varios clientes:** una instancia por cliente (BD, `.env`, puerto y dominios propios) con el mismo código. Plantillas `apidental-api@.service`, `apidental-instancia.conf.template`, `deploy/scripts/instance-new.sh` y `deploy.sh` (recorre las instancias). Ver [`docs/arquitectura/instancias-por-cliente.md`](docs/arquitectura/instancias-por-cliente.md). Lo que sigue describe una instalación; en el esquema por instancia, `api.env` pasa a ser `/etc/apidental/<nombre>.env`.
+
 - **Sesiones y cookie:** el panel (`dental.apiworking.com.pe`) llama a la API (`api.dental.apiworking.com.pe`) con `credentials: 'include'`. Defina `CORS_ORIGINS=https://dental.apiworking.com.pe` (el origen **exacto**; nunca `*`). La cookie del refresh token es `__Host-apidental_rt` (HttpOnly, Secure, SameSite=Strict, sin `Domain`): requiere HTTPS en ambos hosts y que Nginx **no** elimine ni reescriba `Set-Cookie`/`Origin`. `TRUST_PROXY=1` para que la IP de cada sesión sea la real. La API se niega a iniciar con `COOKIE_SECURE=false` en producción.
 - **Invitaciones:** en producción `INVITATION_DELIVERY_MODE` debe ser `webhook` (con `INVITATION_WEBHOOK_URL` https, `INVITATION_WEBHOOK_SECRET` de 32+ caracteres e `INVITATION_ACCEPT_BASE_URL` https). Su sistema receptor debe **verificar la firma HMAC** (`X-ApiDental-Signature`) y rechazar marcas de tiempo antiguas. Con `dev` la API no inicia; con `disabled` (por defecto) no se pueden crear invitaciones.
 - **Recuperación de contraseña:** reutiliza el canal de `INVITATION_DELIVERY_MODE` (evento `password_recovery.deliver` en el webhook firmado). Defina `PASSWORD_RECOVERY_BASE_URL` (https). Con el canal `disabled` las solicitudes siguen respondiendo `202` pero no se entrega nada: **sin canal no hay recuperación**.
@@ -268,6 +270,9 @@ npm run admin:dev    # panel en http://localhost:5173/admin/ (Vite reenvía /v1 
 npm run admin:build  # build estático en apps/admin/dist (se sirve en /admin/ con Nginx)
 ```
 `CORS_ORIGINS` debe incluir el origen del panel. Cuentas demo (ficticias, tras `npm run db:seed`): `recepcion.demo@apidental.test` (agenda; **sin acceso clínico**) y `odontologa.demo@apidental.test` (atiende; la cita de hoy de «Camila Demo Nueva» permite iniciar la atención). Agenda: `/v1/agenda/*` y `/v1/appointments/*` (permisos `appointment:read|manage|attend`, `agenda:manage`). Detalle en [`docs/arquitectura/incremento-4-0-agenda-panel.md`](docs/arquitectura/incremento-4-0-agenda-panel.md).
+
+## Apiworking real (login, clientes y ventas)
+`AUTH_MODE=apiworking` hace que el panel inicie sesión con la cuenta de Apiworking del tenant; las ventas se registran con `registro-documento` desde **Ventas** (el JSON exacto se revisa y aprueba antes de cada envío; escrituras apagadas por defecto). Convive con los simuladores de más abajo y no comparte tablas con ellos. Configuración, flujo de puesta en marcha y supuestos por validar: [`docs/arquitectura/apiworking-real.md`](docs/arquitectura/apiworking-real.md).
 
 ## Simuladores de Apiworking (4.1, solo demostración)
 `INTEGRATIONS_MODE=mock` activa cobros, comprobantes **«DEMO — NO VÁLIDO PARA SUNAT»**, cola con reintentos y conciliación, fidelización (puntos, canjes, resumen NFC) y reseñas, todo **simulado** con datos ficticios y sin credenciales ni endpoints reales. Por defecto (`off`) no existe nada de esto. No es apto para producción. Detalle, flujo de demostración y pendientes: [`docs/arquitectura/incremento-4-1-simuladores-apiworking.md`](docs/arquitectura/incremento-4-1-simuladores-apiworking.md).

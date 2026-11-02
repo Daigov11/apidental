@@ -223,6 +223,63 @@ export class EnvironmentVariables {
   @IsOptional() @IsIn(['off', 'mock'])
   INTEGRATIONS_MODE: string = 'off';
 
+  /**
+   * local = solo cuentas locales (por defecto). apiworking = el inicio de sesión del panel se hace con la cuenta de
+   * Apiworking del tenant (POST /api/User/login); los permisos siguen siendo locales. El login local sigue disponible
+   * para el administrador local (quien asigna los roles).
+   */
+  @IsOptional() @IsIn(['local', 'apiworking'])
+  AUTH_MODE: string = 'local';
+
+  /** URL base de Apiworking (solo https y hosts apiworking.pe / apiworking.co). */
+  @IsOptional() @IsString()
+  APIWORKING_BASE_URL: string = 'https://api-centralizador.apiworking.pe';
+
+  /** idSistema: URL del sistema del cliente en Apiworking (se envía en el login). */
+  @IsOptional() @IsString()
+  APIWORKING_SYSTEM_ID?: string;
+
+  /** Tenant esperado: empresa.base_datos del login y parámetro bd de las consultas. Si no coincide, se rechaza el ingreso. */
+  @IsOptional() @IsString()
+  APIWORKING_AUTHZ_EXPECTED_DATABASE?: string;
+
+  /** Interruptor de LECTURAS reales (clientes, cajas, series, consulta de documentos). Apagado por defecto. */
+  @IsOptional() @IsIn(['true', 'false'])
+  APIWORKING_AUTHZ_READ: string = 'false';
+
+  /** Interruptor de ESCRITURAS reales (registrar y anular documentos; pueden tener efecto tributario). Apagado por defecto. */
+  @IsOptional() @IsIn(['true', 'false'])
+  APIWORKING_AUTHZ_WRITE: string = 'false';
+
+  /** Tope de envíos reales por ventana de 24 h (0 = ninguno). Corta una serie de documentos por un fallo. */
+  @IsOptional()
+  @Transform(toInt)
+  @IsInt()
+  @Min(0)
+  @Max(1000)
+  APIWORKING_MAX_REAL_OPERATIONS: number = 0;
+
+  @IsOptional()
+  @Transform(toInt)
+  @IsInt()
+  @Min(1000)
+  @Max(60000)
+  APIWORKING_TIMEOUT_MS: number = 15000;
+
+  /** Listas cerradas (ids separados por coma) de lo que esta instalación puede usar para escribir. Vacío = nada. */
+  @IsOptional() @IsString()
+  APIWORKING_AUTHORIZED_CASH_REGISTERS?: string;
+  @IsOptional() @IsString()
+  APIWORKING_AUTHORIZED_DOCUMENT_TYPES?: string;
+  @IsOptional() @IsString()
+  APIWORKING_AUTHORIZED_SERIES?: string;
+
+  /** Datos que Apiworking no permite consultar: los fija el responsable del tenant. */
+  @IsOptional() @IsString()
+  APIWORKING_WAREHOUSE_ID?: string;
+  @IsOptional() @IsString()
+  APIWORKING_UNIT_ID?: string;
+
   /** Clínica a la que pertenece la web pública (landing y solicitudes de cita). Sin valor, las rutas públicas responden 404. */
   @IsOptional() @IsUUID()
   PUBLIC_BOOKING_CLINIC_ID?: string;
@@ -290,6 +347,34 @@ export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables 
   }
   if (env.INTEGRATIONS_MODE === 'mock' && production && env.INTEGRATIONS_MOCK_ALLOW_PRODUCTION !== 'true') {
     throw new Error('Configuración de entorno inválida: INTEGRATIONS_MODE=mock no se permite en producción (INTEGRATIONS_MOCK_ALLOW_PRODUCTION=true solo para demostraciones)');
+  }
+  const awRead = env.APIWORKING_AUTHZ_READ === 'true';
+  const awWrite = env.APIWORKING_AUTHZ_WRITE === 'true';
+  if (env.AUTH_MODE === 'apiworking' || awRead || awWrite) {
+    if (!env.APIWORKING_SYSTEM_ID) throw new Error('Configuración de entorno inválida: APIWORKING_SYSTEM_ID es obligatorio para usar Apiworking');
+    if (!env.APIWORKING_AUTHZ_EXPECTED_DATABASE) {
+      throw new Error('Configuración de entorno inválida: APIWORKING_AUTHZ_EXPECTED_DATABASE es obligatorio (tenant esperado)');
+    }
+    let host: string;
+    try {
+      const url = new URL(env.APIWORKING_BASE_URL);
+      if (url.protocol !== 'https:' && !(url.protocol === 'http:' && !production)) throw new Error('protocolo');
+      host = url.hostname;
+    } catch {
+      throw new Error('Configuración de entorno inválida: APIWORKING_BASE_URL debe ser una URL https');
+    }
+    if (!/(^|\.)apiworking\.(pe|co)$/i.test(host) && !(host === 'localhost' || host === '127.0.0.1') ) {
+      throw new Error('Configuración de entorno inválida: APIWORKING_BASE_URL debe apuntar a un host de apiworking.pe o apiworking.co');
+    }
+    if ((host === 'localhost' || host === '127.0.0.1') && production) {
+      throw new Error('Configuración de entorno inválida: APIWORKING_BASE_URL no puede ser local en producción');
+    }
+  }
+  if (awWrite) {
+    if (!awRead) throw new Error('Configuración de entorno inválida: APIWORKING_AUTHZ_WRITE requiere APIWORKING_AUTHZ_READ=true');
+    for (const k of ['APIWORKING_AUTHORIZED_CASH_REGISTERS', 'APIWORKING_AUTHORIZED_DOCUMENT_TYPES', 'APIWORKING_AUTHORIZED_SERIES', 'APIWORKING_WAREHOUSE_ID', 'APIWORKING_UNIT_ID'] as const) {
+      if (!env[k]) throw new Error(`Configuración de entorno inválida: ${k} es obligatorio con APIWORKING_AUTHZ_WRITE=true`);
+    }
   }
   if (env.FIELD_ENCRYPTION_MODE === 'aes-gcm') {
     if (!env.FIELD_ENCRYPTION_KEY || Buffer.from(env.FIELD_ENCRYPTION_KEY, 'base64').length !== 32) {

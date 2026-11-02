@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import type { Request } from 'express';
+import { ApiworkingModule } from './apiworking/apiworking.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module.js';
 /** Rutas públicas o de verificación de contraseña/token: comparten el límite estricto por IP (fuerza bruta). */
 const STRICT_ROUTES = [
   '/auth/login',
+  '/auth/apiworking-login',
   '/auth/reauthenticate',
   '/auth/password-recovery',
   '/auth/password-recovery/validate',
@@ -77,6 +79,7 @@ const isLoginRoute = (req: Request): boolean => STRICT_ROUTES.some((r) => req.pa
     AgendaModule,
     BookingModule,
     IntegrationsModule,
+    ApiworkingModule,
     ProvisioningModule,
     InvitationsModule,
     MaintenanceModule,

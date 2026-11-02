@@ -117,6 +117,7 @@ model User {
   sessions              AuthSession[]
   reauthProofs          ReauthProof[]
   passwordRecoveries    PasswordRecovery[]
+  externalIdentity      ExternalIdentity?
   careRelationships     PatientCareRelationship[]
   clinicalGrants        ClinicalAccessGrant[]
   visitsAsDentist       ClinicalVisit[]
@@ -1966,4 +1967,90 @@ model BookingRequest {
   @@index([clinicId, status, createdAt])
   @@index([mobile, status])
   @@map("booking_requests")
+}
+
+// --- Apiworking (integración real): identidad externa y ventas por registro-documento ---
+
+/// Vínculo de un usuario local con su cuenta de Apiworking. El usuario local nace sin roles: los permisos son SIEMPRE locales;
+/// los roles externos se guardan solo como información (nunca se convierten en roles locales).
+model ExternalIdentity {
+  id               String   @id @default(uuid()) @db.Char(36)
+  userId           String   @unique @map("user_id") @db.Char(36)
+  provider         String   @db.VarChar(20)
+  /// empresa.base_datos del login (p. ej. prod_ti_tiendaglowsmile).
+  tenant           String   @db.VarChar(120)
+  externalUserId   String   @map("external_user_id") @db.VarChar(40)
+  externalUsername String   @map("external_username") @db.VarChar(120)
+  externalBranchId String?  @map("external_branch_id") @db.VarChar(40)
+  externalRoles    Json?    @map("external_roles")
+  lastLoginAt      DateTime @map("last_login_at") @db.DateTime(3)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, tenant, externalUserId])
+  @@map("external_identities")
+}
+
+/// Estado del DOCUMENTO en Apiworking. SENT solo con respuesta correcta y referencia (idComprobante).
+enum ApiworkingDocStatus {
+  PENDING
+  SENT
+  REJECTED
+  PENDING_RECONCILIATION
+}
+
+/// El cobro es un estado APARTE: registrar el documento no aplica el pago (problema conocido del proveedor).
+enum ApiworkingPaymentStatus {
+  NO_EVIDENCE
+  CONFIRMED_REMOTE
+  CONFIRMED_RECONCILED
+}
+
+enum ApiworkingVoidStatus {
+  IN_PROGRESS
+  VOIDED
+  TO_RECONCILE
+}
+
+/// Venta registrada en Apiworking (registro-documento). Nunca se reenvía sola: un tiempo agotado = resultado desconocido.
+model ApiworkingSale {
+  id                 String                  @id @default(uuid()) @db.Char(36)
+  clinicId           String                  @map("clinic_id") @db.Char(36)
+  tenant             String                  @db.VarChar(120)
+  /// Clave local: la misma clave nunca envía dos veces la misma operación.
+  idempotencyKey     String                  @unique @map("idempotency_key") @db.VarChar(64)
+  /// SHA-256 del JSON exacto aprobado por la persona antes del envío.
+  requestHash        String                  @map("request_hash") @db.Char(64)
+  patientId          String?                 @map("patient_id") @db.Char(36)
+  externalCustomerId String                  @map("external_customer_id") @db.VarChar(40)
+  customerName       String                  @map("customer_name") @db.VarChar(200)
+  customerDocType    String                  @map("customer_doc_type") @db.VarChar(20)
+  customerDocNumber  String                  @map("customer_doc_number") @db.VarChar(20)
+  idCaja             String                  @map("id_caja") @db.VarChar(40)
+  idSerie            String                  @map("id_serie") @db.VarChar(40)
+  serie              String?                 @db.VarChar(20)
+  documentTypeId     String                  @map("document_type_id") @db.VarChar(40)
+  paymentMethodId    String                  @map("payment_method_id") @db.VarChar(40)
+  description        String                  @db.VarChar(200)
+  /// Líneas tal como se enviaron: [{ name, quantity, unitPriceCents }].
+  lines              Json
+  totalCents         Int                     @map("total_cents")
+  docDate            DateTime                @map("doc_date") @db.Date
+  docStatus          ApiworkingDocStatus     @default(PENDING) @map("doc_status")
+  paymentStatus      ApiworkingPaymentStatus @default(NO_EVIDENCE) @map("payment_status")
+  voidStatus         ApiworkingVoidStatus?   @map("void_status")
+  /// idComprobante devuelto por Apiworking.
+  externalDocId      String?                 @map("external_doc_id") @db.VarChar(40)
+  externalNumber     String?                 @map("external_number") @db.VarChar(40)
+  failureReason      String?                 @map("failure_reason") @db.VarChar(300)
+  /// Momento del envío real (nulo = nunca se llamó a Apiworking).
+  attemptedAt        DateTime?               @map("attempted_at") @db.DateTime(3)
+  createdById        String                  @map("created_by_id") @db.Char(36)
+  createdAt          DateTime                @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime                @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@index([clinicId, createdAt])
+  @@index([tenant, attemptedAt])
+  @@map("apiworking_sales")
 }

@@ -39,6 +39,24 @@ export class AppConfig {
   };
   readonly fieldEncryption: { mode: 'off' | 'aes-gcm'; keyId: string; key: string | null; oldKeys: string | null };
   readonly integrations: { mode: 'off' | 'mock'; workerIntervalMs: number };
+  /** Inicio de sesión del panel: local o con la cuenta de Apiworking. */
+  readonly authMode: 'local' | 'apiworking';
+  /** Apiworking real. `configured` = hay tenant y sistema; `read`/`write` son los interruptores de operaciones reales. */
+  readonly apiworking: {
+    configured: boolean;
+    baseUrl: string;
+    systemId: string | null;
+    expectedDatabase: string | null;
+    read: boolean;
+    write: boolean;
+    maxRealOperations: number;
+    timeoutMs: number;
+    authorizedCashRegisters: string[];
+    authorizedDocumentTypes: string[];
+    authorizedSeries: string[];
+    warehouseId: string | null;
+    unitId: string | null;
+  };
   /** Web pública de solicitudes de cita: clínica a la que pertenece; null = apagada (rutas públicas 404). */
   readonly publicBooking: { clinicId: string | null };
   readonly corsOrigins: string[];
@@ -101,6 +119,23 @@ export class AppConfig {
       oldKeys: env.FIELD_ENCRYPTION_OLD_KEYS ?? null,
     };
     this.integrations = { mode: env.INTEGRATIONS_MODE as 'off' | 'mock', workerIntervalMs: env.INTEGRATIONS_WORKER_INTERVAL_MS };
+    const list = (v?: string) => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+    this.authMode = env.AUTH_MODE as 'local' | 'apiworking';
+    this.apiworking = {
+      configured: Boolean(env.APIWORKING_SYSTEM_ID && env.APIWORKING_AUTHZ_EXPECTED_DATABASE),
+      baseUrl: env.APIWORKING_BASE_URL.replace(/\/+$/, ''),
+      systemId: env.APIWORKING_SYSTEM_ID ?? null,
+      expectedDatabase: env.APIWORKING_AUTHZ_EXPECTED_DATABASE ?? null,
+      read: env.APIWORKING_AUTHZ_READ === 'true',
+      write: env.APIWORKING_AUTHZ_WRITE === 'true',
+      maxRealOperations: env.APIWORKING_MAX_REAL_OPERATIONS,
+      timeoutMs: env.APIWORKING_TIMEOUT_MS,
+      authorizedCashRegisters: list(env.APIWORKING_AUTHORIZED_CASH_REGISTERS),
+      authorizedDocumentTypes: list(env.APIWORKING_AUTHORIZED_DOCUMENT_TYPES),
+      authorizedSeries: list(env.APIWORKING_AUTHORIZED_SERIES),
+      warehouseId: env.APIWORKING_WAREHOUSE_ID ?? null,
+      unitId: env.APIWORKING_UNIT_ID ?? null,
+    };
     this.publicBooking = { clinicId: env.PUBLIC_BOOKING_CLINIC_ID ?? null };
     this.corsOrigins = env.CORS_ORIGINS.split(',')
       .map((o) => o.trim())

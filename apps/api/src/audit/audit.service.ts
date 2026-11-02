@@ -53,6 +53,14 @@ export const AuditAction = {
   AccessDenied: 'ACCESS_DENIED',
   ReauthRejected: 'REAUTH_REJECTED',
   MaintenancePurge: 'MAINTENANCE_PURGE',
+  // --- Apiworking (integración real). Nunca se copian tokens, contraseñas ni cuerpos de respuesta ---
+  ApiworkingLoginFailed: 'APIWORKING_LOGIN_FAILED',
+  ApiworkingIdentityLinked: 'APIWORKING_IDENTITY_LINKED',
+  ApiworkingSaleSent: 'APIWORKING_SALE_SENT',
+  ApiworkingSaleRejected: 'APIWORKING_SALE_REJECTED',
+  ApiworkingSaleUnknown: 'APIWORKING_SALE_UNKNOWN_RESULT',
+  ApiworkingSaleVoided: 'APIWORKING_SALE_VOIDED',
+  ApiworkingSaleReconciled: 'APIWORKING_SALE_RECONCILED',
   // --- Relación asistencial y acceso clínico (3.1). Nunca se copia contenido clínico ---
   CareRelationshipCreated: 'CARE_RELATIONSHIP_CREATED',
   CareRelationshipRevoked: 'CARE_RELATIONSHIP_REVOKED',

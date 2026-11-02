@@ -21,6 +21,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:create-admin": "tsx prisma/create-admin.ts",
+    "db:create-clinic": "tsx prisma/create-clinic.ts",
+    "db:grant-role": "tsx prisma/grant-role.ts",
     "maintenance": "node dist/maintenance/cli.js",
     "maintenance:dry-run": "node dist/maintenance/cli.js --dry-run",
     "db:demo-hoy": "tsx prisma/shift-demo-today.ts"

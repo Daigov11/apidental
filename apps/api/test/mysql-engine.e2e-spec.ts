@@ -90,7 +90,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
     );
     expect(tables.map((t) => t.name).sort()).toEqual(
       [
-        'billing_counters', 'billing_documents', 'charges', 'integration_outbox', 'mock_loyalty_entries', 'mock_provider_records', 'mock_review_requests',
+        'apiworking_sales', 'external_identities', 'billing_counters', 'billing_documents', 'charges', 'integration_outbox', 'mock_loyalty_entries', 'mock_provider_records', 'mock_review_requests',
         'agenda_services', 'appointment_slots', 'appointments', 'booking_requests', 'dentist_specialties', 'rooms', 'schedule_blocks', 'schedule_rules', 'specialties',
         'attachments', 'audit_logs', 'auth_sessions', 'branches', 'clinical_access_grants', 'clinical_alerts', 'clinical_allergy_assessments', 'clinical_diagnoses', 'clinical_history_entries', 'clinical_notes', 'clinical_odontograms', 'clinical_procedures', 'clinical_visits', 'clinics', 'guardians', 'invitations',
         'cash_accounts', 'cash_categories', 'cash_movements', 'cash_registers', 'cash_session_accounts', 'cash_sessions', 'password_recoveries', 'prescription_items', 'prescriptions', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers', 'patients',
