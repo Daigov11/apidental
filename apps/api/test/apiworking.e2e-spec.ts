@@ -28,6 +28,10 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
   const ok = (data: unknown) => ({ codResponse: 1, message: 'OK', data });
 
   function route(req: Seen): { status: number; body?: unknown; hang?: boolean } {
+    if (req.method === 'POST' && req.path === `/api/CajaChica/PostCierreCajaChica/${TENANT}`) {
+      scenario.cajaOpen = false;
+      return { status: 200, body: ok([{ result: 1, duplicado: 0, msjDocumentos: '', msjCuadroPerfecto: '', idAuditoria: '1' }]) };
+    }
     if (req.method === 'POST' && req.path === `/api/CajaChica/AperturaCajaChica/${TENANT}`) {
       if (scenario.apertura === 'boom') return { status: 500, body: { error: 'x' } };
       if (scenario.apertura === 'reject') return { status: 200, body: { codResponse: 0, message: 'Turno inválido' } };
@@ -372,6 +376,32 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     }
   });
 
+  it('cierra la caja con las cadenas vacías y solo si está abierta', async () => {
+    const login = await enter();
+    const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);
+    const t = sel.body.accessToken as string;
+    const cierres = () => seen.filter((x) => x.method === 'POST' && x.path.startsWith('/api/CajaChica/PostCierreCajaChica')).length;
+
+    scenario.cajaOpen = false;
+    const closedPrev = await ctx.http().post('/v1/apiworking/cash/close-preview').set(bearer(t)).send({ idCaja: '5' }).expect(200);
+    expect(closedPrev.body.isOpen).toBe(false);
+    const notOpen = await ctx.http().post('/v1/apiworking/cash/close').set(bearer(t)).send({ idCaja: '5', approvedHash: closedPrev.body.hash });
+    expect(notOpen.status).toBe(409);
+    expect(notOpen.body.code).toBe('NOT_OPEN');
+    expect(cierres()).toBe(0);
+
+    scenario.cajaOpen = true;
+    const p = await ctx.http().post('/v1/apiworking/cash/close-preview').set(bearer(t)).send({ idCaja: '5' }).expect(200);
+    expect(p.body.isOpen).toBe(true);
+    const done = await ctx.http().post('/v1/apiworking/cash/close').set(bearer(t)).send({ idCaja: '5', approvedHash: p.body.hash });
+    expect(done.status).toBe(200);
+    expect(done.body.status).toBe('CLOSED');
+    expect(cierres()).toBe(1);
+    expect(seen.filter((x) => x.path.startsWith('/api/CajaChica/PostCierreCajaChica')).at(-1)!.body).toEqual({
+      idPersona: '201900000001', idTurno: '1', idCaja: '5', cadenaDetalle: '', cadenaCierre: '', cadenaCierreDetalle: '', idCajaSel: '', ip: '', usuario: '77',
+    });
+  });
+
   it('abre la caja con vista previa, aprobación exacta, una sola vez y con tope', async () => {
     const login = await enter();
     const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);
@@ -415,8 +445,8 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     expect(aperturas()).toBe(2);
     scenario.apertura = 'ok';
 
-    // Dos intentos ya contados: con tope 4, tras dos más se bloquea.
-    await ctx.db.auditLog.createMany({ data: [1, 2].map(() => ({ action: 'APIWORKING_CASH_OPEN_ATTEMPT', entity: 'ApiworkingCash', clinicId })) });
+    // Tres intentos ya contados (cierre, reapertura y fallo): con tope 4, tras uno más se bloquea.
+    await ctx.db.auditLog.createMany({ data: [1].map(() => ({ action: 'APIWORKING_CASH_OPEN_ATTEMPT', entity: 'ApiworkingCash', clinicId })) });
     const blocked = await ctx.http().post('/v1/apiworking/cash/open').set(bearer(t)).send({ ...draftCash, approvedHash: p2.body.hash });
     expect(blocked.status).toBe(409);
     expect(blocked.body.code).toBe('REAL_OPERATIONS_LIMIT');

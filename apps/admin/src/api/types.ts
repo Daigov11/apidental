@@ -174,7 +174,8 @@ export interface AwCash {
   cajas: { id: string; name: string; branch: string; opened: boolean }[]; turnos: AwOption[]; defaultTurn: string; write: boolean;
 }
 export interface AwCashPreview { hash: string; caja: string; turn: string; openingCents: number; openingText: string; alreadyOpen: boolean; write: boolean }
-export interface AwCashResult { status: 'OPENED' | 'UNKNOWN' | 'UNCONFIRMED'; message: string; movementId?: string; note?: string }
+export interface AwCashClosePreview { hash: string; caja: string; turn: string; isOpen: boolean; write: boolean }
+export interface AwCashResult { status: 'OPENED' | 'CLOSED' | 'UNKNOWN' | 'UNCONFIRMED'; message: string; movementId?: string; note?: string }
 export interface AwDiscovery {
   cajas: { id: string; name: string; branch: string; authorized: boolean }[]; write: boolean; warehouseId: string | null; unitId: string | null;
   opened?: boolean; documentTypes?: { id: string; name: string; authorized: boolean }[];

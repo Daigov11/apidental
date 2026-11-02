@@ -243,7 +243,7 @@ describe('Ventas Apiworking', () => {
   });
 });
 
-describe('Apertura de caja', () => {
+describe('Reapertura y cierre de caja', () => {
   const PREVIEW = { hash: 'a'.repeat(64), caja: 'Caja Glow', turn: '1', openingCents: 10000, openingText: 'S/ 100.00', alreadyOpen: false, write: true };
 
   it('se revisa, se aprueba y recién entonces se envía el hash aprobado', async () => {
@@ -255,13 +255,13 @@ describe('Apertura de caja', () => {
     renderApp('/ventas');
     const user = userEvent.setup();
     const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
-    await user.selectOptions(await within(card).findByLabelText('Caja a abrir'), '5');
+    await user.selectOptions(await within(card).findByLabelText('Caja a reabrir'), '5');
     await user.clear(within(card).getByLabelText('Monto inicial (S/)'));
     await user.type(within(card).getByLabelText('Monto inicial (S/)'), '100');
-    await user.click(within(card).getByRole('button', { name: 'Revisar apertura' }));
+    await user.click(within(card).getByRole('button', { name: 'Revisar reapertura' }));
     expect(await within(card).findByText('S/ 100.00')).toBeInTheDocument();
     expect(called('POST', '/apiworking/cash/preview')[0]?.body).toEqual({ idCaja: '5', openingCents: 10000, idTurno: '1' });
-    const abrir = within(card).getByRole('button', { name: 'Abrir caja' });
+    const abrir = within(card).getByRole('button', { name: 'Reabrir caja' });
     expect(abrir).toBeDisabled();
     expect(called('POST', '/apiworking/cash/open')).toHaveLength(0);
     await user.click(within(card).getByRole('checkbox'));
@@ -275,7 +275,27 @@ describe('Apertura de caja', () => {
     renderApp('/ventas');
     const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
     expect(await within(card).findByText('Cerrada')).toBeInTheDocument();
-    expect(within(card).queryByRole('button', { name: 'Revisar apertura' })).not.toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Revisar reapertura' })).not.toBeInTheDocument();
+  });
+});
+
+describe('Cierre de caja', () => {
+  it('se revisa, se aprueba y se envía el hash aprobado', async () => {
+    const { called } = mockApi(routes({
+      ...sessionRoutes([...PERMS, 'apiworking:cash'], ['CLINIC_ADMIN']),
+      'GET /apiworking/cash': { json: { ...CASH, cajas: [{ id: '5', name: 'Caja Glow', branch: 'Principal', opened: true }] } },
+      'POST /apiworking/cash/close-preview': { json: { hash: 'b'.repeat(64), caja: 'Caja Glow', turn: '1', isOpen: true, write: true } },
+      'POST /apiworking/cash/close': { json: { status: 'CLOSED', message: 'Caja cerrada' } },
+    } as never));
+    renderApp('/ventas');
+    const user = userEvent.setup();
+    const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
+    await user.selectOptions(await within(card).findByLabelText('Caja a cerrar'), '5');
+    await user.click(within(card).getByRole('button', { name: 'Revisar cierre' }));
+    await user.click(await within(card).findByRole('checkbox'));
+    await user.click(within(card).getByRole('button', { name: 'Cerrar caja' }));
+    await waitFor(() => expect(called('POST', '/apiworking/cash/close')).toHaveLength(1));
+    expect(called('POST', '/apiworking/cash/close')[0]?.body).toEqual({ idCaja: '5', approvedHash: 'b'.repeat(64) });
   });
 });
 

@@ -22,6 +22,7 @@ export const ROUTES = {
   turnos: { method: 'GET', path: '/api/CajaChica/turnos', kind: 'read' },
   /** El tenant va en la ruta (…/AperturaCajaChica/{base_datos}): siempre es el esperado de esta instalación, nunca un dato libre. */
   aperturaCaja: { method: 'POST', path: '/api/CajaChica/AperturaCajaChica', kind: 'write', tenantInPath: true },
+  cierreCaja: { method: 'POST', path: '/api/CajaChica/PostCierreCajaChica', kind: 'write', tenantInPath: true },
 } as const;
 
 export type RouteName = keyof typeof ROUTES;
@@ -41,6 +42,7 @@ const QUERY_PARAMS: Record<RouteName, readonly string[]> = {
   anular: ['idDocumentoPago', 'motivoAnulacion', 'usuario'],
   turnos: [],
   aperturaCaja: [],
+  cierreCaja: [],
 };
 
 export type ApiworkingErrorKind =

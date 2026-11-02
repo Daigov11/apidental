@@ -11,7 +11,7 @@ import { ApiworkingAuthService } from './apiworking-auth.service.js';
 import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
-import { ApiworkingLoginDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, VoidSaleDto } from './dto/apiworking.dto.js';
+import { ApiworkingLoginDto, CashCloseDraftDto, CashCloseDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, VoidSaleDto } from './dto/apiworking.dto.js';
 
 const uuid = () => new ParseUUIDPipe();
 
@@ -98,6 +98,20 @@ export class ApiworkingController {
   @RequirePermissions('apiworking:cash')
   cashOpen(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CashOpenDto, @Meta() m: RequestMeta) {
     return this.cash.open(a, dto, m);
+  }
+
+  @Post('cash/close-preview')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:cash')
+  cashClosePreview(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CashCloseDraftDto) {
+    return this.cash.closePreview(a, dto);
+  }
+
+  @Post('cash/close')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:cash')
+  cashClose(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CashCloseDto, @Meta() m: RequestMeta) {
+    return this.cash.close(a, dto, m);
   }
 
   @Post('sales/preview')

@@ -87,6 +87,15 @@ export class CashOpenDraftDto {
   @IsInt() @Min(0) @Max(100_000_000) openingCents!: number;
 }
 
+export class CashCloseDraftDto {
+  @Matches(EXT_ID) idCaja!: string;
+  @IsOptional() @Matches(EXT_ID) idTurno?: string;
+}
+
+export class CashCloseDto extends CashCloseDraftDto {
+  @Matches(/^[0-9a-f]{64}$/) approvedHash!: string;
+}
+
 export class CashOpenDto extends CashOpenDraftDto {
   /// SHA-256 de la vista previa que la persona aprobó.
   @Matches(/^[0-9a-f]{64}$/) approvedHash!: string;

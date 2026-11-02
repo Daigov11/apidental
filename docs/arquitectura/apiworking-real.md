@@ -78,11 +78,14 @@ Apiworking no entregó contrato. Esto se implementó según la guía y el ejempl
 - El login de Apiworking comparte el límite estricto por IP del login local; no hay bloqueo por cuenta (lo aplica Apiworking).
 - Las ventas son por concepto libre (`idProducto` 0): no hay catálogo de productos sincronizado.
 
-## Apertura de caja (`AperturaCajaChica`)
+## Reapertura y cierre de caja (`AperturaCajaChica`, `PostCierreCajaChica`)
+
+`AperturaCajaChica` es la **reapertura** de una caja cerrada; el cierre usa `PostCierreCajaChica`.
 
 - Ruta: `POST /api/CajaChica/AperturaCajaChica/{base_datos}`; el tenant de la URL es siempre `APIWORKING_AUTHZ_EXPECTED_DATABASE`.
 - Cuerpo: `idPersona` e `idUsuario` (del login: `id_persona`, `id_usuario`), `idTurno` (por defecto `1`; `GET /api/CajaChica/turnos`), `idCaja` y `cadenaDetalle` = `idMoneda^montoInicial` (`1^0` = soles, sin efectivo; `1^100` = S/ 100).
 - Éxito: `codResponse` 1 con `data[0]` (`result`, `duplicado`, `msjDocumentos`); `duplicado` no se interpreta: el estado real se comprueba con `consulta-aperturada`.
 - Controles: permiso `apiworking:cash`, solo cajas autorizadas, vista previa con SHA-256 aprobado, escrituras activadas, tope de operaciones (cuenta junto con las ventas), nunca abre una caja ya abierta, un solo envío sin reintentos y resultado dudoso sin reenvío.
 - Endpoints locales: `GET /v1/apiworking/cash`, `POST /v1/apiworking/cash/preview`, `POST /v1/apiworking/cash/open`.
-- Sin validar: varias monedas en `cadenaDetalle` (se supone `~`, como `cadenaPago`) y el cierre de caja (no hay endpoint conocido).
+- Cierre: `POST /api/CajaChica/PostCierreCajaChica/{base_datos}` con `{idPersona, idTurno, idCaja, cadenaDetalle:"", cadenaCierre:"", cadenaCierreDetalle:"", idCajaSel:"", ip:"", usuario:<id_usuario>}`; las cadenas van vacías (confirmado por el responsable de Apiworking). Solo si la caja figura abierta; mismos controles que la reapertura. Locales: `POST /v1/apiworking/cash/close-preview` y `/cash/close`. El cierre no se puede deshacer desde esta aplicación.
+- Sin validar: varias monedas en `cadenaDetalle` (se supone `~`, como `cadenaPago`).

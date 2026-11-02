@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, RefreshCw, Search, Send, Trash2 } from 'lucide-react';
 import { get, post } from '../api/client';
-import type { AwCash, AwCashPreview, AwCashResult, AwContext, AwCustomer, AwDiscovery, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify } from '../api/types';
+import type { AwCash, AwCashClosePreview, AwCashPreview, AwCashResult, AwContext, AwCustomer, AwDiscovery, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { fmtDateTime } from '../lib/format';
 import { fmtMoney, parseSoles } from '../lib/money';
@@ -376,7 +376,7 @@ function DiscoveryCard() {
   );
 }
 
-/** Apertura de la caja de Apiworking: vista previa del JSON, aprobación explícita y un solo envío (sin reintentos). */
+/** Reapertura y cierre de la caja de Apiworking (AperturaCajaChica reabre una caja cerrada): vista previa del JSON, aprobación explícita y un solo envío (sin reintentos). */
 function CashCard() {
   const { can } = useAuth();
   const toast = useToast();
@@ -397,6 +397,25 @@ function CashCard() {
   const current = preview && preview.signature === signature ? preview : null;
   useEffect(() => { if (preview && preview.signature !== signature) setApproved(false); }, [preview, signature]);
   const canOpen = can('apiworking:cash');
+  const [closeId, setCloseId] = useState('');
+  const [closePrev, setClosePrev] = useState<AwCashClosePreview | null>(null);
+  const [closeOk, setCloseOk] = useState(false);
+  const reviewClose = async () => {
+    setBusy('preview'); setError(null); setCloseOk(false); setResult(null);
+    try { setClosePrev(await post<AwCashClosePreview>('/apiworking/cash/close-preview', { idCaja: closeId })); }
+    catch (e) { setError(errorText(e)); setClosePrev(null); }
+    finally { setBusy(null); }
+  };
+  const closeCash = async () => {
+    if (!closePrev || sending.current) return;
+    sending.current = true; setBusy('open'); setError(null);
+    try {
+      const r = await post<AwCashResult>('/apiworking/cash/close', { idCaja: closeId, approvedHash: closePrev.hash });
+      setResult(r); setClosePrev(null); setCloseOk(false); setCloseId('');
+      if (r.status === 'CLOSED') toast.success('Caja cerrada');
+    } catch (e) { setError(errorText(e)); }
+    finally { sending.current = false; setBusy(null); st.reload(); }
+  };
   const caja = x?.cajas.find((c) => c.id === idCaja);
 
   const review = async () => {
@@ -412,7 +431,7 @@ function CashCard() {
     try {
       const r = await post<AwCashResult>('/apiworking/cash/open', { ...body, approvedHash: current.data.hash });
       setResult(r); setPreview(null); setApproved(false);
-      if (r.status === 'OPENED') toast.success('Caja abierta');
+      if (r.status === 'OPENED') toast.success('Caja reabierta');
     } catch (e) { setError(errorText(e)); }
     finally { sending.current = false; setBusy(null); st.reload(); }
   };
@@ -434,7 +453,7 @@ function CashCard() {
           {canOpen && !x.write && <Alert tone="info">Las escrituras reales están desactivadas en esta instalación: puede preparar la apertura, pero no enviarla.</Alert>}
           {canOpen && (
             <div style={{ marginTop: 'var(--space-4)' }}>
-              <SelectField label="Caja a abrir" value={idCaja} onChange={(e) => setIdCaja(e.target.value)}>
+              <SelectField label="Caja a reabrir" value={idCaja} onChange={(e) => setIdCaja(e.target.value)}>
                 <option value="">Elija una caja</option>
                 {x.cajas.filter((c) => !c.opened).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </SelectField>
@@ -445,7 +464,7 @@ function CashCard() {
               ) : <TextField label="Turno (id)" value={turn || x.defaultTurn} inputMode="numeric" onChange={(e) => setTurn(e.target.value.replace(/\D/g, ''))} />}
               <TextField label="Monto inicial (S/)" value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} />
               {error && <Alert tone="danger">{error}</Alert>}
-              <div className="chip-row"><Button variant="secondary" disabled={!body} loading={busy === 'preview'} loadingText="Preparando…" onClick={() => void review()}>Revisar apertura</Button></div>
+              <div className="chip-row"><Button variant="secondary" disabled={!body} loading={busy === 'preview'} loadingText="Preparando…" onClick={() => void review()}>Revisar reapertura</Button></div>
             </div>
           )}
           {current && (
@@ -454,14 +473,36 @@ function CashCard() {
               {current.data.alreadyOpen && <Alert tone="warning">Esta caja ya figura abierta en Apiworking: no se enviará nada.</Alert>}
               <label className="check" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
                 <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
-                <span>Revisé los datos y autorizo abrir esta caja en Apiworking. No se reintenta sola.</span>
+                <span>Revisé los datos y autorizo reabrir esta caja en Apiworking. No se reintenta sola.</span>
               </label>
               <div className="chip-row" style={{ marginTop: 'var(--space-4)' }}>
-                <Button variant="primary" icon={<Send size={18} aria-hidden="true" />} disabled={!approved || current.data.alreadyOpen || !x.write} loading={busy === 'open'} loadingText="Abriendo…" onClick={() => void open()}>Abrir caja</Button>
+                <Button variant="primary" icon={<Send size={18} aria-hidden="true" />} disabled={!approved || current.data.alreadyOpen || !x.write} loading={busy === 'open'} loadingText="Reabriendo…" onClick={() => void open()}>Reabrir caja</Button>
               </div>
             </div>
           )}
-          {result && <Alert tone={result.status === 'OPENED' ? 'success' : 'warning'}>{result.message}{result.note ? ` ${result.note}.` : ''}</Alert>}
+          {canOpen && x.cajas.some((c) => c.opened) && (
+            <div style={{ marginTop: 'var(--space-6)' }}>
+              <h3 className="h3">Cerrar caja</h3>
+              <SelectField label="Caja a cerrar" value={closeId} onChange={(e) => { setCloseId(e.target.value); setClosePrev(null); setCloseOk(false); }}>
+                <option value="">Elija una caja</option>
+                {x.cajas.filter((c) => c.opened).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </SelectField>
+              <div className="chip-row"><Button variant="secondary" disabled={!closeId} loading={busy === 'preview'} loadingText="Preparando…" onClick={() => void reviewClose()}>Revisar cierre</Button></div>
+              {closePrev && (
+                <div style={{ marginTop: 'var(--space-4)' }}>
+                  <p>Se cerrará <strong>{closePrev.caja}</strong> (turno {closePrev.turn}). El cierre no se puede deshacer desde aquí.</p>
+                  <label className="check" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+                    <input type="checkbox" checked={closeOk} onChange={(e) => setCloseOk(e.target.checked)} />
+                    <span>Revisé los datos y autorizo cerrar esta caja en Apiworking. No se reintenta sola.</span>
+                  </label>
+                  <div className="chip-row" style={{ marginTop: 'var(--space-4)' }}>
+                    <Button variant="danger" disabled={!closeOk || !x.write} loading={busy === 'open'} loadingText="Cerrando…" onClick={() => void closeCash()}>Cerrar caja</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          {result && <Alert tone={result.status === 'OPENED' || result.status === 'CLOSED' ? 'success' : 'warning'}>{result.message}{result.note ? ` ${result.note}.` : ''}</Alert>}
         </>
       )}
     </section>
