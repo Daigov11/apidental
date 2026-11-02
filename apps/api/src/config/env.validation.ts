@@ -372,9 +372,6 @@ export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables 
   }
   if (awWrite) {
     if (!awRead) throw new Error('Configuración de entorno inválida: APIWORKING_AUTHZ_WRITE requiere APIWORKING_AUTHZ_READ=true');
-    for (const k of ['APIWORKING_AUTHORIZED_CASH_REGISTERS', 'APIWORKING_AUTHORIZED_DOCUMENT_TYPES', 'APIWORKING_AUTHORIZED_SERIES', 'APIWORKING_WAREHOUSE_ID', 'APIWORKING_UNIT_ID'] as const) {
-      if (!env[k]) throw new Error(`Configuración de entorno inválida: ${k} es obligatorio con APIWORKING_AUTHZ_WRITE=true`);
-    }
   }
   if (env.FIELD_ENCRYPTION_MODE === 'aes-gcm') {
     if (!env.FIELD_ENCRYPTION_KEY || Buffer.from(env.FIELD_ENCRYPTION_KEY, 'base64').length !== 32) {

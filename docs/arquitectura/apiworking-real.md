@@ -89,3 +89,7 @@ Apiworking no entregó contrato. Esto se implementó según la guía y el ejempl
 - Endpoints locales: `GET /v1/apiworking/cash`, `POST /v1/apiworking/cash/preview`, `POST /v1/apiworking/cash/open`.
 - Cierre: `POST /api/CajaChica/PostCierreCajaChica/{base_datos}` con `{idPersona, idTurno, idCaja, cadenaDetalle:"", cadenaCierre:"", cadenaCierreDetalle:"", idCajaSel:"", ip:"", usuario:<id_usuario>}`; las cadenas van vacías (confirmado por el responsable de Apiworking). Solo si la caja figura abierta; mismos controles que la reapertura. Locales: `POST /v1/apiworking/cash/close-preview` y `/cash/close`. El cierre no se puede deshacer desde esta aplicación.
 - Sin validar: varias monedas en `cadenaDetalle` (se supone `~`, como `cadenaPago`).
+
+## Listas autorizadas: opcionales (2026-11-02)
+
+`APIWORKING_AUTHORIZED_CASH_REGISTERS`, `APIWORKING_AUTHORIZED_DOCUMENT_TYPES` y `APIWORKING_AUTHORIZED_SERIES` son **opcionales**. Vacías, vale lo que Apiworking informa a la cuenta con la que se inició sesión (el tenant ya está fijado y en cada vista previa y envío se revalidan caja, tipo, serie y forma de pago contra Apiworking). Con ids, restringen aún más. Con `APIWORKING_AUTHZ_WRITE=true` solo se exige `APIWORKING_AUTHZ_READ=true`; el almacén y la unidad de medida (`APIWORKING_WAREHOUSE_ID`, `APIWORKING_UNIT_ID`) se piden únicamente al **vender**, no para reabrir ni cerrar caja.

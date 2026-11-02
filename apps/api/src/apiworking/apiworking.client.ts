@@ -215,6 +215,9 @@ export function reqIdAny(r: Record<string, unknown>, keys: readonly string[], wh
 /** `consulta-aperturada` responde «No se encontraron datos registrados» (codResponse distinto de 1) cuando la caja NO está abierta: es un estado, no un fallo. */
 export const isNoData = (error: unknown): boolean => error instanceof ApiworkingError && error.kind === 'REJECTED' && /no se encontr/i.test(error.message);
 
+/** Lista vacía = sin restricción local: vale lo que Apiworking informa a este usuario (el tenant ya está fijado y se revalida en cada envío). */
+export const allowed = (list: readonly string[], id: string): boolean => list.length === 0 || list.includes(id);
+
 const CAJA_ID_KEYS = ['idCaja', 'id', 'id_caja', 'IdCaja', 'idcaja'] as const;
 const CAJA_NAME_KEYS = ['caja', 'nombreCaja', 'nombre_caja', 'nombre', 'descripcion'] as const;
 export const cajaId = (r: Record<string, unknown>) => reqIdAny(r, CAJA_ID_KEYS, 'una caja');

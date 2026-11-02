@@ -1,5 +1,5 @@
 import { validateEnv } from '../config/env.validation.js';
-import { moneyToCents, parseJsonKeepingBigIds } from './apiworking.client.js';
+import { allowed, moneyToCents, parseJsonKeepingBigIds } from './apiworking.client.js';
 import { parseLogin } from './apiworking-auth.service.js';
 import { parseCustomer } from './apiworking-clients.service.js';
 import { suggestDocument } from './apiworking-sales.service.js';
@@ -72,12 +72,15 @@ describe('configuración de Apiworking', () => {
     expect(() => validateEnv({ ...prod, APIWORKING_BASE_URL: 'http://127.0.0.1:9' })).toThrow(/https|local/);
   });
 
-  it('escribir exige leer, listas cerradas, almacén y unidad', () => {
+  it('escribir exige leer; las listas autorizadas y el almacén son opcionales (almacén y unidad solo se piden al vender)', () => {
     const on = { ...base, ...aw, APIWORKING_AUTHZ_WRITE: 'true' };
     expect(() => validateEnv(on)).toThrow(/AUTHZ_READ/);
-    expect(() => validateEnv({ ...on, APIWORKING_AUTHZ_READ: 'true' })).toThrow(/AUTHORIZED_CASH_REGISTERS/);
-    const full = { ...on, APIWORKING_AUTHZ_READ: 'true', APIWORKING_AUTHORIZED_CASH_REGISTERS: '5', APIWORKING_AUTHORIZED_DOCUMENT_TYPES: '2', APIWORKING_AUTHORIZED_SERIES: '11', APIWORKING_WAREHOUSE_ID: '1', APIWORKING_UNIT_ID: '15' };
-    expect(() => validateEnv(full)).not.toThrow();
-    expect(() => validateEnv({ ...full, APIWORKING_UNIT_ID: '' })).toThrow(/UNIT_ID/);
+    expect(() => validateEnv({ ...on, APIWORKING_AUTHZ_READ: 'true' })).not.toThrow();
+  });
+
+  it('una lista vacía deja pasar lo que Apiworking informa; una lista con ids restringe', () => {
+    expect(allowed([], '5')).toBe(true);
+    expect(allowed(['5'], '5')).toBe(true);
+    expect(allowed(['5'], '6')).toBe(false);
   });
 });

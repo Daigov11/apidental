@@ -8,7 +8,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { clinicScope, isUniqueViolation, requirePatient } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
-import { ApiworkingClient, ApiworkingError, asRecord, asRows, cajaId, cajaName, clip, isNoData, moneyToCents, optText, reqId } from './apiworking.client.js';
+import { ApiworkingClient, ApiworkingError, asRecord, asRows, cajaId, cajaName, allowed, clip, isNoData, moneyToCents, optText, reqId } from './apiworking.client.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import type { ExternalSession } from './apiworking-session.store.js';
 import type { ReconcileSaleDto, SaleDraftDto } from './dto/apiworking.dto.js';
@@ -80,18 +80,18 @@ export class ApiworkingSalesService {
     const cfg = this.config.apiworking;
     const cajas = asRows(await this.client.call('caja', { token: session.token }), 'las cajas')
       .map((r) => ({ id: cajaId(r), name: cajaName(r), branch: optText(r, 'sucursal') }))
-      .filter((c) => cfg.authorizedCashRegisters.includes(c.id));
+      .filter((c) => allowed(cfg.authorizedCashRegisters, c.id));
     const out: Record<string, unknown> = { cajas, authorizedConfigured: cfg.authorizedCashRegisters.length > 0 };
     if (!idCaja) return out;
     if (!cajas.some((c) => c.id === idCaja)) throw new BadRequestException('La caja no está autorizada para esta instalación');
 
     const opened = await this.openMovement(session, idCaja);
     out['opened'] = opened !== null;
-    const tipos = (await this.documentTypes(session, idCaja)).filter((t) => cfg.authorizedDocumentTypes.includes(t.id));
+    const tipos = (await this.documentTypes(session, idCaja)).filter((t) => allowed(cfg.authorizedDocumentTypes, t.id));
     out['documentTypes'] = tipos;
     if (idTipoDocumento) {
       if (!tipos.some((t) => t.id === idTipoDocumento)) throw new BadRequestException('El tipo de documento no está autorizado');
-      out['series'] = (await this.seriesOf(session, idCaja, idTipoDocumento)).filter((s) => cfg.authorizedSeries.includes(s.id));
+      out['series'] = (await this.seriesOf(session, idCaja, idTipoDocumento)).filter((s) => allowed(cfg.authorizedSeries, s.id));
       out['paymentMethods'] = opened ? await this.paymentMethods(session, opened) : [];
     }
     return out;
@@ -104,21 +104,20 @@ export class ApiworkingSalesService {
   async discovery(principal: AuthPrincipal, idCaja?: string, idTipoDocumento?: string) {
     const session = this.clients.requireSession(principal);
     const cfg = this.config.apiworking;
-    const mark = (list: string[], id: string) => list.includes(id);
     const cajas = asRows(await this.client.call('caja', { token: session.token }), 'las cajas').map((r) => {
       const id = cajaId(r);
-      return { id, name: cajaName(r), branch: optText(r, 'sucursal'), authorized: mark(cfg.authorizedCashRegisters, id) };
+      return { id, name: cajaName(r), branch: optText(r, 'sucursal'), authorized: allowed(cfg.authorizedCashRegisters, id) };
     });
     const out: Record<string, unknown> = { cajas, write: cfg.write, warehouseId: cfg.warehouseId, unitId: cfg.unitId };
     if (!idCaja) return out;
     if (!cajas.some((c) => c.id === idCaja)) throw new BadRequestException('La caja no existe en Apiworking');
     const opened = await this.openMovement(session, idCaja);
     out['opened'] = opened !== null;
-    const tipos = (await this.documentTypes(session, idCaja)).map((t) => ({ ...t, authorized: mark(cfg.authorizedDocumentTypes, t.id) }));
+    const tipos = (await this.documentTypes(session, idCaja)).map((t) => ({ ...t, authorized: allowed(cfg.authorizedDocumentTypes, t.id) }));
     out['documentTypes'] = tipos;
     if (idTipoDocumento) {
       if (!tipos.some((t) => t.id === idTipoDocumento)) throw new BadRequestException('El tipo de documento no corresponde a la caja');
-      out['series'] = (await this.seriesOf(session, idCaja, idTipoDocumento)).map((s) => ({ ...s, authorized: mark(cfg.authorizedSeries, s.id) }));
+      out['series'] = (await this.seriesOf(session, idCaja, idTipoDocumento)).map((s) => ({ ...s, authorized: allowed(cfg.authorizedSeries, s.id) }));
       out['paymentMethods'] = opened ? await this.paymentMethods(session, opened) : [];
     }
     return out;
@@ -173,7 +172,7 @@ export class ApiworkingSalesService {
   private async build(principal: AuthPrincipal, draft: SaleDraftDto) {
     const cfg = this.config.apiworking;
     const session = this.clients.requireSession(principal);
-    if (!cfg.authorizedCashRegisters.includes(draft.idCaja) || !cfg.authorizedDocumentTypes.includes(draft.idTipoDocumento) || !cfg.authorizedSeries.includes(draft.idSerie)) {
+    if (!allowed(cfg.authorizedCashRegisters, draft.idCaja) || !allowed(cfg.authorizedDocumentTypes, draft.idTipoDocumento) || !allowed(cfg.authorizedSeries, draft.idSerie)) {
       throw new BadRequestException('La caja, el tipo de documento o la serie no están autorizados para esta instalación');
     }
     if (!cfg.warehouseId || !cfg.unitId) throw new ServiceUnavailableException('Falta configurar el almacén y la unidad de medida de Apiworking');

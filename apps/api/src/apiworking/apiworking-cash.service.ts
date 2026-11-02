@@ -7,7 +7,7 @@ import { AppConfig } from '../config/app-config.js';
 import { clinicScope } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
-import { ApiworkingClient, ApiworkingError, asRows, cajaId, cajaName, clip, isNoData, optText, reqId } from './apiworking.client.js';
+import { ApiworkingClient, ApiworkingError, asRows, cajaId, cajaName, allowed, clip, isNoData, optText, reqId } from './apiworking.client.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import type { CashCloseDraftDto, CashOpenDraftDto } from './dto/apiworking.dto.js';
 
@@ -42,7 +42,7 @@ export class ApiworkingCashService {
     const session = this.clients.requireSession(principal);
     const cfg = this.config.apiworking;
     const cajas = asRows(await this.client.call('caja', { token: session.token }), 'las cajas')
-      .filter((r) => cfg.authorizedCashRegisters.includes(cajaId(r)))
+      .filter((r) => allowed(cfg.authorizedCashRegisters, cajaId(r)))
       .map((r) => ({ id: cajaId(r), name: cajaName(r), branch: optText(r, 'sucursal') }));
     const withState = [];
     for (const c of cajas) withState.push({ ...c, opened: (await this.openMovement(session.token, c.id)) !== null });
@@ -149,7 +149,7 @@ export class ApiworkingCashService {
   private async buildClose(principal: AuthPrincipal, draft: CashCloseDraftDto) {
     const session = this.clients.requireSession(principal);
     const cfg = this.config.apiworking;
-    if (!cfg.authorizedCashRegisters.includes(draft.idCaja)) throw new BadRequestException('La caja no está autorizada para esta instalación');
+    if (!allowed(cfg.authorizedCashRegisters, draft.idCaja)) throw new BadRequestException('La caja no está autorizada para esta instalación');
     if (!session.personId) throw new UnprocessableEntityException({ message: 'Apiworking no informó id_persona en el inicio de sesión: no se puede cerrar la caja', code: 'NO_PERSON' });
     const caja = asRows(await this.client.call('caja', { token: session.token }), 'las cajas').find((r) => cajaId(r) === draft.idCaja);
     if (!caja) throw new BadRequestException('La caja no existe en Apiworking');
@@ -175,7 +175,7 @@ export class ApiworkingCashService {
   private async build(principal: AuthPrincipal, draft: CashOpenDraftDto) {
     const session = this.clients.requireSession(principal);
     const cfg = this.config.apiworking;
-    if (!cfg.authorizedCashRegisters.includes(draft.idCaja)) throw new BadRequestException('La caja no está autorizada para esta instalación');
+    if (!allowed(cfg.authorizedCashRegisters, draft.idCaja)) throw new BadRequestException('La caja no está autorizada para esta instalación');
     if (!session.personId) throw new UnprocessableEntityException({ message: 'Apiworking no informó id_persona en el inicio de sesión: no se puede abrir la caja', code: 'NO_PERSON' });
     const cajas = asRows(await this.client.call('caja', { token: session.token }), 'las cajas');
     const caja = cajas.find((r) => cajaId(r) === draft.idCaja);
