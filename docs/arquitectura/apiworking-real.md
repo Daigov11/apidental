@@ -93,3 +93,10 @@ Apiworking no entregó contrato. Esto se implementó según la guía y el ejempl
 ## Listas autorizadas: opcionales (2026-11-02)
 
 `APIWORKING_AUTHORIZED_CASH_REGISTERS`, `APIWORKING_AUTHORIZED_DOCUMENT_TYPES` y `APIWORKING_AUTHORIZED_SERIES` son **opcionales**. Vacías, vale lo que Apiworking informa a la cuenta con la que se inició sesión (el tenant ya está fijado y en cada vista previa y envío se revalidan caja, tipo, serie y forma de pago contra Apiworking). Con ids, restringen aún más. Con `APIWORKING_AUTHZ_WRITE=true` solo se exige `APIWORKING_AUTHZ_READ=true`; el almacén y la unidad de medida (`APIWORKING_WAREHOUSE_ID`, `APIWORKING_UNIT_ID`) se piden únicamente al **vender**, no para reabrir ni cerrar caja.
+
+## Alta de cliente por documento (`ClienteDoc`)
+
+- Ruta: `POST /api/Cliente/ClienteDoc?tipoDoc=…&nroDoc=…`, sin cuerpo; devuelve `data.id` (= `idCliente`). `tipoDoc`: DNI 1, RUC 6, CE 4, pasaporte 7, no domiciliado 0. Según la guía está validado con DNI; con un RUC de prueba dio `codResponse` 0 sin motivo.
+- Controles: permiso `apiworking:sell`, vista previa con SHA-256 aprobado, escrituras activadas, tope de operaciones compartido (ventas, caja y clientes), no envía si el documento ya existe, un solo envío sin reintentos, verificación volviendo a listar y resultado dudoso sin reenvío. El número de documento viaja en la URL: no se registra ni se audita (solo el tipo y el id resultante).
+- Una lista de clientes vacía («No se pudo listar clientes» / «No se encontraron…») se trata como lista vacía.
+- Locales: `POST /v1/apiworking/clients/preview` y `POST /v1/apiworking/clients`.

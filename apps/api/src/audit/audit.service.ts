@@ -69,6 +69,10 @@ export const AuditAction = {
   ApiworkingCashClosed: 'APIWORKING_CASH_CLOSED',
   ApiworkingCashCloseRejected: 'APIWORKING_CASH_CLOSE_REJECTED',
   ApiworkingCashCloseUnknown: 'APIWORKING_CASH_CLOSE_UNKNOWN_RESULT',
+  ApiworkingCustomerAttempt: 'APIWORKING_CUSTOMER_ATTEMPT',
+  ApiworkingCustomerCreated: 'APIWORKING_CUSTOMER_CREATED',
+  ApiworkingCustomerRejected: 'APIWORKING_CUSTOMER_REJECTED',
+  ApiworkingCustomerUnknown: 'APIWORKING_CUSTOMER_UNKNOWN_RESULT',
   // --- Relación asistencial y acceso clínico (3.1). Nunca se copia contenido clínico ---
   CareRelationshipCreated: 'CARE_RELATIONSHIP_CREATED',
   CareRelationshipRevoked: 'CARE_RELATIONSHIP_REVOKED',

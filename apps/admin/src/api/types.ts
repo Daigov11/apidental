@@ -170,6 +170,8 @@ export interface AwSale {
   actions: { verify: boolean; reconcile: boolean; void: boolean };
 }
 export interface AwVerify { sale: AwSale; paidCents?: number; paymentMessage?: string; candidates?: { number: string; status: string; totalCents: number | null; balanceCents: number | null }[] }
+export interface AwCustomerPreview { hash: string; docType: string; docTypeLabel: string; docNumber: string; exists: { id: string; name: string } | null; write: boolean }
+export interface AwCustomerResult { status: 'CREATED' | 'UNKNOWN'; id?: string; customer?: AwCustomer | null; message?: string }
 export interface AwCash {
   cajas: { id: string; name: string; branch: string; opened: boolean }[]; turnos: AwOption[]; defaultTurn: string; write: boolean;
 }

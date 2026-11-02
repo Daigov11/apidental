@@ -19,6 +19,8 @@ export const ROUTES = {
   controlPagos: { method: 'GET', path: '/api/Facturacion/controlPagos', kind: 'read' },
   registroDocumento: { method: 'POST', path: '/api/Facturacion/registro-documento', kind: 'write' },
   anular: { method: 'POST', path: '/api/Facturacion/anular', kind: 'write' },
+  /** Crea o vincula al cliente por documento: tipoDoc y nroDoc van en la query y NO hay cuerpo. El DNI queda en la URL: nunca se registra. */
+  clienteDoc: { method: 'POST', path: '/api/Cliente/ClienteDoc', kind: 'write' },
   turnos: { method: 'GET', path: '/api/CajaChica/turnos', kind: 'read' },
   /** El tenant va en la ruta (…/AperturaCajaChica/{base_datos}): siempre es el esperado de esta instalación, nunca un dato libre. */
   aperturaCaja: { method: 'POST', path: '/api/CajaChica/AperturaCajaChica', kind: 'write', tenantInPath: true },
@@ -40,6 +42,7 @@ const QUERY_PARAMS: Record<RouteName, readonly string[]> = {
   controlPagos: ['idDocumentoPago'],
   registroDocumento: [],
   anular: ['idDocumentoPago', 'motivoAnulacion', 'usuario'],
+  clienteDoc: ['tipoDoc', 'nroDoc'],
   turnos: [],
   aperturaCaja: [],
   cierreCaja: [],

@@ -28,6 +28,11 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
   const ok = (data: unknown) => ({ codResponse: 1, message: 'OK', data });
 
   function route(req: Seen): { status: number; body?: unknown; hang?: boolean } {
+    if (req.method === 'POST' && req.path === '/api/Cliente/ClienteDoc') {
+      if (req.query.get('tipoDoc') === '6') return { status: 200, body: { codResponse: 0, message: 'No se encontró el RUC' } };
+      customers.push({ total: 4, id_cliente: 202600000099, id_persona: 202600000100, nombrecompleto: 'PACIENTE NUEVO', email: '', tipoDoc: 'D.N.I.', numerodocumento: req.query.get('nroDoc') ?? '', telefono: '', tipo_persona: 'N', estado: 'A', limite_credito: '0.00', saldo: 0, whatsapp: '', saldo_restante: '0.00' });
+      return { status: 200, body: ok({ id: 202600000099 }) };
+    }
     if (req.method === 'POST' && req.path === `/api/CajaChica/PostCierreCajaChica/${TENANT}`) {
       scenario.cajaOpen = false;
       return { status: 200, body: ok([{ result: 1, duplicado: 0, msjDocumentos: '', msjCuadroPerfecto: '', idAuditoria: '1' }]) };
@@ -376,6 +381,47 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     }
   });
 
+  it('crea un cliente por documento (ClienteDoc): vista previa, aprobación, un envío y sin guardar el DNI', async () => {
+    await ctx.db.apiworkingSale.updateMany({ data: { attemptedAt: new Date(Date.now() - 48 * 3_600_000) } }); // fuera de la ventana de 24 h del tope
+    const login = await enter();
+    const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);
+    const t = sel.body.accessToken as string;
+    const altas = () => seen.filter((x) => x.method === 'POST' && x.path === '/api/Cliente/ClienteDoc').length;
+    const draftC = { docType: '1', docNumber: '12345678' };
+
+    await ctx.http().post('/v1/apiworking/clients/preview').set(bearer(t)).send({ docType: '1', docNumber: '123' }).expect(400);
+    const p = await ctx.http().post('/v1/apiworking/clients/preview').set(bearer(t)).send(draftC).expect(200);
+    expect(p.body).toMatchObject({ docTypeLabel: 'DNI', docNumber: '12345678', exists: null });
+    expect(altas()).toBe(0);
+
+    const stale = await ctx.http().post('/v1/apiworking/clients').set(bearer(t)).send({ ...draftC, docNumber: '87654321', approvedHash: p.body.hash });
+    expect(stale.status).toBe(409);
+    expect(stale.body.code).toBe('PREVIEW_CHANGED');
+    expect(altas()).toBe(0);
+
+    const created = await ctx.http().post('/v1/apiworking/clients').set(bearer(t)).send({ ...draftC, approvedHash: p.body.hash }).expect(200);
+    expect(created.body).toMatchObject({ status: 'CREATED', id: '202600000099' });
+    expect(created.body.customer).toMatchObject({ name: 'PACIENTE NUEVO', docNumber: '12345678' });
+    const call = seen.filter((x) => x.path === '/api/Cliente/ClienteDoc').at(-1)!;
+    expect(call.query.get('tipoDoc')).toBe('1');
+    expect(call.query.get('nroDoc')).toBe('12345678');
+    expect(call.body).toBeNull();
+    expect(altas()).toBe(1);
+
+    // Ya existe: no se vuelve a enviar.
+    const again = await ctx.http().post('/v1/apiworking/clients/preview').set(bearer(t)).send(draftC).expect(200);
+    expect(again.body.exists).toMatchObject({ id: '202600000099' });
+    const dup = await ctx.http().post('/v1/apiworking/clients').set(bearer(t)).send({ ...draftC, approvedHash: again.body.hash });
+    expect(dup.status).toBe(409);
+    expect(dup.body.code).toBe('ALREADY_EXISTS');
+    expect(altas()).toBe(1);
+
+    // El número de documento no queda en la auditoría.
+    const audit = JSON.stringify(await ctx.db.auditLog.findMany({ where: { action: { startsWith: 'APIWORKING_CUSTOMER' } } }));
+    expect(audit).toContain('APIWORKING_CUSTOMER_CREATED');
+    expect(audit).not.toContain('12345678');
+  });
+
   it('cierra la caja con las cadenas vacías y solo si está abierta', async () => {
     const login = await enter();
     const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);
@@ -445,7 +491,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     expect(aperturas()).toBe(2);
     scenario.apertura = 'ok';
 
-    // Tres intentos ya contados (cierre, reapertura y fallo): con tope 4, tras uno más se bloquea.
+    // Cuatro intentos ya contados (cliente, cierre, reapertura y fallo): con tope 4 se bloquea.
     await ctx.db.auditLog.createMany({ data: [1].map(() => ({ action: 'APIWORKING_CASH_OPEN_ATTEMPT', entity: 'ApiworkingCash', clinicId })) });
     const blocked = await ctx.http().post('/v1/apiworking/cash/open').set(bearer(t)).send({ ...draftCash, approvedHash: p2.body.hash });
     expect(blocked.status).toBe(409);

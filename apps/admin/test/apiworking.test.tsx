@@ -299,4 +299,27 @@ describe('Cierre de caja', () => {
   });
 });
 
+describe('Cliente por documento', () => {
+  it('se revisa, se aprueba y se envía el hash aprobado; el cliente creado queda elegido', async () => {
+    const { called } = mockApi(routes({
+      'GET /apiworking/clients': { json: { items: [], total: 0 } },
+      'POST /apiworking/clients/preview': { json: { hash: 'c'.repeat(64), docType: '1', docTypeLabel: 'DNI', docNumber: '74908568', exists: null, write: true } },
+      'POST /apiworking/clients': { json: { status: 'CREATED', id: CUSTOMER.id, customer: CUSTOMER } },
+    }));
+    renderApp('/ventas');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Crear cliente por documento' }));
+    await user.type(screen.getByLabelText('Número de documento'), '74908568');
+    await user.click(screen.getByRole('button', { name: 'Revisar' }));
+    const crear = await screen.findByRole('button', { name: 'Crear cliente' });
+    expect(crear).toBeDisabled();
+    expect(called('POST', '/apiworking/clients')).toHaveLength(0);
+    await user.click(screen.getByRole('checkbox', { name: /autorizo crear este cliente/ }));
+    await user.click(crear);
+    await waitFor(() => expect(called('POST', '/apiworking/clients')).toHaveLength(1));
+    expect(called('POST', '/apiworking/clients')[0]?.body).toEqual({ docType: '1', docNumber: '74908568', approvedHash: 'c'.repeat(64) });
+    expect(await screen.findByRole('button', { name: 'Cambiar' })).toBeInTheDocument();
+  });
+});
+
 void CLINIC;

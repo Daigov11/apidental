@@ -11,7 +11,7 @@ import { ApiworkingAuthService } from './apiworking-auth.service.js';
 import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
-import { ApiworkingLoginDto, CashCloseDraftDto, CashCloseDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, VoidSaleDto } from './dto/apiworking.dto.js';
+import { ApiworkingLoginDto, CashCloseDraftDto, CashCloseDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, VoidSaleDto } from './dto/apiworking.dto.js';
 
 const uuid = () => new ParseUUIDPipe();
 
@@ -65,6 +65,20 @@ export class ApiworkingController {
   @RequirePermissions('apiworking:read')
   listClients(@CurrentPrincipal() a: AuthPrincipal, @Query() q: ListExternalClientsQuery) {
     return this.clients.list(a, q);
+  }
+
+  @Post('clients/preview')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:sell')
+  customerPreview(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CustomerDraftDto) {
+    return this.clients.previewCreate(a, dto);
+  }
+
+  @Post('clients')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:sell')
+  customerCreate(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CustomerCreateDto, @Meta() m: RequestMeta) {
+    return this.clients.create(a, dto, m);
   }
 
   @Get('sales/context')

@@ -9,9 +9,9 @@ import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { ApiworkingClient, ApiworkingError, asRows, cajaId, cajaName, allowed, clip, isNoData, optText, reqId } from './apiworking.client.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
+import { enforceRealOperationsCap } from './real-operations.js';
 import type { CashCloseDraftDto, CashOpenDraftDto } from './dto/apiworking.dto.js';
 
-const WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_TURN = '1';
 /** Moneda 1 = soles (idMoneda del detalle "idMoneda^monto"). */
 const SOLES = '1';
@@ -160,16 +160,8 @@ export class ApiworkingCashService {
     return { body, hash, turn, isOpen, cajaName: cajaName(caja) };
   }
 
-  private async enforceCap() {
-    const cfg = this.config.apiworking;
-    const since = new Date(Date.now() - WINDOW_MS);
-    const [sales, cash] = await Promise.all([
-      this.db.apiworkingSale.count({ where: { tenant: cfg.expectedDatabase!, attemptedAt: { gte: since } } }),
-      this.db.auditLog.count({ where: { action: { in: [AuditAction.ApiworkingCashOpenAttempt, AuditAction.ApiworkingCashCloseAttempt] }, createdAt: { gte: since } } }),
-    ]);
-    if (sales + cash >= cfg.maxRealOperations) {
-      throw new ConflictException({ message: `Se alcanzó el tope de ${cfg.maxRealOperations} envíos reales en 24 horas (APIWORKING_MAX_REAL_OPERATIONS)`, code: 'REAL_OPERATIONS_LIMIT' });
-    }
+  private enforceCap() {
+    return enforceRealOperationsCap(this.db, this.config);
   }
 
   private async build(principal: AuthPrincipal, draft: CashOpenDraftDto) {

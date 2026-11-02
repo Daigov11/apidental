@@ -87,6 +87,16 @@ export class CashOpenDraftDto {
   @IsInt() @Min(0) @Max(100_000_000) openingCents!: number;
 }
 
+/// Códigos de tipoDoc de Apiworking: DNI 1, RUC 6, CE 4, pasaporte 7, no domiciliado 0.
+export class CustomerDraftDto {
+  @Matches(/^(0|1|4|6|7)$/) docType!: string;
+  @Transform(trim) @Matches(/^[A-Za-z0-9]{1,20}$/) docNumber!: string;
+}
+
+export class CustomerCreateDto extends CustomerDraftDto {
+  @Matches(/^[0-9a-f]{64}$/) approvedHash!: string;
+}
+
 export class CashCloseDraftDto {
   @Matches(EXT_ID) idCaja!: string;
   @IsOptional() @Matches(EXT_ID) idTurno?: string;

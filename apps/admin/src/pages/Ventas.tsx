@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, RefreshCw, Search, Send, Trash2 } from 'lucide-react';
 import { get, post } from '../api/client';
-import type { AwCash, AwCashClosePreview, AwCashPreview, AwCashResult, AwContext, AwCustomer, AwDiscovery, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify } from '../api/types';
+import type { AwCash, AwCustomerPreview, AwCustomerResult, AwCashClosePreview, AwCashPreview, AwCashResult, AwContext, AwCustomer, AwDiscovery, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { fmtDateTime } from '../lib/format';
 import { fmtMoney, parseSoles } from '../lib/money';
@@ -140,6 +140,7 @@ export function VentasPage() {
                 </ul>
               )}
               {found.data && found.data.items.length === 0 && !found.loading && <p className="caption muted">No hay clientes que coincidan.</p>}
+              <NewCustomer write={st.write} onCreated={(cu) => { setCustomer(cu); setPreview(null); found.reload(); }} />
             </>
           )}
 
@@ -506,5 +507,70 @@ function CashCard() {
         </>
       )}
     </section>
+  );
+}
+
+/** Alta de cliente por documento (ClienteDoc): vista previa, aprobación explícita y un solo envío. */
+function NewCustomer({ write, onCreated }: { write: boolean; onCreated: (c: AwCustomer) => void }) {
+  const toast = useToast();
+  const [openForm, setOpenForm] = useState(false);
+  const [docType, setDocType] = useState('1');
+  const [docNumber, setDocNumber] = useState('');
+  const [prev, setPrev] = useState<{ data: AwCustomerPreview; signature: string } | null>(null);
+  const [ok, setOk] = useState(false);
+  const [busy, setBusy] = useState<'preview' | 'create' | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const sending = useRef(false);
+  const signature = `${docType}|${docNumber.trim()}`;
+  const current = prev && prev.signature === signature ? prev : null;
+  useEffect(() => { if (prev && prev.signature !== signature) setOk(false); }, [prev, signature]);
+
+  const review = async () => {
+    setBusy('preview'); setError(null); setOk(false); setNote(null);
+    try { setPrev({ data: await post<AwCustomerPreview>('/apiworking/clients/preview', { docType, docNumber: docNumber.trim() }), signature }); }
+    catch (e) { setError(errorText(e)); setPrev(null); }
+    finally { setBusy(null); }
+  };
+  const create = async () => {
+    if (!current || sending.current) return;
+    sending.current = true; setBusy('create'); setError(null);
+    try {
+      const r = await post<AwCustomerResult>('/apiworking/clients', { docType, docNumber: docNumber.trim(), approvedHash: current.data.hash });
+      if (r.status === 'CREATED' && r.customer) { toast.success('Cliente creado'); onCreated(r.customer); setOpenForm(false); setDocNumber(''); setPrev(null); setOk(false); }
+      else setNote(r.status === 'CREATED' ? 'Cliente creado. Búsquelo en la lista para elegirlo.' : r.message ?? 'No se pudo confirmar el alta. Búsquelo antes de intentarlo de nuevo.');
+    } catch (e) { setError(errorText(e)); }
+    finally { sending.current = false; setBusy(null); }
+  };
+
+  if (!openForm) return <p><Button size="sm" variant="tertiary" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setOpenForm(true)}>Crear cliente por documento</Button></p>;
+  return (
+    <div className="card" style={{ marginTop: 'var(--space-4)' }}>
+      <h4 className="h3">Nuevo cliente</h4>
+      <SelectField label="Tipo de documento" value={docType} onChange={(e) => setDocType(e.target.value)}>
+        <option value="1">DNI</option><option value="6">RUC</option><option value="4">Carné de extranjería</option><option value="7">Pasaporte</option><option value="0">No domiciliado</option>
+      </SelectField>
+      <TextField label="Número de documento" value={docNumber} inputMode="text" autoComplete="off" onChange={(e) => setDocNumber(e.target.value)} />
+      {error && <Alert tone="danger">{error}</Alert>}
+      {note && <Alert tone="warning">{note}</Alert>}
+      <div className="chip-row">
+        <Button variant="secondary" disabled={docNumber.trim().length === 0} loading={busy === 'preview'} loadingText="Preparando…" onClick={() => void review()}>Revisar</Button>
+        <Button variant="tertiary" onClick={() => { setOpenForm(false); setPrev(null); setError(null); }}>Cancelar</Button>
+      </div>
+      {current && current.data.exists && <Alert tone="warning">Este documento ya existe en Apiworking ({current.data.exists.name}). Búsquelo en la lista para elegirlo.</Alert>}
+      {current && !current.data.exists && (
+        <div style={{ marginTop: 'var(--space-4)' }}>
+          <p>Se creará un cliente con <strong>{current.data.docTypeLabel} {current.data.docNumber}</strong> en Apiworking. Apiworking completa el nombre.</p>
+          {!write && <Alert tone="info">Las escrituras reales están desactivadas en esta instalación.</Alert>}
+          <label className="check" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+            <input type="checkbox" checked={ok} onChange={(e) => setOk(e.target.checked)} />
+            <span>Revisé el documento y autorizo crear este cliente en Apiworking. No se reintenta sola.</span>
+          </label>
+          <div className="chip-row" style={{ marginTop: 'var(--space-4)' }}>
+            <Button variant="primary" disabled={!ok || !write} loading={busy === 'create'} loadingText="Creando…" onClick={() => void create()}>Crear cliente</Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
