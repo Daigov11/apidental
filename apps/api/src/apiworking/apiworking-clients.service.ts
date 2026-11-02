@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { BadRequestException, ConflictException, Inject, Injectable, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
@@ -48,13 +49,15 @@ export function parseCustomer(r: Record<string, unknown>): ExternalCustomer {
     phone: optText(r, 'telefono'),
     whatsapp: optText(r, 'whatsapp'),
     personType: optText(r, 'tipo_persona'),
-    active: optText(r, 'estado').toUpperCase() === 'A',
+    // Inactivo solo si Apiworking lo dice explícitamente: un estado ausente o con otro formato no oculta al cliente.
+    active: !['I', 'INACTIVO', '0'].includes(optText(r, 'estado').toUpperCase()),
   };
 }
 
 /** Clientes del tenant de Apiworking: lectura y alta por documento (`ClienteDoc`, escritura real con vista previa, aprobación y tope). */
 @Injectable()
 export class ApiworkingClientsService {
+  private readonly logger = new Logger('Apiworking');
   private cache: { tenant: string; at: number; rows: ExternalCustomer[] } | null = null;
 
   constructor(
@@ -105,7 +108,10 @@ export class ApiworkingClientsService {
         if (isEmptyList(e)) return [];
         throw e;
       });
-    const rows = asRows(data, 'la lista de clientes')
+    const raw = asRows(data, 'la lista de clientes');
+    // Diagnóstico sin datos personales: cantidades y nombres de campo.
+    this.logger.log(`clientes: ${raw.length} filas recibidas; campos: ${Object.keys(raw[0] ?? {}).slice(0, 20).join(', ') || 'ninguno'}`);
+    const rows = raw
       .map(parseCustomer)
       .filter((c) => c.active)
       .sort((a, b) => a.name.localeCompare(b.name, 'es'));
