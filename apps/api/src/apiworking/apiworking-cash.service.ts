@@ -7,7 +7,7 @@ import { AppConfig } from '../config/app-config.js';
 import { clinicScope } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
-import { ApiworkingClient, ApiworkingError, asRows, clip, optText, reqId } from './apiworking.client.js';
+import { ApiworkingClient, ApiworkingError, asRows, cajaId, cajaName, clip, optText, reqId } from './apiworking.client.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import type { CashCloseDraftDto, CashOpenDraftDto } from './dto/apiworking.dto.js';
 
@@ -42,8 +42,8 @@ export class ApiworkingCashService {
     const session = this.clients.requireSession(principal);
     const cfg = this.config.apiworking;
     const cajas = asRows(await this.client.call('caja', { token: session.token }), 'las cajas')
-      .filter((r) => cfg.authorizedCashRegisters.includes(reqId(r, 'idCaja', 'una caja')))
-      .map((r) => ({ id: reqId(r, 'idCaja', 'una caja'), name: optText(r, 'caja') || 'Caja', branch: optText(r, 'sucursal') }));
+      .filter((r) => cfg.authorizedCashRegisters.includes(cajaId(r)))
+      .map((r) => ({ id: cajaId(r), name: cajaName(r), branch: optText(r, 'sucursal') }));
     const withState = [];
     for (const c of cajas) withState.push({ ...c, opened: (await this.openMovement(session.token, c.id)) !== null });
     return { cajas: withState, turnos: await this.turns(session.token), defaultTurn: DEFAULT_TURN, write: cfg.write };
@@ -151,13 +151,13 @@ export class ApiworkingCashService {
     const cfg = this.config.apiworking;
     if (!cfg.authorizedCashRegisters.includes(draft.idCaja)) throw new BadRequestException('La caja no está autorizada para esta instalación');
     if (!session.personId) throw new UnprocessableEntityException({ message: 'Apiworking no informó id_persona en el inicio de sesión: no se puede cerrar la caja', code: 'NO_PERSON' });
-    const caja = asRows(await this.client.call('caja', { token: session.token }), 'las cajas').find((r) => reqId(r, 'idCaja', 'una caja') === draft.idCaja);
+    const caja = asRows(await this.client.call('caja', { token: session.token }), 'las cajas').find((r) => cajaId(r) === draft.idCaja);
     if (!caja) throw new BadRequestException('La caja no existe en Apiworking');
     const turn = draft.idTurno ?? DEFAULT_TURN;
     const body = { idPersona: session.personId, idTurno: turn, idCaja: draft.idCaja, cadenaDetalle: '', cadenaCierre: '', cadenaCierreDetalle: '', idCajaSel: '', ip: '', usuario: session.externalUserId };
     const hash = sha256(JSON.stringify({ tenant: cfg.expectedDatabase, op: 'close', body }));
     const isOpen = (await this.openMovement(session.token, draft.idCaja)) !== null;
-    return { body, hash, turn, isOpen, cajaName: optText(caja, 'caja') || 'Caja' };
+    return { body, hash, turn, isOpen, cajaName: cajaName(caja) };
   }
 
   private async enforceCap() {
@@ -178,13 +178,13 @@ export class ApiworkingCashService {
     if (!cfg.authorizedCashRegisters.includes(draft.idCaja)) throw new BadRequestException('La caja no está autorizada para esta instalación');
     if (!session.personId) throw new UnprocessableEntityException({ message: 'Apiworking no informó id_persona en el inicio de sesión: no se puede abrir la caja', code: 'NO_PERSON' });
     const cajas = asRows(await this.client.call('caja', { token: session.token }), 'las cajas');
-    const caja = cajas.find((r) => reqId(r, 'idCaja', 'una caja') === draft.idCaja);
+    const caja = cajas.find((r) => cajaId(r) === draft.idCaja);
     if (!caja) throw new BadRequestException('La caja no existe en Apiworking');
     const turn = draft.idTurno ?? DEFAULT_TURN;
     const body = { idPersona: session.personId, idUsuario: session.externalUserId, idTurno: turn, idCaja: draft.idCaja, cadenaDetalle: `${SOLES}^${amountText(draft.openingCents)}` };
     const hash = sha256(JSON.stringify({ tenant: cfg.expectedDatabase, body }));
     const alreadyOpen = (await this.openMovement(session.token, draft.idCaja)) !== null;
-    return { body, hash, turn, alreadyOpen, cajaName: optText(caja, 'caja') || 'Caja' };
+    return { body, hash, turn, alreadyOpen, cajaName: cajaName(caja) };
   }
 
   private async openMovement(token: string, idCaja: string): Promise<string | null> {

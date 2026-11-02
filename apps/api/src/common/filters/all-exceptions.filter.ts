@@ -10,6 +10,7 @@ import {
 import type { Response } from 'express';
 import { AuditAction, AuditService } from '../../audit/audit.service.js';
 import type { AppRequest } from '../../auth/auth.types.js';
+import { ApiworkingError } from '../../apiworking/apiworking.client.js';
 import { ClinicalAccessDeniedException } from '../../clinical/clinical.errors.js';
 import { requestMetaFrom } from '../utils/request-meta.js';
 
@@ -21,6 +22,7 @@ const STATUS_LABEL: Record<number, string> = {
   409: 'Conflicto',
   422: 'Datos no procesables',
   429: 'Demasiadas solicitudes',
+  502: 'Respuesta inválida de Apiworking',
   503: 'Servicio no disponible',
 };
 
@@ -85,10 +87,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
       }
     }
 
+    // Errores del proveedor externo: nunca un 500 mudo. El mensaje ya está acotado y no contiene cuerpos ni credenciales.
+    if (exception instanceof ApiworkingError) {
+      const map: Record<string, number> = { AUTH: 409, FORBIDDEN: 422, NOT_FOUND: 422, INVALID: 422, REJECTED: 422, DUPLICATE: 409, RATE_LIMIT: 429, DISABLED: 503, UNKNOWN_RESULT: 502, BAD_RESPONSE: 502 };
+      statusCode = map[exception.kind] ?? 502;
+      message = exception.message;
+      if (exception.kind === 'AUTH') extra = { code: 'APIWORKING_SESSION_REQUIRED' };
+      this.logger.warn({ msg: 'Apiworking', requestId: req.requestId, path: req.path, kind: exception.kind, error: exception.message });
+    }
+
     // Las negativas clínicas ya se auditaron con paciente y motivo (CLINICAL_ACCESS_DENIED).
     if (statusCode === 403 && !(exception instanceof ClinicalAccessDeniedException)) await this.auditDenial(req);
 
-    if (statusCode >= 500) {
+    if (statusCode >= 500 && !(exception instanceof ApiworkingError)) {
       this.logger.error({
         msg: 'Error no controlado',
         requestId: req.requestId,

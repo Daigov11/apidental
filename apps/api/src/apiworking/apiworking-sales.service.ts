@@ -8,7 +8,7 @@ import type { Prisma } from '../generated/prisma/client.js';
 import { clinicScope, isUniqueViolation, requirePatient } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
-import { ApiworkingClient, ApiworkingError, asRecord, asRows, clip, moneyToCents, optText, reqId } from './apiworking.client.js';
+import { ApiworkingClient, ApiworkingError, asRecord, asRows, cajaId, cajaName, clip, moneyToCents, optText, reqId } from './apiworking.client.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import type { ExternalSession } from './apiworking-session.store.js';
 import type { ReconcileSaleDto, SaleDraftDto } from './dto/apiworking.dto.js';
@@ -79,7 +79,7 @@ export class ApiworkingSalesService {
     const session = this.clients.requireSession(principal);
     const cfg = this.config.apiworking;
     const cajas = asRows(await this.client.call('caja', { token: session.token }), 'las cajas')
-      .map((r) => ({ id: reqId(r, 'idCaja', 'una caja'), name: label(r, ['caja'], 'Caja'), branch: optText(r, 'sucursal') }))
+      .map((r) => ({ id: cajaId(r), name: cajaName(r), branch: optText(r, 'sucursal') }))
       .filter((c) => cfg.authorizedCashRegisters.includes(c.id));
     const out: Record<string, unknown> = { cajas, authorizedConfigured: cfg.authorizedCashRegisters.length > 0 };
     if (!idCaja) return out;
@@ -106,8 +106,8 @@ export class ApiworkingSalesService {
     const cfg = this.config.apiworking;
     const mark = (list: string[], id: string) => list.includes(id);
     const cajas = asRows(await this.client.call('caja', { token: session.token }), 'las cajas').map((r) => {
-      const id = reqId(r, 'idCaja', 'una caja');
-      return { id, name: label(r, ['caja'], 'Caja'), branch: optText(r, 'sucursal'), authorized: mark(cfg.authorizedCashRegisters, id) };
+      const id = cajaId(r);
+      return { id, name: cajaName(r), branch: optText(r, 'sucursal'), authorized: mark(cfg.authorizedCashRegisters, id) };
     });
     const out: Record<string, unknown> = { cajas, write: cfg.write, warehouseId: cfg.warehouseId, unitId: cfg.unitId };
     if (!idCaja) return out;

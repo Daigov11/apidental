@@ -200,8 +200,22 @@ export function asRows(v: unknown, what: string): Record<string, unknown>[] {
 export function reqId(r: Record<string, unknown>, key: string, what: string): string {
   const v = r[key];
   if ((typeof v === 'string' && v.trim() !== '') || (typeof v === 'number' && Number.isFinite(v))) return String(v).trim();
-  throw new ApiworkingError('BAD_RESPONSE', `Apiworking: falta ${key} en ${what}`);
+  throw new ApiworkingError('BAD_RESPONSE', `Apiworking: falta ${key} en ${what} (campos recibidos: ${Object.keys(r).slice(0, 30).join(', ') || 'ninguno'})`);
 }
+
+/** Id con varios nombres posibles (el contrato no lo fija): acepta el primero presente; si ninguno, el error lista los campos recibidos. */
+export function reqIdAny(r: Record<string, unknown>, keys: readonly string[], what: string): string {
+  for (const k of keys) {
+    const v = r[k];
+    if ((typeof v === 'string' && v.trim() !== '') || (typeof v === 'number' && Number.isFinite(v))) return String(v).trim();
+  }
+  return reqId(r, keys[0]!, what);
+}
+
+const CAJA_ID_KEYS = ['idCaja', 'id_caja', 'IdCaja', 'idcaja'] as const;
+const CAJA_NAME_KEYS = ['caja', 'nombreCaja', 'nombre_caja', 'nombre', 'descripcion'] as const;
+export const cajaId = (r: Record<string, unknown>) => reqIdAny(r, CAJA_ID_KEYS, 'una caja');
+export const cajaName = (r: Record<string, unknown>) => CAJA_NAME_KEYS.map((k) => optText(r, k)).find(Boolean) ?? 'Caja';
 
 export function optText(r: Record<string, unknown>, key: string): string {
   const v = r[key];
