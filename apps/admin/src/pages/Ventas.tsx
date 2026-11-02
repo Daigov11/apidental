@@ -368,8 +368,8 @@ function DiscoveryCard() {
           {env && (
             <div style={{ marginTop: 'var(--space-4)' }}>
               <p className="caption muted">Valores para el servidor (los aplica quien administra la instalación):</p>
-              <pre className="tabular caption" style={{ overflow: 'auto' }}>{env}{'\n'}APIWORKING_WAREHOUSE_ID={x.warehouseId ?? '<id del almacén>'}{'\n'}APIWORKING_UNIT_ID={x.unitId ?? '<id de la unidad de medida>'}</pre>
-              <p className="caption muted">El almacén y la unidad de medida no se pueden consultar en Apiworking: los indica el responsable del tenant.</p>
+              <pre className="tabular caption" style={{ overflow: 'auto' }}>{env}</pre>
+              <p className="caption muted">Opcional: sin estas listas vale lo que Apiworking informa al usuario. Para vender se usa como almacén la sucursal del usuario{x.warehouseId ? ` (${x.warehouseId})` : ''} y como unidad de medida {x.unitId ?? '1'} (NIU).</p>
             </div>
           )}
         </>

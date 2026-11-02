@@ -92,7 +92,7 @@ describe('Configuración de Apiworking (descubrimiento)', () => {
     const env = within(card).getByText(/APIWORKING_AUTHORIZED_CASH_REGISTERS=5/);
     expect(env.textContent).toContain('APIWORKING_AUTHORIZED_DOCUMENT_TYPES=2');
     expect(env.textContent).toContain('APIWORKING_AUTHORIZED_SERIES=11,12');
-    expect(env.textContent).toContain('APIWORKING_WAREHOUSE_ID=<id del almacén>');
+    expect(within(card).getByText(/Para vender se usa como almacén la sucursal/)).toBeInTheDocument();
     // Solo lectura: nada se envía al servidor.
     expect(called('POST', '/apiworking/sales')).toHaveLength(0);
   });

@@ -18,6 +18,10 @@ type SaleRow = Prisma.ApiworkingSaleGetPayload<object>;
 const DOC_LABELS = { PENDING: 'Enviando', SENT: 'Registrado en Apiworking', REJECTED: 'Rechazado', PENDING_RECONCILIATION: 'Resultado desconocido: conciliar' } as const;
 const PAYMENT_LABELS = { NO_EVIDENCE: 'Cobro sin confirmar', CONFIRMED_REMOTE: 'Cobro confirmado en Apiworking', CONFIRMED_RECONCILED: 'Cobro conciliado' } as const;
 const VOID_LABELS = { IN_PROGRESS: 'Anulación en curso', VOIDED: 'Anulado', TO_RECONCILE: 'Anulación por conciliar' } as const;
+/** Unidad de medida por defecto: «1» = NIU (según el responsable del tenant). */
+const DEFAULT_UNIT = '1';
+/** Almacén = sucursal del login de Apiworking (`id_sucursal`); el .env solo lo sobrescribe si hace falta. */
+const warehouseOf = (cfg: { warehouseId: string | null }, session: ExternalSession) => cfg.warehouseId ?? session.branchId;
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
 /** Nombre legible de una fila: el contrato no lo fija, se usa el primer campo conocido que exista. */
@@ -108,7 +112,7 @@ export class ApiworkingSalesService {
       const id = cajaId(r);
       return { id, name: cajaName(r), branch: optText(r, 'sucursal'), authorized: allowed(cfg.authorizedCashRegisters, id) };
     });
-    const out: Record<string, unknown> = { cajas, write: cfg.write, warehouseId: cfg.warehouseId, unitId: cfg.unitId };
+    const out: Record<string, unknown> = { cajas, write: cfg.write, warehouseId: warehouseOf(cfg, session), unitId: cfg.unitId ?? DEFAULT_UNIT };
     if (!idCaja) return out;
     if (!cajas.some((c) => c.id === idCaja)) throw new BadRequestException('La caja no existe en Apiworking');
     const opened = await this.openMovement(session, idCaja);
@@ -175,7 +179,9 @@ export class ApiworkingSalesService {
     if (!allowed(cfg.authorizedCashRegisters, draft.idCaja) || !allowed(cfg.authorizedDocumentTypes, draft.idTipoDocumento) || !allowed(cfg.authorizedSeries, draft.idSerie)) {
       throw new BadRequestException('La caja, el tipo de documento o la serie no están autorizados para esta instalación');
     }
-    if (!cfg.warehouseId || !cfg.unitId) throw new ServiceUnavailableException('Falta configurar el almacén y la unidad de medida de Apiworking');
+    const warehouse = warehouseOf(cfg, session);
+    const unit = cfg.unitId ?? DEFAULT_UNIT;
+    if (!warehouse || !Number.isSafeInteger(Number(warehouse))) throw new ServiceUnavailableException('Apiworking no informó la sucursal (id_sucursal) del usuario: no se puede determinar el almacén');
     for (const id of [draft.customerId, draft.idSerie]) {
       if (!Number.isSafeInteger(Number(id))) throw new BadRequestException('Identificador de Apiworking fuera de rango');
     }
@@ -202,7 +208,7 @@ export class ApiworkingSalesService {
       observacion: draft.description,
       detalle: draft.lines.map((l, i) => ({
         idProducto: 0,
-        idAlmacen: Number(cfg.warehouseId),
+        idAlmacen: Number(warehouse),
         grupo: '0',
         itemPedido: String(i + 1),
         cantidad: l.quantity,
@@ -212,7 +218,7 @@ export class ApiworkingSalesService {
         tributo: '',
         nombreProducto: l.name,
         detalleItem: '',
-        idUnidadMedida: cfg.unitId,
+        idUnidadMedida: unit,
         isc: 0,
         descuento: 0,
         descuentoImporte: 0,

@@ -104,3 +104,7 @@ Apiworking no entregó contrato. Esto se implementó según la guía y el ejempl
 ## Espejo local de clientes (`apiworking_customers`)
 
 Los clientes creados por `ClienteDoc` se guardan también en la BD local (tenant, id de Apiworking, tipo y número de documento, nombre de referencia). La búsqueda une la lista de Apiworking con el espejo (sin duplicar por id) y, si Apiworking no responde, sirve solo el espejo (`offline: true`; el panel lo avisa). La lista de Apiworking sigue siendo la fuente de verdad del id; si la consulta devuelve 0 filas con `displayStart=1` se reintenta con `0`. Una venta puede usar un cliente del espejo.
+
+## Almacén y unidad de medida automáticos
+
+Al vender, el almacén (`idAlmacen`) es la sucursal del usuario en Apiworking (`data.id_sucursal` del login) y la unidad de medida (`idUnidadMedida`) es `"1"` (NIU), según el responsable del tenant. `APIWORKING_WAREHOUSE_ID` y `APIWORKING_UNIT_ID` solo sobrescriben esos valores. Nota de la guía: `"1"` no se había enviado nunca en real (los documentos reales usaron `"15"`, ZZ); se confirma con la primera venta de prueba.
