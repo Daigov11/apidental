@@ -212,7 +212,7 @@ export function reqIdAny(r: Record<string, unknown>, keys: readonly string[], wh
   return reqId(r, keys[0]!, what);
 }
 
-const CAJA_ID_KEYS = ['idCaja', 'id_caja', 'IdCaja', 'idcaja'] as const;
+const CAJA_ID_KEYS = ['idCaja', 'id', 'id_caja', 'IdCaja', 'idcaja'] as const;
 const CAJA_NAME_KEYS = ['caja', 'nombreCaja', 'nombre_caja', 'nombre', 'descripcion'] as const;
 export const cajaId = (r: Record<string, unknown>) => reqIdAny(r, CAJA_ID_KEYS, 'una caja');
 export const cajaName = (r: Record<string, unknown>) => CAJA_NAME_KEYS.map((k) => optText(r, k)).find(Boolean) ?? 'Caja';
