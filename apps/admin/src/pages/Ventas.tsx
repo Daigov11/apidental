@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, RefreshCw, Search, Send, Trash2 } from 'lucide-react';
 import { get, post } from '../api/client';
-import type { AwContext, AwCustomer, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify } from '../api/types';
+import type { AwContext, AwCustomer, AwDiscovery, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { fmtDateTime } from '../lib/format';
 import { fmtMoney, parseSoles } from '../lib/money';
@@ -217,6 +217,8 @@ export function VentasPage() {
         </section>
       )}
 
+      {can('apiworking:configure') && st.read && session && <DiscoveryCard />}
+
       <section aria-labelledby="sales-h" style={{ marginTop: 'var(--space-8)' }}>
         <div className="page-head"><h2 id="sales-h" className="h2">Ventas registradas</h2><Button size="sm" icon={<RefreshCw size={16} aria-hidden="true" />} onClick={sales.reload}>Actualizar</Button></div>
         {sales.loading && !sales.data && <Loading rows={3} />}
@@ -316,5 +318,58 @@ function ReconcileDialog({ sale, onClose, onDone }: { sale: AwSale; onClose: () 
       {outcome === 'REGISTERED' && <TextField label="Número de comprobante" help="Tal como aparece en Apiworking, por ejemplo B001-00000123." value={number} onChange={(e) => setNumber(e.target.value)} maxLength={40} />}
       <TextField label="Nota" help="Cómo lo verificó. Mínimo 3 caracteres." value={note} onChange={(e) => setNote(e.target.value)} maxLength={200} />
     </Dialog>
+  );
+}
+
+/** Solo administradores: todo lo que Apiworking informa (cajas, documentos, series), para decidir qué autorizar en el servidor. */
+function DiscoveryCard() {
+  const [idCaja, setIdCaja] = useState('');
+  const [idTipo, setIdTipo] = useState('');
+  const d = useAsync(() => get<AwDiscovery>('/apiworking/discovery', { idCaja, idTipoDocumento: idTipo }), [idCaja, idTipo]);
+  const x = d.data;
+  const Mark = ({ ok }: { ok: boolean }) => <Badge tone={ok ? 'success' : 'neutral'}>{ok ? 'Autorizada' : 'No autorizada'}</Badge>;
+  const env = [
+    idCaja && `APIWORKING_AUTHORIZED_CASH_REGISTERS=${idCaja}`,
+    idTipo && `APIWORKING_AUTHORIZED_DOCUMENT_TYPES=${idTipo}`,
+    idTipo && x?.series && x.series.length > 0 && `APIWORKING_AUTHORIZED_SERIES=${x.series.map((s) => s.id).join(',')}`,
+  ].filter(Boolean).join('\n');
+  return (
+    <section className="card" aria-labelledby="disc-h" style={{ marginTop: 'var(--space-8)' }}>
+      <div className="card-head"><h2 id="disc-h" className="h3">Configuración de Apiworking</h2><Badge tone="info">Solo lectura</Badge></div>
+      <p className="muted">Lo que Apiworking informa para este tenant. Elija una caja y un tipo de documento para ver sus ids y cuáles están autorizados en el servidor. No se modifica nada desde aquí.</p>
+      {d.error != null && <ErrorState error={d.error} onRetry={d.reload} />}
+      {x && (
+        <>
+          <SelectField label="Caja" value={idCaja} onChange={(e) => { setIdCaja(e.target.value); setIdTipo(''); }}>
+            <option value="">Elija una caja</option>
+            {x.cajas.map((c) => <option key={c.id} value={c.id}>{c.name} · id {c.id}{c.authorized ? ' (autorizada)' : ''}</option>)}
+          </SelectField>
+          {idCaja && x.opened === false && <Alert tone="warning">Esta caja no tiene una apertura vigente en Apiworking.</Alert>}
+          {idCaja && x.documentTypes && (
+            <SelectField label="Tipo de documento" value={idTipo} onChange={(e) => setIdTipo(e.target.value)}>
+              <option value="">Elija un tipo</option>
+              {x.documentTypes.map((t) => <option key={t.id} value={t.id}>{t.name} · id {t.id}{t.authorized ? ' (autorizado)' : ''}</option>)}
+            </SelectField>
+          )}
+          {idTipo && x.series && (
+            <div className="table-wrap table-cards">
+              <table>
+                <caption className="sr-only">Series del tipo de documento</caption>
+                <thead><tr><th scope="col">Serie</th><th scope="col">Id</th><th scope="col">Estado</th></tr></thead>
+                <tbody>{x.series.map((s) => <tr key={s.id}><td data-label="Serie">{s.serie}</td><td data-label="Id" className="tabular">{s.id}</td><td data-label="Estado"><Mark ok={s.authorized} /></td></tr>)}</tbody>
+              </table>
+            </div>
+          )}
+          {idTipo && x.paymentMethods && x.paymentMethods.length > 0 && <p className="caption muted">Formas de pago de la apertura: {x.paymentMethods.map((m) => `${m.name} (id ${m.id})`).join(', ')}.</p>}
+          {env && (
+            <div style={{ marginTop: 'var(--space-4)' }}>
+              <p className="caption muted">Valores para el servidor (los aplica quien administra la instalación):</p>
+              <pre className="tabular caption" style={{ overflow: 'auto' }}>{env}{'\n'}APIWORKING_WAREHOUSE_ID={x.warehouseId ?? '<id del almacén>'}{'\n'}APIWORKING_UNIT_ID={x.unitId ?? '<id de la unidad de medida>'}</pre>
+              <p className="caption muted">El almacén y la unidad de medida no se pueden consultar en Apiworking: los indica el responsable del tenant.</p>
+            </div>
+          )}
+        </>
+      )}
+    </section>
   );
 }

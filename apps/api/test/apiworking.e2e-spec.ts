@@ -198,6 +198,24 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     await ctx.http().get('/v1/apiworking/sales/context?idCaja=6').set(bearer(token)).expect(400);
   });
 
+  it('el descubrimiento muestra TODO lo que informa Apiworking, marcando lo autorizado, y solo al administrador', async () => {
+    const d = await ctx.http().get('/v1/apiworking/discovery?idCaja=5&idTipoDocumento=2').set(bearer(token)).expect(200);
+    expect(d.body.cajas).toEqual([
+      { id: '5', name: 'Caja Glow', branch: 'Principal', authorized: true },
+      { id: '6', name: 'Caja ajena', branch: 'Otra', authorized: false },
+    ]);
+    expect(d.body.documentTypes).toEqual([{ id: '2', name: 'Boleta', authorized: true }, { id: '9', name: 'No autorizado', authorized: false }]);
+    expect(d.body.series).toEqual([{ id: '11', serie: 'B001', authorized: true }, { id: '12', serie: 'B002', authorized: false }]);
+    expect(d.body).toMatchObject({ opened: true, warehouseId: '1', unitId: '15' });
+    await ctx.http().get('/v1/apiworking/discovery?idCaja=999').set(bearer(token)).expect(400);
+
+    // Un cajero con permisos de venta pero sin «configurar» no lo ve.
+    const cashier = await fx.userWithRole('CASHIER', { clinicId });
+    const cashierToken = (await ctx.http().post('/v1/auth/login').send({ email: cashier.user.email, password: 'Clave-De-Prueba-123' }).expect(200)).body.accessToken as string;
+    const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(cashierToken)).send({ clinicId, branchId: null }).expect(200);
+    await ctx.http().get('/v1/apiworking/discovery').set(bearer(sel.body.accessToken)).expect(403);
+  });
+
   it('vista previa: JSON exacto con SHA-256, ids como en la guía y sin autorizar lo ajeno', async () => {
     const p = await ctx.http().post('/v1/apiworking/sales/preview').set(bearer(token)).send(draft()).expect(200);
     expect(p.body.hash).toMatch(/^[0-9a-f]{64}$/);

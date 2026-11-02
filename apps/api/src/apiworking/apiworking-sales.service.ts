@@ -97,6 +97,33 @@ export class ApiworkingSalesService {
     return out;
   }
 
+  /**
+   * Descubrimiento para el administrador: TODAS las cajas, tipos de documento y series que Apiworking informa, marcando cuáles ya
+   * están autorizadas en esta instalación. Solo lectura: sirve para decidir qué ids poner en las listas autorizadas del .env.
+   */
+  async discovery(principal: AuthPrincipal, idCaja?: string, idTipoDocumento?: string) {
+    const session = this.clients.requireSession(principal);
+    const cfg = this.config.apiworking;
+    const mark = (list: string[], id: string) => list.includes(id);
+    const cajas = asRows(await this.client.call('caja', { token: session.token }), 'las cajas').map((r) => {
+      const id = reqId(r, 'idCaja', 'una caja');
+      return { id, name: label(r, ['caja'], 'Caja'), branch: optText(r, 'sucursal'), authorized: mark(cfg.authorizedCashRegisters, id) };
+    });
+    const out: Record<string, unknown> = { cajas, write: cfg.write, warehouseId: cfg.warehouseId, unitId: cfg.unitId };
+    if (!idCaja) return out;
+    if (!cajas.some((c) => c.id === idCaja)) throw new BadRequestException('La caja no existe en Apiworking');
+    const opened = await this.openMovement(session, idCaja);
+    out['opened'] = opened !== null;
+    const tipos = (await this.documentTypes(session, idCaja)).map((t) => ({ ...t, authorized: mark(cfg.authorizedDocumentTypes, t.id) }));
+    out['documentTypes'] = tipos;
+    if (idTipoDocumento) {
+      if (!tipos.some((t) => t.id === idTipoDocumento)) throw new BadRequestException('El tipo de documento no corresponde a la caja');
+      out['series'] = (await this.seriesOf(session, idCaja, idTipoDocumento)).map((s) => ({ ...s, authorized: mark(cfg.authorizedSeries, s.id) }));
+      out['paymentMethods'] = opened ? await this.paymentMethods(session, opened) : [];
+    }
+    return out;
+  }
+
   private async openMovement(session: ExternalSession, idCaja: string): Promise<string | null> {
     const data = await this.client.call('cajaApertura', { token: session.token, query: { idCaja } });
     const row = asRows(data, 'la apertura de caja')[0];

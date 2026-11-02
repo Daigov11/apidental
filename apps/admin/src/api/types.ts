@@ -170,3 +170,8 @@ export interface AwSale {
   actions: { verify: boolean; reconcile: boolean; void: boolean };
 }
 export interface AwVerify { sale: AwSale; paidCents?: number; paymentMessage?: string; candidates?: { number: string; status: string; totalCents: number | null; balanceCents: number | null }[] }
+export interface AwDiscovery {
+  cajas: { id: string; name: string; branch: string; authorized: boolean }[]; write: boolean; warehouseId: string | null; unitId: string | null;
+  opened?: boolean; documentTypes?: { id: string; name: string; authorized: boolean }[];
+  series?: { id: string; serie: string; authorized: boolean }[]; paymentMethods?: AwOption[];
+}

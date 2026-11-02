@@ -71,6 +71,7 @@ export const PERMISSIONS = {
   'apiworking:read': 'Ver clientes, cajas y ventas registradas en Apiworking',
   'apiworking:sell': 'Registrar ventas en Apiworking, verificarlas y conciliar resultados desconocidos',
   'apiworking:void': 'Anular ventas registradas en Apiworking (con motivo)',
+  'apiworking:configure': 'Ver todas las cajas, tipos de documento y series de Apiworking para decidir cuáles autorizar (solo lectura)',
   'care:assign': 'Asignar y revocar la relación asistencial paciente–odontólogo (acto administrativo, no clínico)',
 } as const;
 
@@ -214,6 +215,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'apiworking:read',
       'apiworking:sell',
       'apiworking:void',
+      'apiworking:configure',
       ...PATIENT_FULL_ACCESS,
     ],
   },

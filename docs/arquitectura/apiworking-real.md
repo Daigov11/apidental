@@ -40,7 +40,8 @@ Las rutas reales solo requieren que `INTEGRATIONS_MODE` pueda seguir en `off`: s
 
 ## Permisos locales
 `apiworking:read` (clientes, cajas, lista de ventas), `apiworking:sell` (preparar, enviar, verificar, conciliar),
-`apiworking:void` (anular). Los tienen Administrador de clínica y Cajero; Recepción, `read` y `sell`. La plataforma no.
+`apiworking:void` (anular), `apiworking:configure` (ver todas las cajas, documentos y series de Apiworking para decidir qué autorizar; solo lectura).
+Los tienen Administrador de clínica (todos) y Cajero (`read`, `sell`, `void`); Recepción, `read` y `sell`. La plataforma no.
 
 ## Puesta en marcha de una clínica con su tenant (p. ej. dental → Dra. Gina Paredes Yauri)
 Con la instancia ya creada (`deploy/scripts/instance-new.sh`) y migrada:
@@ -52,8 +53,10 @@ Con la instancia ya creada (`deploy/scripts/instance-new.sh`) y migrada:
    Reiniciar. Crear además un administrador local de respaldo: `npm run db:create-admin -w apps/api -- --email …`.
 3. La persona entra con su usuario de Apiworking (queda en «acceso pendiente») y luego se le asigna el rol:
    `npm run db:grant-role -w apps/api -- --username <usuario> --role CLINIC_ADMIN [--clinic <id>]`.
-4. Con **lecturas**: revisar Ventas → clientes, cajas, tipos y series; anotar los ids y fijarlos en las listas autorizadas,
-   `APIWORKING_WAREHOUSE_ID` y `APIWORKING_UNIT_ID`.
+4. Con **lecturas**: en **Ventas → Configuración de Apiworking** (solo administrador) se ven TODAS las cajas, tipos de documento y
+   series que Apiworking informa, con los valores listos para copiar. Fijarlos en las listas autorizadas del `.env` junto con
+   `APIWORKING_WAREHOUSE_ID` y `APIWORKING_UNIT_ID` (estos dos no se pueden consultar: los indica el responsable del tenant).
+   Mientras las listas estén vacías, la pantalla de ventas no muestra cajas (falla cerrado).
 5. **Primera escritura** (solo con la aprobación escrita del titular): `APIWORKING_AUTHZ_WRITE=true` y
    `APIWORKING_MAX_REAL_OPERATIONS=1`; enviar **una** venta de prueba; verificarla en Apiworking; recién entonces subir el tope.
 

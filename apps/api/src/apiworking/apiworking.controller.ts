@@ -71,6 +71,13 @@ export class ApiworkingController {
     return this.sales.context(a, q.idCaja, q.idTipoDocumento);
   }
 
+  /** Solo administradores: todo lo que Apiworking informa, para decidir qué autorizar (no escribe nada). */
+  @Get('discovery')
+  @RequirePermissions('apiworking:configure')
+  discovery(@CurrentPrincipal() a: AuthPrincipal, @Query() q: SalesContextQuery) {
+    return this.sales.discovery(a, q.idCaja, q.idTipoDocumento);
+  }
+
   @Post('sales/preview')
   @HttpCode(200)
   @RequirePermissions('apiworking:sell')

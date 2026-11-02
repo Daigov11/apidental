@@ -72,6 +72,36 @@ describe('Acceso con Apiworking', () => {
   });
 });
 
+describe('Configuración de Apiworking (descubrimiento)', () => {
+  const DISC = { cajas: [{ id: '5', name: 'Caja Glow', branch: 'Principal', authorized: false }, { id: '6', name: 'Otra', branch: '', authorized: false }], write: false, warehouseId: null, unitId: null };
+
+  it('el administrador ve todas las cajas y obtiene los valores para el servidor; sin el permiso no aparece', async () => {
+    const { called } = mockApi(routes({
+      ...sessionRoutes([...PERMS, 'apiworking:configure'], ['CLINIC_ADMIN']),
+      'GET /apiworking/discovery': (c: { query: URLSearchParams }) => ({ json: c.query.get('idTipoDocumento') ? { ...DISC, opened: true, documentTypes: [{ id: '2', name: 'Boleta', authorized: false }], series: [{ id: '11', serie: 'B001', authorized: false }, { id: '12', serie: 'B002', authorized: false }], paymentMethods: [{ id: '1', name: 'Efectivo' }] } : c.query.get('idCaja') ? { ...DISC, opened: true, documentTypes: [{ id: '2', name: 'Boleta', authorized: false }] } : DISC }),
+    } as never));
+    renderApp('/ventas');
+    const user = userEvent.setup();
+    const card = (await screen.findByRole('heading', { name: 'Configuración de Apiworking' })).closest('section')!;
+    await user.selectOptions(await within(card).findByLabelText('Caja'), '5');
+    await user.selectOptions(await within(card).findByLabelText('Tipo de documento'), '2');
+    expect(await within(card).findByText('B002')).toBeInTheDocument();
+    const env = within(card).getByText(/APIWORKING_AUTHORIZED_CASH_REGISTERS=5/);
+    expect(env.textContent).toContain('APIWORKING_AUTHORIZED_DOCUMENT_TYPES=2');
+    expect(env.textContent).toContain('APIWORKING_AUTHORIZED_SERIES=11,12');
+    expect(env.textContent).toContain('APIWORKING_WAREHOUSE_ID=<id del almacén>');
+    // Solo lectura: nada se envía al servidor.
+    expect(called('POST', '/apiworking/sales')).toHaveLength(0);
+  });
+
+  it('sin apiworking:configure no se muestra', async () => {
+    mockApi(routes());
+    renderApp('/ventas');
+    await screen.findByText('Limpieza dental');
+    expect(screen.queryByRole('heading', { name: 'Configuración de Apiworking' })).not.toBeInTheDocument();
+  });
+});
+
 describe('Ventas Apiworking', () => {
   it('el menú muestra Ventas solo con el permiso apiworking:read', async () => {
     mockApi(routes());

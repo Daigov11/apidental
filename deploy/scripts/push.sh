@@ -73,6 +73,8 @@ done
 mysql -e "FLUSH PRIVILEGES"
 
 echo "-- 6. Intercambio de código"
+# Un old-swap de un despliegue anterior haría que `mv` anidara la carpeta dentro de él: se descarta (los respaldos son dist.prev-*).
+rm -rf "$API/dist.old-swap" "$R/admin.old-swap"
 mv "$API/dist" "$API/dist.old-swap" && mv "$API/dist.new" "$API/dist"
 mv "$R/admin" "$R/admin.old-swap" && mv "$R/admin.new" "$R/admin"
 

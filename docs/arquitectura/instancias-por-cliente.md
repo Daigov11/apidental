@@ -33,6 +33,18 @@ muestra qué subiría. Los respaldos quedan en `/var/www/apidental/backups`.
 Las migraciones usan `MIGRATE_DATABASE_URL` (usuario `mig_<nombre>`, dentro de su propio `.env`), nunca el
 usuario de la aplicación. El usuario de la app recibe CRUD por tabla y solo `SELECT, INSERT` sobre `audit_logs`.
 
+## Clonar una BD (MariaDB): el DEFINER de los triggers
+Los 62 triggers (auditoría inmutable, etc.) guardan un `DEFINER`. Un `mysqldump` de una BD a otra los copia con el definer **de la
+BD de origen**; si ese usuario no tiene permisos sobre la BD nueva, cualquier escritura que dispare un trigger falla (`TRIGGER
+command denied to user …`). Tras clonar hay que recrear los triggers con el usuario de migración de la instancia nueva:
+`mysqldump --no-data --no-create-info --skip-opt --triggers --add-drop-trigger <origen> | sed 's/DEFINER=`<viejo>`@/DEFINER=`mig_<nombre>`@/' | mysql <destino>`.
+Comprobar: `SELECT definer, COUNT(*) FROM information_schema.triggers WHERE trigger_schema='<bd>' GROUP BY definer`.
+Una BD creada con `prisma migrate deploy` ya queda con el definer correcto (el usuario que migra).
+
+## Administración remota
+`./deploy/scripts/remote.sh <instancia> db:seed|db:create-admin|db:create-clinic|db:grant-role …` abre un túnel SSH, usa el
+`MIGRATE_DATABASE_URL` de la instancia y cierra el túnel. Tras desplegar permisos nuevos, ejecutar `db:seed` en cada instancia.
+
 ## Estado (2026-11-02)
 - `dental`, `demod1` y `demod2` corren el mismo código con BD, `.env`, secreto JWT, puerto, certificado y adjuntos propios.
 - `demod1` y `demod2` son **clones** de los datos de demostración que tenía `dental` (respaldo previo:
