@@ -8,6 +8,9 @@ export interface ExternalSession {
   branchId: string | null;
   /** Usuario de Apiworking (el campo `usuario` del login): lo exige la anulación. */
   username: string;
+  /** id_usuario e id_persona del login: los exige la apertura de caja. */
+  externalUserId: string;
+  personId: string | null;
   expiresAt: number;
 }
 

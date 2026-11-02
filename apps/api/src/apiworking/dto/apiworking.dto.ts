@@ -78,3 +78,16 @@ export class ReconcileSaleDto {
 export class VoidSaleDto {
   @Transform(trim) @IsString() @MinLength(3) @MaxLength(200) reason!: string;
 }
+
+export class CashOpenDraftDto {
+  @Matches(EXT_ID) idCaja!: string;
+  /// Turno de Apiworking (por defecto "1"; GET /api/CajaChica/turnos los lista).
+  @IsOptional() @Matches(EXT_ID) idTurno?: string;
+  /// Monto inicial en céntimos de sol (0 = abrir sin efectivo inicial).
+  @IsInt() @Min(0) @Max(100_000_000) openingCents!: number;
+}
+
+export class CashOpenDto extends CashOpenDraftDto {
+  /// SHA-256 de la vista previa que la persona aprobó.
+  @Matches(/^[0-9a-f]{64}$/) approvedHash!: string;
+}

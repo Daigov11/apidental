@@ -19,6 +19,9 @@ export const ROUTES = {
   controlPagos: { method: 'GET', path: '/api/Facturacion/controlPagos', kind: 'read' },
   registroDocumento: { method: 'POST', path: '/api/Facturacion/registro-documento', kind: 'write' },
   anular: { method: 'POST', path: '/api/Facturacion/anular', kind: 'write' },
+  turnos: { method: 'GET', path: '/api/CajaChica/turnos', kind: 'read' },
+  /** El tenant va en la ruta (…/AperturaCajaChica/{base_datos}): siempre es el esperado de esta instalación, nunca un dato libre. */
+  aperturaCaja: { method: 'POST', path: '/api/CajaChica/AperturaCajaChica', kind: 'write', tenantInPath: true },
 } as const;
 
 export type RouteName = keyof typeof ROUTES;
@@ -36,6 +39,8 @@ const QUERY_PARAMS: Record<RouteName, readonly string[]> = {
   controlPagos: ['idDocumentoPago'],
   registroDocumento: [],
   anular: ['idDocumentoPago', 'motivoAnulacion', 'usuario'],
+  turnos: [],
+  aperturaCaja: [],
 };
 
 export type ApiworkingErrorKind =
@@ -96,7 +101,9 @@ export class ApiworkingClient {
     if (def.kind === 'write' && !cfg.write) throw new ApiworkingError('DISABLED', 'Las escrituras reales de Apiworking están desactivadas');
     if (def.kind !== 'login' && !opts.token) throw new ApiworkingError('AUTH', 'Falta la sesión de Apiworking');
 
-    const url = new URL(cfg.baseUrl + def.path);
+    if ('tenantInPath' in def && !cfg.expectedDatabase) throw new ApiworkingError('DISABLED', 'Falta el tenant esperado de esta instalación');
+    const path = 'tenantInPath' in def ? `${def.path}/${encodeURIComponent(cfg.expectedDatabase!)}` : def.path;
+    const url = new URL(cfg.baseUrl + path);
     for (const [k, v] of Object.entries(opts.query ?? {})) {
       if (v === undefined) continue;
       if (!QUERY_PARAMS[route].includes(k)) throw new Error(`Parámetro no permitido para ${route}: ${k}`);

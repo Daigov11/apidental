@@ -17,7 +17,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
   const seen: Seen[] = [];
   const saved: Record<string, string | undefined> = {};
   /** Escenarios que la prueba activa en el servidor simulado. */
-  const scenario = { registro: 'ok' as 'ok' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT };
+  const scenario = { registro: 'ok' as 'ok' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject' };
 
   const customers = [
     { total: 3, id_cliente: 202600000038, id_persona: 202600000049, nombrecompleto: 'ROBERTO CARLOS ESPINAR VICHARRA', email: '', tipoDoc: 'D.N.I.', numerodocumento: '74908568', telefono: '', tipo_persona: 'N', estado: 'A', limite_credito: '0.00', saldo: 0, whatsapp: '', saldo_restante: '0.00' },
@@ -28,14 +28,21 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
   const ok = (data: unknown) => ({ codResponse: 1, message: 'OK', data });
 
   function route(req: Seen): { status: number; body?: unknown; hang?: boolean } {
+    if (req.method === 'POST' && req.path === `/api/CajaChica/AperturaCajaChica/${TENANT}`) {
+      if (scenario.apertura === 'boom') return { status: 500, body: { error: 'x' } };
+      if (scenario.apertura === 'reject') return { status: 200, body: { codResponse: 0, message: 'Turno inválido' } };
+      scenario.cajaOpen = true;
+      return { status: 200, body: ok([{ result: 3, duplicado: 1 }]) };
+    }
     switch (`${req.method} ${req.path}`) {
       case 'POST /api/User/login': {
         const b = req.body ?? {};
         if (b['password'] !== 'clave-correcta') return { status: 200, body: { codResponse: 0, message: 'Usuario o contraseña incorrectos' } };
-        return { status: 200, body: ok({ token: EXTERNAL_TOKEN, id_usuario: 77, usuario: b['usuario'], nombrecompleto: 'GINA PAREDES YAURI', id_sucursal: 1, roles: ['ADMIN'], empresa: { base_datos: scenario.tenant } }) };
+        return { status: 200, body: ok({ token: EXTERNAL_TOKEN, id_usuario: 77, id_persona: 201900000001, usuario: b['usuario'], nombrecompleto: 'GINA PAREDES YAURI', id_sucursal: 1, roles: ['ADMIN'], empresa: { base_datos: scenario.tenant } }) };
       }
       case 'GET /api/Caja': return { status: 200, body: ok([{ idCaja: 5, caja: 'Caja Glow', sucursal: 'Principal' }, { idCaja: 6, caja: 'Caja ajena', sucursal: 'Otra' }]) };
-      case 'GET /api/CajaChica/consulta-aperturada': return { status: 200, body: ok({ id_movimiento_caja: 9001 }) };
+      case 'GET /api/CajaChica/consulta-aperturada': return { status: 200, body: ok(scenario.cajaOpen ? { id_movimiento_caja: 9001 } : []) };
+      case 'GET /api/CajaChica/turnos': return { status: 200, body: ok([{ idTurno: 1, turno: 'Mañana' }, { idTurno: 2, turno: 'Tarde' }]) };
       case 'GET /api/Caja/tipo-documentos': return { status: 200, body: ok([{ id_tipo_documento: 2, tipo_documento: 'Boleta' }, { id_tipo_documento: 9, tipo_documento: 'No autorizado' }]) };
       case 'GET /api/Facturacion/series': return { status: 200, body: ok([{ id_serie: 11, serie: 'B001' }, { id_serie: 12, serie: 'B002' }]) };
       case 'GET /api/CajaChica/formas-pago': return { status: 200, body: ok([{ id_metodo_pago: 1, metodoPago: 'Efectivo' }]) };
@@ -363,6 +370,64 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       if (before === undefined) delete process.env['APIWORKING_AUTHZ_WRITE'];
       else process.env['APIWORKING_AUTHZ_WRITE'] = before;
     }
+  });
+
+  it('abre la caja con vista previa, aprobación exacta, una sola vez y con tope', async () => {
+    const login = await enter();
+    const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);
+    const t = sel.body.accessToken as string;
+    const aperturas = () => seen.filter((x) => x.method === 'POST' && x.path.startsWith('/api/CajaChica/AperturaCajaChica')).length;
+    scenario.cajaOpen = false;
+
+    const st = await ctx.http().get('/v1/apiworking/cash').set(bearer(t)).expect(200);
+    expect(st.body.cajas).toEqual([{ id: '5', name: 'Caja Glow', branch: 'Principal', opened: false }]);
+    expect(st.body.turnos).toEqual([{ id: '1', name: 'Mañana' }, { id: '2', name: 'Tarde' }]);
+
+    const draftCash = { idCaja: '5', openingCents: 10_000 };
+    const p = await ctx.http().post('/v1/apiworking/cash/preview').set(bearer(t)).send(draftCash).expect(200);
+    expect(p.body).toMatchObject({ openingText: 'S/ 100.00', alreadyOpen: false, turn: '1' });
+    expect(aperturas()).toBe(0);
+    await ctx.http().post('/v1/apiworking/cash/preview').set(bearer(t)).send({ ...draftCash, idCaja: '6' }).expect(400);
+
+    const stale = await ctx.http().post('/v1/apiworking/cash/open').set(bearer(t)).send({ ...draftCash, openingCents: 20_000, approvedHash: p.body.hash });
+    expect(stale.status).toBe(409);
+    expect(stale.body.code).toBe('PREVIEW_CHANGED');
+    expect(aperturas()).toBe(0);
+
+    const opened = await ctx.http().post('/v1/apiworking/cash/open').set(bearer(t)).send({ ...draftCash, approvedHash: p.body.hash }).expect(200);
+    expect(opened.body).toMatchObject({ status: 'OPENED', movementId: '9001' });
+    const sent = seen.filter((x) => x.method === 'POST' && x.path.startsWith('/api/CajaChica/AperturaCajaChica')).at(-1)!;
+    expect(sent.auth).toBe(`Bearer ${EXTERNAL_TOKEN}`);
+    expect(sent.body).toEqual({ idPersona: '201900000001', idUsuario: '77', idTurno: '1', idCaja: '5', cadenaDetalle: '1^100' });
+
+    // Con la caja ya abierta no se envía nada.
+    const again = await ctx.http().post('/v1/apiworking/cash/open').set(bearer(t)).send({ ...draftCash, approvedHash: p.body.hash });
+    expect(again.status).toBe(409);
+    expect(again.body.code).toBe('ALREADY_OPEN');
+    expect(aperturas()).toBe(1);
+
+    // Fallo del servidor: resultado desconocido, sin reintento.
+    scenario.cajaOpen = false;
+    scenario.apertura = 'boom';
+    const p2 = await ctx.http().post('/v1/apiworking/cash/preview').set(bearer(t)).send(draftCash).expect(200);
+    const unknown = await ctx.http().post('/v1/apiworking/cash/open').set(bearer(t)).send({ ...draftCash, approvedHash: p2.body.hash }).expect(200);
+    expect(unknown.body.status).toBe('UNKNOWN');
+    expect(aperturas()).toBe(2);
+    scenario.apertura = 'ok';
+
+    // Dos intentos ya contados: con tope 4, tras dos más se bloquea.
+    await ctx.db.auditLog.createMany({ data: [1, 2].map(() => ({ action: 'APIWORKING_CASH_OPEN_ATTEMPT', entity: 'ApiworkingCash', clinicId })) });
+    const blocked = await ctx.http().post('/v1/apiworking/cash/open').set(bearer(t)).send({ ...draftCash, approvedHash: p2.body.hash });
+    expect(blocked.status).toBe(409);
+    expect(blocked.body.code).toBe('REAL_OPERATIONS_LIMIT');
+    expect(aperturas()).toBe(2);
+    scenario.cajaOpen = true;
+
+    // Quien no tiene el permiso de abrir caja no puede ni previsualizar.
+    const reception = await fx.userWithRole('RECEPTIONIST', { clinicId });
+    const rt = (await ctx.http().post('/v1/auth/login').send({ email: reception.user.email, password: 'Clave-De-Prueba-123' }).expect(200)).body.accessToken as string;
+    const rsel = await ctx.http().post('/v1/auth/select-context').set(bearer(rt)).send({ clinicId, branchId: null }).expect(200);
+    await ctx.http().post('/v1/apiworking/cash/preview').set(bearer(rsel.body.accessToken)).send(draftCash).expect(403);
   });
 
   it('la auditoría registra la operación sin tokens, contraseñas ni cuerpos', async () => {

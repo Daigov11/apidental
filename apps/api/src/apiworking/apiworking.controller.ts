@@ -8,9 +8,10 @@ import { RequirePermissions } from '../common/decorators/permissions.decorator.j
 import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
 import { AppConfig } from '../config/app-config.js';
 import { ApiworkingAuthService } from './apiworking-auth.service.js';
+import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
-import { ApiworkingLoginDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, VoidSaleDto } from './dto/apiworking.dto.js';
+import { ApiworkingLoginDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, VoidSaleDto } from './dto/apiworking.dto.js';
 
 const uuid = () => new ParseUUIDPipe();
 
@@ -42,6 +43,7 @@ export class ApiworkingController {
   constructor(
     private readonly clients: ApiworkingClientsService,
     private readonly sales: ApiworkingSalesService,
+    private readonly cash: ApiworkingCashService,
     private readonly config: AppConfig,
   ) {}
 
@@ -76,6 +78,26 @@ export class ApiworkingController {
   @RequirePermissions('apiworking:configure')
   discovery(@CurrentPrincipal() a: AuthPrincipal, @Query() q: SalesContextQuery) {
     return this.sales.discovery(a, q.idCaja, q.idTipoDocumento);
+  }
+
+  @Get('cash')
+  @RequirePermissions('apiworking:read')
+  cashStatus(@CurrentPrincipal() a: AuthPrincipal) {
+    return this.cash.status(a);
+  }
+
+  @Post('cash/preview')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:cash')
+  cashPreview(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CashOpenDraftDto) {
+    return this.cash.preview(a, dto);
+  }
+
+  @Post('cash/open')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:cash')
+  cashOpen(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CashOpenDto, @Meta() m: RequestMeta) {
+    return this.cash.open(a, dto, m);
   }
 
   @Post('sales/preview')

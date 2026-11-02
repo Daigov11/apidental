@@ -22,6 +22,7 @@ export interface ExternalLogin {
   username: string;
   fullName: string;
   branchId: string | null;
+  personId: string | null;
   roles: unknown;
   tenant: string;
 }
@@ -38,6 +39,7 @@ export function parseLogin(data: unknown): ExternalLogin {
     username: reqId(d, 'usuario', 'el login'),
     fullName: optText(d, 'nombrecompleto'),
     branchId: optText(d, 'id_sucursal') || null,
+    personId: optText(d, 'id_persona') || null,
     roles: d['roles'] ?? null,
     tenant,
   };
@@ -88,7 +90,7 @@ export class ApiworkingAuthService {
 
     const started = await this.auth.startSession(user, meta, { via: 'apiworking' });
     // El JWT externo se queda en memoria del servidor, atado a la sesión local.
-    this.store.set(started.sessionId, { userId: user.id, token: login.token, branchId: login.branchId, username: login.username });
+    this.store.set(started.sessionId, { userId: user.id, token: login.token, branchId: login.branchId, username: login.username, externalUserId: login.userId, personId: login.personId });
     return {
       refreshToken: started.refreshToken,
       body: { ...started.body, pendingAccess: started.body.contexts.length === 0 },

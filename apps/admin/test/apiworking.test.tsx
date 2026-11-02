@@ -19,6 +19,8 @@ const CTX = {
   documentTypes: [{ id: '2', name: 'Boleta' }], series: [{ id: '11', serie: 'B001' }], paymentMethods: [{ id: '1', name: 'Efectivo' }],
 };
 
+const CASH = { cajas: [{ id: '5', name: 'Caja Glow', branch: 'Principal', opened: false }], turnos: [{ id: '1', name: 'Mañana' }], defaultTurn: '1', write: true };
+
 type Routes = Parameters<typeof mockApi>[0];
 const routes = (over: Routes = {}): Routes => ({
   ...sessionRoutes(PERMS, ['CLINIC_ADMIN']),
@@ -28,6 +30,7 @@ const routes = (over: Routes = {}): Routes => ({
   'GET /apiworking/sales': { json: { items: [SALE], total: 1 } },
   'GET /apiworking/clients': { json: { items: [CUSTOMER], total: 1 } },
   'GET /apiworking/sales/context': { json: CTX },
+  'GET /apiworking/cash': { json: CASH },
   ...over,
 });
 
@@ -237,6 +240,42 @@ describe('Ventas Apiworking', () => {
     await screen.findByText('Limpieza dental');
     expect(screen.queryByRole('button', { name: 'Anular' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Verificar' })).toBeInTheDocument();
+  });
+});
+
+describe('Apertura de caja', () => {
+  const PREVIEW = { hash: 'a'.repeat(64), caja: 'Caja Glow', turn: '1', openingCents: 10000, openingText: 'S/ 100.00', alreadyOpen: false, write: true };
+
+  it('se revisa, se aprueba y recién entonces se envía el hash aprobado', async () => {
+    const { called } = mockApi(routes({
+      ...sessionRoutes([...PERMS, 'apiworking:cash'], ['CLINIC_ADMIN']),
+      'POST /apiworking/cash/preview': { json: PREVIEW },
+      'POST /apiworking/cash/open': { json: { status: 'OPENED', message: 'Caja abierta', movementId: '9001' } },
+    } as never));
+    renderApp('/ventas');
+    const user = userEvent.setup();
+    const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
+    await user.selectOptions(await within(card).findByLabelText('Caja a abrir'), '5');
+    await user.clear(within(card).getByLabelText('Monto inicial (S/)'));
+    await user.type(within(card).getByLabelText('Monto inicial (S/)'), '100');
+    await user.click(within(card).getByRole('button', { name: 'Revisar apertura' }));
+    expect(await within(card).findByText('S/ 100.00')).toBeInTheDocument();
+    expect(called('POST', '/apiworking/cash/preview')[0]?.body).toEqual({ idCaja: '5', openingCents: 10000, idTurno: '1' });
+    const abrir = within(card).getByRole('button', { name: 'Abrir caja' });
+    expect(abrir).toBeDisabled();
+    expect(called('POST', '/apiworking/cash/open')).toHaveLength(0);
+    await user.click(within(card).getByRole('checkbox'));
+    await user.click(abrir);
+    await waitFor(() => expect(called('POST', '/apiworking/cash/open')).toHaveLength(1));
+    expect(called('POST', '/apiworking/cash/open')[0]?.body).toEqual({ idCaja: '5', openingCents: 10000, idTurno: '1', approvedHash: 'a'.repeat(64) });
+  });
+
+  it('sin el permiso apiworking:cash se ve el estado pero no se ofrece abrir', async () => {
+    mockApi(routes());
+    renderApp('/ventas');
+    const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
+    expect(await within(card).findByText('Cerrada')).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Revisar apertura' })).not.toBeInTheDocument();
   });
 });
 
