@@ -19,6 +19,6 @@ import { ApiworkingSessionStore } from './apiworking-session.store.js';
   imports: [CashboxModule],
   controllers: [ApiworkingAuthController, ApiworkingController],
   providers: [ApiworkingClient, ApiworkingSessionStore, ApiworkingAuthService, ApiworkingClientsService, ApiworkingSalesService, ApiworkingCashService, ApiworkingContingencyService],
-  exports: [ApiworkingSessionStore],
+  exports: [ApiworkingSessionStore, ApiworkingClient],
 })
 export class ApiworkingModule {}

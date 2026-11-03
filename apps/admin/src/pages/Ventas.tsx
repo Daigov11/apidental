@@ -203,7 +203,7 @@ export function VentasPage() {
                 </ul>
               )}
               {found.data && found.data.items.length === 0 && !found.loading && <p className="caption muted">No hay clientes que coincidan.</p>}
-              <NewCustomer write={st.write} initial={billing.data && !billing.data.customer && billing.data.identifier ? { docType: billing.data.identifier.docType, docNumber: billing.data.identifier.docNumber, name: billing.data.patient.name } : undefined} onCreated={(cu) => { setCustomer(cu); setPreview(null); found.reload(); }} />
+              <NewCustomer key={billing.data?.identifier?.docNumber ?? 'manual'} write={st.write} initial={billing.data && !billing.data.customer && billing.data.identifier ? { docType: billing.data.identifier.docType, docNumber: billing.data.identifier.docNumber, name: billing.data.patient.name } : undefined} onCreated={(cu) => { setCustomer(cu); setPreview(null); found.reload(); }} />
             </>
           )}
 

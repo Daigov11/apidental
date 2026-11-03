@@ -606,6 +606,21 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     await ctx.http().get('/v1/apiworking/billing-draft').set(bearer(sel.body.accessToken)).expect(400);
   });
 
+  it('una cuenta de Apiworking confirma su identidad (reautenticación) con la contraseña de Apiworking', async () => {
+    const login = await enter();
+    const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);
+    const t = sel.body.accessToken as string;
+    const body = (password: string) => ({ password, purpose: 'CLOSE_CLINICAL_NOTE', targetId: randomUUID() });
+    const ok = await ctx.http().post('/v1/auth/reauthenticate').set(bearer(t)).send(body('clave-correcta')).expect(200);
+    expect(ok.body).toMatchObject({ singleUse: true, isSignature: false });
+    expect(JSON.stringify(await ctx.db.auditLog.findMany({ where: { action: { startsWith: 'REAUTH' } } }))).not.toContain('clave-correcta');
+    await ctx.http().post('/v1/auth/reauthenticate').set(bearer(t)).send(body('clave-incorrecta')).expect(401);
+    // La contraseña local aleatoria de la cuenta no sirve: solo vale la de Apiworking.
+    scenario.tenant = 'prod_ti_otro_cliente';
+    await ctx.http().post('/v1/auth/reauthenticate').set(bearer(t)).send(body('clave-correcta')).expect(401);
+    scenario.tenant = TENANT;
+  });
+
   it('la auditoría registra la operación sin tokens, contraseñas ni cuerpos', async () => {
     const rows = await ctx.db.auditLog.findMany({ where: { action: { startsWith: 'APIWORKING_' } } });
     expect(rows.length).toBeGreaterThan(3);

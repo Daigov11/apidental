@@ -242,3 +242,34 @@ export function moneyToCents(v: unknown): number | null {
   const total = whole * 100 + cents;
   return m[1] === '-' ? -total : total;
 }
+
+/** Datos que se leen del login (todos obligatorios salvo roles y sucursal, que solo informan). */
+export interface ExternalLogin {
+  token: string;
+  userId: string;
+  username: string;
+  fullName: string;
+  branchId: string | null;
+  personId: string | null;
+  roles: unknown;
+  tenant: string;
+}
+
+export function parseLogin(data: unknown): ExternalLogin {
+  const d = asRecord(data, 'el login');
+  const token = d['token'];
+  if (typeof token !== 'string' || token.length < 10) throw new ApiworkingError('BAD_RESPONSE', 'Apiworking: falta token en el login');
+  const empresa = d['empresa'];
+  const tenant = typeof empresa === 'object' && empresa !== null ? optText(empresa as Record<string, unknown>, 'base_datos') : '';
+  return {
+    token,
+    userId: reqId(d, 'id_usuario', 'el login'),
+    username: reqId(d, 'usuario', 'el login'),
+    fullName: optText(d, 'nombrecompleto'),
+    branchId: optText(d, 'id_sucursal') || null,
+    personId: optText(d, 'id_persona') || null,
+    roles: d['roles'] ?? null,
+    tenant,
+  };
+}
+

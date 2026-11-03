@@ -1,4 +1,5 @@
-import { BadRequestException, ForbiddenException, Inject, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import { ApiworkingClient, ApiworkingError, parseLogin } from '../apiworking/apiworking.client.js';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
 import { generateToken, hashToken } from '../common/utils/secret-token.js';
 import { verifyPassword } from '../common/utils/password.js';
@@ -27,6 +28,7 @@ export class ReauthService {
     private readonly audit: AuditService,
     private readonly attempts: LoginAttemptsService,
     private readonly config: AppConfig,
+    private readonly apiworking: ApiworkingClient,
   ) {}
 
   /**
@@ -46,6 +48,21 @@ export class ReauthService {
     return (await this.issue(principal, { password: input.password, purpose, targetId } as ReauthenticateDto, meta)).reauthToken;
   }
 
+  /** La misma cuenta y el mismo tenant: Apiworking acepta la contraseña, devuelve el mismo usuario y el tenant esperado. */
+  private async externalPasswordOk(identity: { externalUsername: string | null; externalUserId: string; tenant: string }, password: string): Promise<boolean> {
+    const cfg = this.config.apiworking;
+    if (!identity.externalUsername || !cfg.configured) return false;
+    try {
+      const login = parseLogin(await this.apiworking.call('login', { body: { usuario: identity.externalUsername, password, idSistema: cfg.systemId } }));
+      return login.tenant === cfg.expectedDatabase && login.userId === identity.externalUserId && identity.tenant === cfg.expectedDatabase;
+    } catch (error) {
+      if (error instanceof ApiworkingError && ['UNKNOWN_RESULT', 'RATE_LIMIT', 'DISABLED', 'BAD_RESPONSE'].includes(error.kind)) {
+        throw new ServiceUnavailableException('No se pudo confirmar su identidad con Apiworking. Intente de nuevo en unos minutos');
+      }
+      return false;
+    }
+  }
+
   async issue(principal: AuthPrincipal, dto: ReauthenticateDto, meta: RequestMeta) {
     const user = await this.db.user.findUnique({
       where: { id: principal.user.id },
@@ -53,7 +70,9 @@ export class ReauthService {
     });
     if (!user || user.status !== 'ACTIVE') throw new UnauthorizedException('Contraseña incorrecta');
 
-    const ok = await verifyPassword(user.passwordHash, dto.password);
+    const identity = this.config.authMode === 'apiworking' ? await this.db.externalIdentity.findUnique({ where: { userId: user.id } }) : null;
+    // Una cuenta de Apiworking no tiene contraseña local: se confirma con la de Apiworking (sin guardarla ni registrarla).
+    const ok = identity ? await this.externalPasswordOk(identity, dto.password) : await verifyPassword(user.passwordHash, dto.password);
     if (!ok || this.attempts.isLocked(user)) {
       // Cuenta como intento fallido (y bloquea): una sesión robada no puede adivinar la contraseña por aquí.
       await this.attempts.registerFailure(user.id, ok ? 'locked' : 'bad_password', meta, AuditAction.ReauthFailed);

@@ -9,41 +9,13 @@ import { AppConfig } from '../config/app-config.js';
 import { isUniqueViolation } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
-import { ApiworkingClient, ApiworkingError, asRecord, optText, reqId } from './apiworking.client.js';
+import { ApiworkingClient, ApiworkingError, parseLogin, type ExternalLogin } from './apiworking.client.js';
 import { ApiworkingSessionStore } from './apiworking-session.store.js';
 
 const PROVIDER = 'APIWORKING';
 const INVALID_CREDENTIALS = 'Credenciales inválidas';
 
-/** Datos que se leen del login (todos obligatorios salvo roles y sucursal, que solo informan). */
-export interface ExternalLogin {
-  token: string;
-  userId: string;
-  username: string;
-  fullName: string;
-  branchId: string | null;
-  personId: string | null;
-  roles: unknown;
-  tenant: string;
-}
-
-export function parseLogin(data: unknown): ExternalLogin {
-  const d = asRecord(data, 'el login');
-  const token = d['token'];
-  if (typeof token !== 'string' || token.length < 10) throw new ApiworkingError('BAD_RESPONSE', 'Apiworking: falta token en el login');
-  const empresa = d['empresa'];
-  const tenant = typeof empresa === 'object' && empresa !== null ? optText(empresa as Record<string, unknown>, 'base_datos') : '';
-  return {
-    token,
-    userId: reqId(d, 'id_usuario', 'el login'),
-    username: reqId(d, 'usuario', 'el login'),
-    fullName: optText(d, 'nombrecompleto'),
-    branchId: optText(d, 'id_sucursal') || null,
-    personId: optText(d, 'id_persona') || null,
-    roles: d['roles'] ?? null,
-    tenant,
-  };
-}
+export { parseLogin, type ExternalLogin } from './apiworking.client.js';
 
 /**
  * Inicio de sesión con la cuenta de Apiworking del tenant. Entrar NO da permisos: el usuario local nace sin roles y un
