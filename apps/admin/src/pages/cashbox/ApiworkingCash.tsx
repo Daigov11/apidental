@@ -108,7 +108,7 @@ function CashCard() {
     <section className="card" aria-labelledby="cash-h" style={{ marginTop: 'var(--space-8)' }}>
       <div className="card-head"><h2 id="cash-h" className="h3">Caja de Apiworking</h2><Button size="sm" icon={<RefreshCw size={16} aria-hidden="true" />} onClick={st.reload}>Actualizar</Button></div>
       {st.error != null && <ErrorState error={st.error} onRetry={st.reload} />}
-      {x && x.cajas.length === 0 && <p className="muted">No hay cajas autorizadas en esta instalación. Un administrador puede verlas en «Configuración de Apiworking».</p>}
+      {x && x.cajas.length === 0 && <p className="muted">Su usuario de Apiworking no tiene cajas asignadas.</p>}
       {x && x.cajas.length > 0 && (
         <>
           <div className="table-wrap table-cards">
