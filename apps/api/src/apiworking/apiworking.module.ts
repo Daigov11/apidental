@@ -3,6 +3,7 @@ import { ApiworkingClient } from './apiworking.client.js';
 import { ApiworkingAuthController, ApiworkingController } from './apiworking.controller.js';
 import { ApiworkingAuthService } from './apiworking-auth.service.js';
 import { CashboxModule } from '../cashbox/cashbox.module.js';
+import { ProductsModule } from '../products/products.js';
 import { ApiworkingContingencyService } from './apiworking-contingency.service.js';
 import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
@@ -16,7 +17,7 @@ import { ApiworkingSessionStore } from './apiworking-session.store.js';
  */
 @Global()
 @Module({
-  imports: [CashboxModule],
+  imports: [CashboxModule, ProductsModule],
   controllers: [ApiworkingAuthController, ApiworkingController],
   providers: [ApiworkingClient, ApiworkingSessionStore, ApiworkingAuthService, ApiworkingClientsService, ApiworkingSalesService, ApiworkingCashService, ApiworkingContingencyService],
   exports: [ApiworkingSessionStore, ApiworkingClient],

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Banknote, BookOpen, CalendarDays, ChevronsLeft, ChevronsRight, FileText, Film, Home, Inbox, LogOut, Pill, Receipt, Repeat, UserCog, Users, Wallet } from 'lucide-react';
+import { Banknote, BookOpen, Boxes, CalendarDays, ChevronsLeft, ChevronsRight, FileText, Film, Home, Inbox, LogOut, Pill, Receipt, Repeat, UserCog, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { BranchProvider } from '../lib/branch';
 import { usePendingRequests } from '../lib/bookingRequests';
@@ -44,6 +44,7 @@ function Shell() {
     { to: '/caja-chica', label: 'Caja chica', icon: <Banknote size={20} aria-hidden="true" />, show: hasClinic && can('cashbox:read') },
     { to: '/caja', label: 'Caja', icon: <Wallet size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('charge:read') },
     { to: '/ventas', label: 'Ventas', icon: <Receipt size={20} aria-hidden="true" />, show: hasClinic && can('apiworking:read') },
+    { to: '/catalogo', label: 'Catálogo', icon: <Boxes size={20} aria-hidden="true" />, show: hasClinic && (can('agenda:manage') || can('cashbox:manage')) },
     { to: '/usuarios', label: 'Usuarios', icon: <UserCog size={20} aria-hidden="true" />, show: can('user:read') },
     { to: '/comprobantes', label: 'Comprobantes', icon: <FileText size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('billing:read') },
   ];

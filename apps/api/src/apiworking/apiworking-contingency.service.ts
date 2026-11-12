@@ -12,6 +12,7 @@ import { PRISMA } from '../prisma/prisma.module.js';
 import { LIVE_SALE_STATUSES, resolveBillingLink } from './billing-link.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { presentSale } from './apiworking-sales.service.js';
+import { matchProduct, ProductsService } from '../products/products.js';
 import type { ContingencyDto } from './dto/apiworking.dto.js';
 
 const IDENTIFIER_TO_DOC_TYPE = { DNI: '1', CE: '4', PASSPORT: '7' } as const;
@@ -33,6 +34,7 @@ export class ApiworkingContingencyService {
     private readonly audit: AuditService,
     private readonly clients: ApiworkingClientsService,
     private readonly cashbox: CashboxService,
+    private readonly products: ProductsService,
   ) {}
 
   /**
@@ -54,7 +56,7 @@ export class ApiworkingContingencyService {
     const billed = appointment
       ? await this.db.apiworkingSale.findFirst({ where: { appointmentId: appointment.id, docStatus: { in: [...LIVE_SALE_STATUSES] } }, orderBy: { createdAt: 'desc' } })
       : null;
-    const prescriptions = await this.prescriptionsFor(clinicId, patientId, appointment);
+    const prescriptions = await this.prescriptionsFor(principal, clinicId, patientId, appointment);
     if (prescriptions.length > 0 && meta) {
       await this.audit.recordSafely({
         action: AuditAction.PrescriptionShownForBilling,
@@ -84,7 +86,7 @@ export class ApiworkingContingencyService {
    * Recetas vigentes para el cobro: las emitidas en la visita abierta desde la cita y las del paciente emitidas ese mismo día (hora de
    * Lima), con o sin visita. Sin cita: las de hoy. Solo lo necesario para vender: medicamento, dosis, frecuencia y duración.
    */
-  private async prescriptionsFor(clinicId: string, patientId: string, appointment: { id: string; startsAt: Date } | null) {
+  private async prescriptionsFor(principal: AuthPrincipal, clinicId: string, patientId: string, appointment: { id: string; startsAt: Date } | null) {
     const day = appointment ? limaDay(appointment.startsAt) : limaToday();
     const from = new Date(`${day}T00:00:00-05:00`);
     const to = new Date(from.getTime() + 24 * 3600 * 1000);
@@ -105,13 +107,18 @@ export class ApiworkingContingencyService {
       (await this.db.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.prescriberId))] } }, select: { id: true, firstName: true, lastName: true } }))
         .map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]),
     );
+    // Precio del catálogo para cada medicamento (por nombre): al agregarlo a la venta, el precio sale solo.
+    const catalog = rows.length ? await this.products.list(principal) : [];
     return rows.map((r) => ({
       id: r.id,
       number: r.number,
       code: `RX-${String(r.number).padStart(6, '0')}`,
       prescriber: prescribers.get(r.prescriberId) ?? null,
       createdAt: r.createdAt.toISOString(),
-      items: r.items.map((i) => ({ medication: i.medication, dose: i.dose, frequency: i.frequency, duration: i.duration })),
+      items: r.items.map((i) => {
+        const p = matchProduct(catalog, i.medication, i.dose);
+        return { medication: i.medication, dose: i.dose, frequency: i.frequency, duration: i.duration, product: p ? { id: p.id, name: p.name, priceCents: p.priceCents } : null };
+      }),
     }));
   }
 

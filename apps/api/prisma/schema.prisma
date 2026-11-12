@@ -64,6 +64,7 @@ model Clinic {
   rooms                Room[]
   specialties          Specialty[]
   agendaServices       AgendaService[]
+  products             Product[]
 
   @@map("clinics")
 }
@@ -1601,6 +1602,27 @@ model Specialty {
 }
 
 /// Servicio agendable (tipo de cita) con duración configurable. NO es un procedimiento clínico.
+/// Catálogo de productos y medicamentos que se venden en caja (precio de referencia por clínica).
+/// El nombre coincide con el que el odontólogo escribe en la receta: así el precio sale solo al cobrar.
+model Product {
+  id           String        @id @default(uuid()) @db.Char(36)
+  clinicId     String        @map("clinic_id") @db.Char(36)
+  name         String        @db.VarChar(120)
+  /// Presentación opcional (p. ej. «caja x 10», «frasco 120 ml»).
+  presentation String?       @db.VarChar(80)
+  /// Precio de venta en céntimos de sol (IGV incluido).
+  priceCents   Int           @map("price_cents")
+  status       CatalogStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+
+  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+
+  @@unique([clinicId, name])
+  @@index([clinicId, status])
+  @@map("products")
+}
+
 model AgendaService {
   id              String        @id @default(uuid()) @db.Char(36)
   clinicId        String        @map("clinic_id") @db.Char(36)

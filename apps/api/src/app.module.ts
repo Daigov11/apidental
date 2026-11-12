@@ -23,6 +23,7 @@ import { HealthModule } from './health/health.module.js';
 import { MaintenanceModule } from './maintenance/maintenance.module.js';
 import { PatientsModule } from './patients/patients.module.js';
 import { PrescriptionsModule } from './prescriptions/prescriptions.module.js';
+import { ProductsModule } from './products/products.js';
 import { ProvisioningModule } from './provisioning/provisioning.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { TenancyModule } from './tenancy/tenancy.module.js';
@@ -75,6 +76,7 @@ const isLoginRoute = (req: Request): boolean => STRICT_ROUTES.some((r) => req.pa
     PatientsModule,
     ClinicalModule,
     PrescriptionsModule,
+    ProductsModule,
     CashboxModule,
     AgendaModule,
     BookingModule,

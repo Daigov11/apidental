@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Banknote, CreditCard, Landmark, Plus, RefreshCw, Search, Smartphone, Trash2, Wallet } from 'lucide-react';
 import { get, post } from '../api/client';
-import type { AwBillingDraft, AwBillingPrescription, AwCustomerPreview, AwCustomerResult, AwContext, AwCustomer, AwDraft, AwLine, AwSale, AwStatus, CashConfig, CashSummary } from '../api/types';
+import type { AwBillingDraft, AwBillingPrescription, Product, AwCustomerPreview, AwCustomerResult, AwContext, AwCustomer, AwDraft, AwLine, AwSale, AwStatus, CashConfig, CashSummary } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { fmtDateTime } from '../lib/format';
 import { fmtMoney, parseSoles } from '../lib/money';
@@ -66,6 +66,13 @@ export function VentasPage() {
 
   // --- Detalle ---
   const [lines, setLines] = useState<LineField[]>([emptyLine()]);
+  const catalog = useAsync(() => (canSell ? get<Product[]>('/products') : Promise.resolve([] as Product[])), [canSell]);
+  /** Agrega un concepto (sin repetir): si el único concepto está vacío, lo reemplaza. */
+  const addLine = (name: string, priceCents?: number | null) => setLines((all) => {
+    if (all.some((l) => l.name.trim() === name) || all.length >= 30) return all;
+    const line = { name, quantity: '1', price: priceCents ? (priceCents / 100).toFixed(2) : '' };
+    return all.length === 1 && !all[0]!.name.trim() && !all[0]!.price.trim() ? [line] : [...all, line];
+  });
   const parsed = useMemo(() => lines.map((l) => ({ name: l.name.trim(), quantity: Number(l.quantity), cents: parseSoles(l.price) })), [lines]);
   const validLines = parsed.every((l) => l.name.length >= 2 && Number.isInteger(l.quantity) && l.quantity >= 1 && l.quantity <= 999 && l.cents !== null && l.cents > 0);
   // La descripción del documento sale de los conceptos (o es la de la venta que se está emitiendo): no se pide aparte.
@@ -227,18 +234,24 @@ export function VentasPage() {
                   {lines.length > 1 && <Button size="sm" variant="tertiary" aria-label={`Quitar el concepto ${i + 1}`} icon={<Trash2 size={16} aria-hidden="true" />} onClick={() => setLines((all) => all.filter((_, j) => j !== i))} />}
                 </div>
               ))}
-              <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setLines((all) => [...all, emptyLine()])} disabled={lines.length >= 30}>Agregar concepto</Button>
+              <div className="chip-row" style={{ alignItems: 'flex-end' }}>
+                <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setLines((all) => [...all, emptyLine()])} disabled={lines.length >= 30}>Agregar concepto</Button>
+                {catalog.data && catalog.data.length > 0 && (
+                  <div style={{ minWidth: 260 }}>
+                    <SelectField label="Agregar del catálogo" value="" onChange={(e) => { const p = catalog.data!.find((x) => x.id === e.target.value); if (p) addLine(p.name, p.priceCents); }}>
+                      <option value="">Elija un producto</option>
+                      {catalog.data.map((p) => <option key={p.id} value={p.id}>{p.name} · {fmtMoney(p.priceCents)}</option>)}
+                    </SelectField>
+                  </div>
+                )}
+              </div>
             </section>
 
             {billing.data?.prescriptions && billing.data.prescriptions.length > 0 && !pendingSale && (
               <PrescriptionsCard
                 prescriptions={billing.data.prescriptions}
                 inSale={(name) => lines.some((l) => l.name.trim() === name)}
-                onAdd={(name) => setLines((all) => {
-                  if (all.some((l) => l.name.trim() === name) || all.length >= 30) return all;
-                  // Si el único concepto está vacío (cobro sin servicio), se reemplaza.
-                  return all.length === 1 && !all[0]!.name.trim() && !all[0]!.price.trim() ? [{ name, quantity: '1', price: '' }] : [...all, { name, quantity: '1', price: '' }];
-                })}
+                onAdd={addLine}
               />
             )}
           </div>
@@ -323,19 +336,19 @@ export function VentasPage() {
   );
 }
 
-/** Concepto de venta para un medicamento recetado: nombre y dosis (máx. 120 caracteres, como cualquier concepto). */
-const rxLine = (i: AwBillingPrescription['items'][number]) => [i.medication, i.dose].filter(Boolean).join(' ').slice(0, 120);
+/** Concepto de venta para un medicamento recetado: el nombre del catálogo si lo hay; si no, medicamento y dosis (máx. 120 caracteres). */
+const rxLine = (i: AwBillingPrescription['items'][number]) => (i.product?.name ?? [i.medication, i.dose].filter(Boolean).join(' ')).slice(0, 120);
 
 /** Receta del odontólogo en el cobro: se puede sumar cada medicamento a la venta (con su precio) o cobrar solo el servicio. */
-function PrescriptionsCard({ prescriptions, inSale, onAdd }: { prescriptions: AwBillingPrescription[]; inSale: (name: string) => boolean; onAdd: (name: string) => void }) {
-  const pending = prescriptions.flatMap((p) => p.items.map(rxLine)).filter((n) => !inSale(n));
+function PrescriptionsCard({ prescriptions, inSale, onAdd }: { prescriptions: AwBillingPrescription[]; inSale: (name: string) => boolean; onAdd: (name: string, priceCents?: number | null) => void }) {
+  const pending = prescriptions.flatMap((p) => p.items).filter((i) => !inSale(rxLine(i)));
   return (
     <section className="card" aria-labelledby="rx-h">
       <div className="card-head">
         <h2 id="rx-h" className="h3">Receta del odontólogo</h2>
-        {pending.length > 1 && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => pending.forEach(onAdd)}>Agregar todo</Button>}
+        {pending.length > 1 && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => pending.forEach((i) => onAdd(rxLine(i), i.product?.priceCents))}>Agregar todo</Button>}
       </div>
-      <p className="caption muted">Si el paciente lleva lo recetado, agréguelo a la venta y ponga el precio. Si no, cobre solo el servicio.</p>
+      <p className="caption muted">Si el paciente lleva lo recetado, agréguelo a la venta: lo que está en el catálogo trae su precio; lo demás, escríbalo. Si no, cobre solo el servicio.</p>
       {prescriptions.map((p) => (
         <div key={p.id} style={{ marginTop: 'var(--space-3)' }}>
           <p className="caption"><strong className="tabular">{p.code}</strong>{p.prescriber ? ` · ${p.prescriber}` : ''}</p>
@@ -345,8 +358,8 @@ function PrescriptionsCard({ prescriptions, inSale, onAdd }: { prescriptions: Aw
               const added = inSale(name);
               return (
                 <li key={k} className="chip-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span><strong>{i.medication}</strong>{i.dose ? ` ${i.dose}` : ''}<span className="caption muted">{[i.frequency, i.duration].filter(Boolean).length ? ` · ${[i.frequency, i.duration].filter(Boolean).join(' · ')}` : ''}</span></span>
-                  <Button size="sm" variant={added ? 'tertiary' : 'secondary'} disabled={added} onClick={() => onAdd(name)} aria-label={added ? `${i.medication} ya está en la venta` : `Agregar ${i.medication} a la venta`}>{added ? 'En la venta' : 'Agregar'}</Button>
+                  <span><strong>{i.medication}</strong>{i.dose ? ` ${i.dose}` : ''}<span className="caption muted">{[i.frequency, i.duration].filter(Boolean).length ? ` · ${[i.frequency, i.duration].filter(Boolean).join(' · ')}` : ''}</span>{i.product ? <span className="caption"> · <strong>{fmtMoney(i.product.priceCents)}</strong></span> : <span className="caption muted"> · sin precio en el catálogo</span>}</span>
+                  <Button size="sm" variant={added ? 'tertiary' : 'secondary'} disabled={added} onClick={() => onAdd(name, i.product?.priceCents)} aria-label={added ? `${i.medication} ya está en la venta` : `Agregar ${i.medication} a la venta`}>{added ? 'En la venta' : 'Agregar'}</Button>
                 </li>
               );
             })}

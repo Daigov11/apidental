@@ -1,8 +1,8 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { Download, Mail, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { get, post, put } from '../api/client';
-import type { PatientSummary, Prescription, PrescriptionItem } from '../api/types';
+import type { PatientSummary, Prescription, PrescriptionItem, Product } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { downloadFile } from '../lib/download';
 import { fmtDate } from '../lib/format';
@@ -28,6 +28,9 @@ export function PrescriptionDrawer({ patientId, patientName, existing, visitId, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = (i: number, patch: Partial<Draft>) => setItems((l) => l.map((x, k) => (k === i ? { ...x, ...patch } : x)));
+  // Sugerencias del catálogo de la clínica: con el mismo nombre, el precio sale solo al cobrar. Sin permiso o sin catálogo, no hay sugerencias.
+  const catalogId = useId();
+  const catalog = useAsync(() => get<Product[]>('/products').catch(() => [] as Product[]), []);
   const submit = async (e: FormEvent) => {
     e.preventDefault();
     setTouched(true);
@@ -47,12 +50,13 @@ export function PrescriptionDrawer({ patientId, patientName, existing, visitId, 
       footer={<><Button onClick={onClose}>Cancelar</Button><Button type="submit" form="rx-form" variant="primary" loading={busy} loadingText="Guardando…">{existing ? 'Guardar cambios' : 'Guardar receta'}</Button></>}
     >
       <form id="rx-form" onSubmit={(e) => void submit(e)} noValidate style={{ display: 'grid', gap: 'var(--space-5)' }}>
+        <datalist id={catalogId}>{(catalog.data ?? []).map((p) => <option key={p.id} value={p.name} />)}</datalist>
         <p className="muted">Paciente: <strong>{patientName}</strong></p>
         <TextField label="Diagnóstico" optional value={diagnosis} maxLength={300} onChange={(e) => setDiagnosis(e.target.value)} />
         {items.map((it, i) => (
           <fieldset key={i} className="card" style={{ display: 'grid', gap: 'var(--space-3)', margin: 0 }}>
             <legend className="h4">Medicamento {i + 1}</legend>
-            <TextField label="Medicamento y presentación" value={it.medication} maxLength={200} placeholder="Ejemplo: Amoxicilina 500 mg" onChange={(e) => set(i, { medication: e.target.value })} error={touched && it.medication.trim().length < 2 && (items.length === 1 || it.medication || it.dose || it.frequency || it.duration || it.instructions) ? 'Indique el medicamento.' : null} />
+            <TextField label="Medicamento y presentación" list={catalogId} value={it.medication} maxLength={200} placeholder="Ejemplo: Amoxicilina 500 mg" onChange={(e) => set(i, { medication: e.target.value })} error={touched && it.medication.trim().length < 2 && (items.length === 1 || it.medication || it.dose || it.frequency || it.duration || it.instructions) ? 'Indique el medicamento.' : null} />
             <div className="grid-2">
               <TextField label="Dosis" optional value={it.dose} maxLength={120} placeholder="1 cápsula" onChange={(e) => set(i, { dose: e.target.value })} />
               <TextField label="Frecuencia" optional value={it.frequency} maxLength={120} placeholder="Cada 8 horas" onChange={(e) => set(i, { frequency: e.target.value })} />

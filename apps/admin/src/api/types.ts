@@ -182,8 +182,9 @@ export interface AwBillingDraft {
 }
 export interface AwBillingPrescription {
   id: string; number: number; code: string; prescriber: string | null; createdAt: string;
-  items: { medication: string; dose: string | null; frequency: string | null; duration: string | null }[];
+  items: { medication: string; dose: string | null; frequency: string | null; duration: string | null; product?: { id: string; name: string; priceCents: number } | null }[];
 }
+export interface Product { id: string; name: string; presentation: string | null; priceCents: number; active: boolean }
 export interface AwCash {
   cajas: { id: string; name: string; branch: string; opened: boolean }[]; turnos: AwOption[]; defaultTurn: string; write: boolean;
 }

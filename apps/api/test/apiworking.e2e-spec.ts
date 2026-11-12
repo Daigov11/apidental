@@ -624,13 +624,14 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       data: { clinicId, patientId: patient.id, number: last + n, prescriberId: author, diagnosis: 'Dato clínico que no debe salir', ...extra, items: { create: [{ position: 1, medication: 'Amoxicilina', dose: '500 mg', frequency: 'cada 8 horas', duration: '7 días', instructions: 'Indicación privada' }] } },
     });
     const today = await rx(1);
+    const product = await ctx.db.product.create({ data: { clinicId, name: 'AMOXICILINA 500 mg', priceCents: 2500 } });
     await rx(2, { createdAt: new Date(Date.now() - 3 * 86_400_000) });
     await rx(3, { status: 'DELETED', deletedAt: new Date() });
     const login = await enter();
     const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);
     const d = await ctx.http().get(`/v1/apiworking/billing-draft?patientId=${patient.id}`).set(bearer(sel.body.accessToken)).expect(200);
     expect(d.body.prescriptions).toHaveLength(1);
-    expect(d.body.prescriptions[0]).toMatchObject({ id: today.id, number: last + 1, code: `RX-${String(last + 1).padStart(6, '0')}`, items: [{ medication: 'Amoxicilina', dose: '500 mg', frequency: 'cada 8 horas', duration: '7 días' }] });
+    expect(d.body.prescriptions[0]).toMatchObject({ id: today.id, number: last + 1, code: `RX-${String(last + 1).padStart(6, '0')}`, items: [{ medication: 'Amoxicilina', dose: '500 mg', frequency: 'cada 8 horas', duration: '7 días', product: { id: product.id, name: 'AMOXICILINA 500 mg', priceCents: 2500 } }] });
     // Solo lo necesario para vender: ni diagnóstico ni indicaciones.
     expect(JSON.stringify(d.body)).not.toContain('Dato clínico');
     expect(JSON.stringify(d.body)).not.toContain('Indicación privada');
