@@ -58,7 +58,7 @@ describe('Acceso con Apiworking', () => {
     expect(called('POST', '/auth/apiworking-login')[0]?.body).toEqual({ usuario: 'gina', password: 'clave-apiworking' });
     expect(called('POST', '/auth/login')).toHaveLength(0);
 
-    await user.click(screen.getByRole('button', { name: 'Acceso del administrador local' }));
+    await user.click(screen.getByRole('button', { name: 'Ingresar con correo' }));
     expect(screen.getByLabelText('Correo')).toBeInTheDocument();
     expect(screen.queryByLabelText('Usuario de Apiworking')).not.toBeInTheDocument();
   });
@@ -77,7 +77,7 @@ describe('Acceso con Apiworking', () => {
     mockApi({ 'POST /auth/refresh': { status: 401, json: {} }, 'GET /auth/config': { json: { mode: 'local' } } });
     renderApp('/');
     expect(await screen.findByLabelText('Correo')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Acceso del administrador local' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ingresar con correo' })).not.toBeInTheDocument();
   });
 });
 

@@ -122,6 +122,7 @@ export async function api<T>(method: string, path: string, o: Options = {}): Pro
 export const get = <T>(path: string, query?: Options['query'], signal?: AbortSignal) => api<T>('GET', path, { query, signal });
 export const post = <T>(path: string, body: unknown = {}, o: Options = {}) => api<T>('POST', path, { ...o, body });
 export const put = <T>(path: string, body: unknown = {}, o: Options = {}) => api<T>('PUT', path, { ...o, body });
+export const patch = <T>(path: string, body: unknown = {}, o: Options = {}) => api<T>('PATCH', path, { ...o, body });
 export const postForm = <T>(path: string, form: FormData) => api<T>('POST', path, { form });
 
 /** Descarga autenticada (PDF/SVG del odontograma): devuelve el archivo como Blob; nunca hay URL pública. */

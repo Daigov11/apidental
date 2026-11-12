@@ -20,15 +20,105 @@ describe('Usuarios, roles y asignaciones', () => {
     return { a, b, a1, a2, b1, adminA, tokenA };
   }
 
-  describe('alta de personal: solo por invitación (POST /v1/users ya no existe)', () => {
-    it('no hay forma de crear usuarios con una contraseña fijada por el administrador', async () => {
+  describe('alta directa por el administrador (POST /v1/users) y restablecimiento de contraseña', () => {
+    it('crea el usuario con su rol; la contraseña generada se devuelve UNA vez y solo se guarda su hash', async () => {
       const t = await setup();
-      const body = { email: `${uniq('x')}@test.pe`, password: 'Contraseña-Inicial-1', firstName: 'A', lastName: 'B', assignment: { roleCode: 'DENTIST' } };
-      await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send(body).expect(404);
+      const email = `${uniq('nuevo')}@test.pe`;
+      const res = await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send({ email: email.toUpperCase(), firstName: 'Ana', lastName: 'Rojas', roleCode: 'RECEPTIONIST', branchId: t.a1.id }).expect(201);
+      expect(res.body.user).toMatchObject({ email, firstName: 'Ana', lastName: 'Rojas', status: 'ACTIVE' });
+      expect(res.body.password).toMatch(/^[A-Za-z0-9]{14}$/);
+      const row = await ctx.db.user.findUniqueOrThrow({ where: { email }, omit: { passwordHash: false } });
+      expect(row.passwordHash.startsWith('$argon2id$')).toBe(true);
+      expect(row.passwordHash).not.toContain(res.body.password);
+      // Ingresa con esa contraseña, en la clínica y sede del administrador.
+      const token = await loginInContext(ctx, email, { clinicId: t.a.id, branchId: t.a1.id }, res.body.password);
+      expect((await ctx.http().get('/v1/auth/me').set(bearer(token)).expect(200)).body.roles).toEqual(['RECEPTIONIST']);
+      // La contraseña nunca queda en la auditoría.
+      const audit = await ctx.db.auditLog.findFirstOrThrow({ where: { action: 'USER_CREATED', entityId: row.id } });
+      expect(JSON.stringify(audit)).not.toContain(res.body.password);
+      // Con una contraseña escrita por el administrador no se devuelve nada.
+      const typed = await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send({ email: `${uniq('x')}@test.pe`, firstName: 'B', lastName: 'C', roleCode: 'DENTIST', password: 'Clave-Escrita-123' }).expect(201);
+      expect(typed.body.password).toBeUndefined();
+      // Correo repetido.
+      const dup = await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send({ email, firstName: 'A', lastName: 'B', roleCode: 'DENTIST' });
+      expect(dup.status).toBe(409);
+      expect(dup.body.code).toBe('EMAIL_TAKEN');
+    });
+
+    it('aplica las reglas de asignación: sin roles de plataforma, Director, otras clínicas ni sedes ajenas', async () => {
+      const t = await setup();
+      const attempts: [number, Record<string, unknown>][] = [
+        [403, { roleCode: 'PLATFORM_ADMIN' }],
+        [403, { roleCode: 'CLINICAL_DIRECTOR' }],
+        [403, { roleCode: 'DENTIST', clinicId: t.b.id }],
+        [400, { roleCode: 'DENTIST', branchId: t.b1.id }],
+        [400, { roleCode: 'ROL_INEXISTENTE' }],
+        [400, { roleCode: 'DENTIST', password: 'corta' }],
+      ];
+      for (const [status, extra] of attempts) {
+        const email = `${uniq('x')}@test.pe`;
+        const res = await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send({ email, firstName: 'A', lastName: 'B', ...extra });
+        expect(res.status, JSON.stringify(extra)).toBe(status);
+        expect(await ctx.db.user.count({ where: { email } })).toBe(0);
+      }
+      // Roles operativos no crean usuarios; la plataforma no otorga roles de clínica.
+      const rec = (await fx.userWithRole('RECEPTIONIST', { clinicId: t.a.id })).user;
+      const recToken = await loginInContext(ctx, rec.email, { clinicId: t.a.id });
+      await ctx.http().post('/v1/users').set(bearer(recToken)).send({ email: `${uniq('x')}@test.pe`, firstName: 'A', lastName: 'B', roleCode: 'DENTIST' }).expect(403);
       const { user } = await fx.userWithRole('PLATFORM_ADMIN');
       const platformToken = await loginInContext(ctx, user.email);
-      await ctx.http().post('/v1/users').set(bearer(platformToken)).send(body).expect(404);
-      expect(await ctx.db.user.count({ where: { email: body.email } })).toBe(0);
+      await ctx.http().post('/v1/users').set(bearer(platformToken)).send({ email: `${uniq('x')}@test.pe`, firstName: 'A', lastName: 'B', roleCode: 'DENTIST', clinicId: t.a.id }).expect(403);
+    });
+
+    it('restablece la contraseña de alguien de su clínica: la vieja deja de servir y se cierran sus sesiones', async () => {
+      const t = await setup();
+      const dentist = (await fx.userWithRole('DENTIST', { clinicId: t.a.id })).user;
+      const oldToken = await loginInContext(ctx, dentist.email, { clinicId: t.a.id });
+      const res = await ctx.http().post(`/v1/users/${dentist.id}/password`).set(bearer(t.tokenA)).send({}).expect(200);
+      expect(res.body.password).toMatch(/^[A-Za-z0-9]{14}$/);
+      await ctx.http().get('/v1/auth/me').set(bearer(oldToken)).expect(401);
+      await ctx.http().post('/v1/auth/login').send({ email: dentist.email, password: PASSWORD }).expect(401);
+      await loginInContext(ctx, dentist.email, { clinicId: t.a.id }, res.body.password);
+      const audit = await ctx.db.auditLog.findFirstOrThrow({ where: { action: 'USER_PASSWORD_RESET', entityId: dentist.id } });
+      expect(JSON.stringify(audit)).not.toContain(res.body.password);
+      // Con contraseña escrita: no se devuelve.
+      const typed = await ctx.http().post(`/v1/users/${dentist.id}/password`).set(bearer(t.tokenA)).send({ password: 'Otra-Clave-Nueva-9' }).expect(200);
+      expect(typed.body.password).toBeUndefined();
+      await loginInContext(ctx, dentist.email, { clinicId: t.a.id }, 'Otra-Clave-Nueva-9');
+    });
+
+    it('no restablece: la propia cuenta, otra clínica, cuentas con más autoridad ni cuentas de Apiworking', async () => {
+      const t = await setup();
+      await ctx.http().post(`/v1/users/${t.adminA.id}/password`).set(bearer(t.tokenA)).send({}).expect(403);
+      const other = (await fx.userWithRole('DENTIST', { clinicId: t.b.id })).user;
+      await ctx.http().post(`/v1/users/${other.id}/password`).set(bearer(t.tokenA)).send({}).expect(404);
+      const director = (await fx.userWithRole('CLINICAL_DIRECTOR', { clinicId: t.a.id })).user;
+      await ctx.http().post(`/v1/users/${director.id}/password`).set(bearer(t.tokenA)).send({}).expect(403);
+      const platform = (await fx.userWithRole('PLATFORM_ADMIN')).user;
+      await ctx.http().post(`/v1/users/${platform.id}/password`).set(bearer(t.tokenA)).send({}).expect(404);
+      const aw = (await fx.userWithRole('RECEPTIONIST', { clinicId: t.a.id })).user;
+      await ctx.db.externalIdentity.create({ data: { userId: aw.id, provider: 'APIWORKING', tenant: 'prod_ti_x', externalUserId: uniq('aw'), externalUsername: 'gina', lastLoginAt: new Date() } });
+      const ext = await ctx.http().post(`/v1/users/${aw.id}/password`).set(bearer(t.tokenA)).send({});
+      // Las pruebas de Apiworking cuentan las identidades externas de toda la base: no se deja ninguna.
+      await ctx.db.externalIdentity.deleteMany({ where: { userId: aw.id } });
+      expect(ext.status).toBe(409);
+      expect(ext.body.code).toBe('EXTERNAL_ACCOUNT');
+      // Un rol operativo no restablece contraseñas.
+      const rec = (await fx.userWithRole('RECEPTIONIST', { clinicId: t.a.id })).user;
+      const recToken = await loginInContext(ctx, rec.email, { clinicId: t.a.id });
+      const dentist = (await fx.userWithRole('DENTIST', { clinicId: t.a.id })).user;
+      await ctx.http().post(`/v1/users/${dentist.id}/password`).set(bearer(recToken)).send({}).expect(403);
+    });
+
+    it('la lista incluye las cuentas de Apiworking sin rol (para asignárselo) y su usuario de Apiworking', async () => {
+      const t = await setup();
+      const pending = await fx.user();
+      await ctx.db.externalIdentity.create({ data: { userId: pending.id, provider: 'APIWORKING', tenant: 'prod_ti_x', externalUserId: uniq('aw'), externalUsername: 'nuevo.cajero', lastLoginAt: new Date() } });
+      const list = await ctx.http().get('/v1/users').set(bearer(t.tokenA)).query({ limit: 100 }).expect(200);
+      await ctx.db.externalIdentity.deleteMany({ where: { userId: pending.id } });
+      const row = (list.body as { id: string; externalIdentity: { externalUsername: string } | null; assignments: unknown[] }[]).find((u) => u.id === pending.id);
+      expect(row).toMatchObject({ externalIdentity: { externalUsername: 'nuevo.cajero' }, assignments: [] });
+      await ctx.http().post('/v1/assignments').set(bearer(t.tokenA)).send({ userId: pending.id, roleCode: 'CASHIER' }).expect(201);
     });
 
     it('la persona invitada crea su propia cuenta y queda asignada a la clínica y sede del administrador', async () => {

@@ -73,7 +73,7 @@ export function LoginPage() {
         {authMode === 'apiworking' && (
           <p style={{ marginTop: 'var(--space-4)' }}>
             <button type="button" className="btn btn-tertiary btn-sm" onClick={() => { setLocalAccess((v) => !v); setError(null); setTouched(false); setEmail(''); }}>
-              {localAccess ? 'Ingresar con mi cuenta de Apiworking' : 'Acceso del administrador local'}
+              {localAccess ? 'Ingresar con mi cuenta de Apiworking' : 'Ingresar con correo'}
             </button>
           </p>
         )}

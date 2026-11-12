@@ -6,7 +6,8 @@ import { PaginationQuery } from '../common/dto/pagination.dto.js';
 import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
 import { AssignmentsService } from './assignments.service.js';
 import { UserStatusChangeDto } from './dto/user-status.dto.js';
-import { CreateAssignmentDto } from './dto/users.dto.js';
+import { CreateAssignmentDto, CreateUserDto, ResetPasswordDto } from './dto/users.dto.js';
+import { UserAccountsService } from './user-accounts.service.js';
 import { UserStatusService } from './user-status.service.js';
 import { UsersService } from './users.service.js';
 
@@ -16,12 +17,34 @@ export class UsersController {
     private readonly users: UsersService,
     private readonly assignments: AssignmentsService,
     private readonly status: UserStatusService,
+    private readonly accounts: UserAccountsService,
   ) {}
 
   @Get('users')
   @RequirePermissions('user:read')
   list(@CurrentPrincipal() actor: AuthPrincipal, @Query() q: PaginationQuery) {
     return this.users.list(actor, q.limit, q.offset);
+  }
+
+  /** Alta directa con su rol. La contraseña generada (si no se indica una) se devuelve una sola vez. */
+  @Post('users')
+  @RequirePermissions('user:manage', 'assignment:manage')
+  create(@CurrentPrincipal() actor: AuthPrincipal, @Body() dto: CreateUserDto, @Meta() meta: RequestMeta) {
+    const { email, firstName, lastName, password, ...grant } = dto;
+    return this.accounts.create(actor, { email, firstName, lastName, password, ...grant }, meta);
+  }
+
+  /** Nueva contraseña para otro usuario: cierra sus sesiones. La generada se devuelve una sola vez. */
+  @Post('users/:id/password')
+  @HttpCode(200)
+  @RequirePermissions('user:manage')
+  resetPassword(
+    @CurrentPrincipal() actor: AuthPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ResetPasswordDto,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.accounts.resetPassword(actor, id, dto, meta);
   }
 
   /**

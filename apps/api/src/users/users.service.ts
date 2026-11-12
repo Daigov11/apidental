@@ -18,7 +18,10 @@ const USER_VIEW = {
 export class UsersService {
   constructor(@Inject(PRISMA) private readonly db: PrismaDb) {}
 
-  /** Plataforma: todos. Clínica: solo usuarios con asignación en su clínica (y sede, si el contexto la fija). */
+  /**
+   * Plataforma: todos. Clínica: usuarios con alguna asignación en su clínica (y sede, si el contexto la fija), incluidas las
+   * retiradas, y las cuentas de Apiworking que ya ingresaron pero todavía no tienen rol (para poder asignárselo).
+   */
   list(actor: AuthPrincipal, limit: number, offset: number) {
     const ctx = actor.context!;
     const inScope =
@@ -29,13 +32,14 @@ export class UsersService {
             ...(ctx.branchId ? { OR: [{ branchId: null }, { branchId: ctx.branchId }] } : {}),
           };
     return this.db.user.findMany({
-      where: ctx.clinicId === null ? {} : { assignments: { some: { ...inScope, status: 'ACTIVE' } } },
+      where: ctx.clinicId === null ? {} : { OR: [{ assignments: { some: inScope } }, { assignments: { none: {} }, externalIdentity: { isNot: null } }] },
       select: {
         ...USER_VIEW,
+        externalIdentity: { select: { externalUsername: true } },
         // Solo se muestran las asignaciones dentro del alcance del solicitante.
         assignments: {
           where: inScope,
-          select: { id: true, clinicId: true, branchId: true, status: true, role: { select: { code: true } } },
+          select: { id: true, clinicId: true, branchId: true, status: true, role: { select: { code: true, name: true } } },
         },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],

@@ -50,6 +50,7 @@ export const AuditAction = {
   // --- Estado de usuarios, accesos denegados y mantenimiento ---
   UserDisabled: 'USER_DISABLED',
   UserReactivated: 'USER_REACTIVATED',
+  UserPasswordReset: 'USER_PASSWORD_RESET',
   AccessDenied: 'ACCESS_DENIED',
   ReauthRejected: 'REAUTH_REJECTED',
   MaintenancePurge: 'MAINTENANCE_PURGE',
