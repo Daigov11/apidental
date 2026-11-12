@@ -177,6 +177,12 @@ export interface AwCustomerResult { status: 'CREATED' | 'UNKNOWN'; id?: string; 
 export interface AwBillingDraft {
   patient: { id: string; name: string }; appointment: { id: string; status: string } | null; description: string | null; amountCents: number | null;
   identifier: { docType: string; docTypeLabel: string; docNumber: string } | null; customer: AwCustomer | null; alreadyBilled: AwSale | null; canBill: boolean;
+  /** Recetas que dio el odontólogo en la cita (o ese día), para vender lo recetado. */
+  prescriptions?: AwBillingPrescription[];
+}
+export interface AwBillingPrescription {
+  id: string; number: number; code: string; prescriber: string | null; createdAt: string;
+  items: { medication: string; dose: string | null; frequency: string | null; duration: string | null }[];
 }
 export interface AwCash {
   cajas: { id: string; name: string; branch: string; opened: boolean }[]; turnos: AwOption[]; defaultTurn: string; write: boolean;

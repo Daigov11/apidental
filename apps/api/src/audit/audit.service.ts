@@ -128,6 +128,7 @@ export const AuditAction = {
   PrescriptionListed: 'PRESCRIPTION_LISTED',
   PrescriptionExported: 'PRESCRIPTION_EXPORTED',
   PrescriptionEmailed: 'PRESCRIPTION_EMAILED',
+  PrescriptionShownForBilling: 'PRESCRIPTION_SHOWN_FOR_BILLING',
 } as const;
 
 export interface AuditEntry {

@@ -331,6 +331,34 @@ describe('Contingencia', () => {
     expect(screen.getByLabelText('Concepto 1')).toHaveValue('Limpieza dental');
     expect(screen.getByLabelText(/Precio unitario/)).toHaveValue('80.00');
   });
+
+  it('la receta del odontólogo aparece en el cobro: se agrega lo recetado con su precio o se cobra solo el servicio', async () => {
+    const RX = { id: 'rx-1', number: 12, code: 'RX-000012', prescriber: 'Gina Paredes', createdAt: '2026-11-12T15:00:00.000Z', items: [
+      { medication: 'Amoxicilina', dose: '500 mg', frequency: 'cada 8 horas', duration: '7 días' },
+      { medication: 'Ibuprofeno', dose: '400 mg', frequency: 'cada 8 horas', duration: '3 días' },
+    ] };
+    const { called } = mockApi(routes({
+      'GET /apiworking/billing-draft': { json: { patient: { id: 'p-1', name: 'Diego Mendieta' }, appointment: { id: 'a-1', status: 'ATTENDED' }, description: 'Extracción', amountCents: 15000, identifier: { docType: '1', docTypeLabel: 'DNI', docNumber: '74908568' }, customer: CUSTOMER, alreadyBilled: null, canBill: true, prescriptions: [RX] } },
+      'POST /apiworking/sales': { status: 201, json: { ...SALE, paymentStatus: 'CONFIRMED_REMOTE' } },
+    }));
+    renderApp('/ventas?appointmentId=a-1');
+    const user = userEvent.setup();
+    const card = (await screen.findByRole('heading', { name: 'Receta del odontólogo' })).closest('section')!;
+    expect(within(card).getByText('RX-000012')).toBeInTheDocument();
+    expect(within(card).getByText(/Gina Paredes/)).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Agregar Amoxicilina a la venta' }));
+    expect(screen.getByLabelText('Concepto 2')).toHaveValue('Amoxicilina 500 mg');
+    expect(within(card).getByRole('button', { name: 'Amoxicilina ya está en la venta' })).toBeDisabled();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Efectivo' })).toHaveAttribute('aria-pressed', 'true'));
+    const prices = screen.getAllByLabelText(/Precio unitario/);
+    await user.type(prices[1]!, '25');
+    await user.click(screen.getByRole('button', { name: 'Cobrar S/ 175.00' }));
+    await waitFor(() => expect(called('POST', '/apiworking/sales')).toHaveLength(1));
+    expect((called('POST', '/apiworking/sales')[0]!.body as { lines: unknown[] }).lines).toEqual([
+      { name: 'Extracción', quantity: 1, unitPriceCents: 15000 },
+      { name: 'Amoxicilina 500 mg', quantity: 1, unitPriceCents: 2500 },
+    ]);
+  });
 });
 
 void CLINIC;

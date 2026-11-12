@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Banknote, CreditCard, Landmark, Plus, RefreshCw, Search, Smartphone, Trash2, Wallet } from 'lucide-react';
 import { get, post } from '../api/client';
-import type { AwBillingDraft, AwCustomerPreview, AwCustomerResult, AwContext, AwCustomer, AwDraft, AwLine, AwSale, AwStatus, CashConfig, CashSummary } from '../api/types';
+import type { AwBillingDraft, AwBillingPrescription, AwCustomerPreview, AwCustomerResult, AwContext, AwCustomer, AwDraft, AwLine, AwSale, AwStatus, CashConfig, CashSummary } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { fmtDateTime } from '../lib/format';
 import { fmtMoney, parseSoles } from '../lib/money';
@@ -229,6 +229,18 @@ export function VentasPage() {
               ))}
               <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setLines((all) => [...all, emptyLine()])} disabled={lines.length >= 30}>Agregar concepto</Button>
             </section>
+
+            {billing.data?.prescriptions && billing.data.prescriptions.length > 0 && !pendingSale && (
+              <PrescriptionsCard
+                prescriptions={billing.data.prescriptions}
+                inSale={(name) => lines.some((l) => l.name.trim() === name)}
+                onAdd={(name) => setLines((all) => {
+                  if (all.some((l) => l.name.trim() === name) || all.length >= 30) return all;
+                  // Si el único concepto está vacío (cobro sin servicio), se reemplaza.
+                  return all.length === 1 && !all[0]!.name.trim() && !all[0]!.price.trim() ? [{ name, quantity: '1', price: '' }] : [...all, { name, quantity: '1', price: '' }];
+                })}
+              />
+            )}
           </div>
 
           <aside className="card sale-side" aria-labelledby="sum-h">
@@ -308,6 +320,40 @@ export function VentasPage() {
         />
       )}
     </>
+  );
+}
+
+/** Concepto de venta para un medicamento recetado: nombre y dosis (máx. 120 caracteres, como cualquier concepto). */
+const rxLine = (i: AwBillingPrescription['items'][number]) => [i.medication, i.dose].filter(Boolean).join(' ').slice(0, 120);
+
+/** Receta del odontólogo en el cobro: se puede sumar cada medicamento a la venta (con su precio) o cobrar solo el servicio. */
+function PrescriptionsCard({ prescriptions, inSale, onAdd }: { prescriptions: AwBillingPrescription[]; inSale: (name: string) => boolean; onAdd: (name: string) => void }) {
+  const pending = prescriptions.flatMap((p) => p.items.map(rxLine)).filter((n) => !inSale(n));
+  return (
+    <section className="card" aria-labelledby="rx-h">
+      <div className="card-head">
+        <h2 id="rx-h" className="h3">Receta del odontólogo</h2>
+        {pending.length > 1 && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => pending.forEach(onAdd)}>Agregar todo</Button>}
+      </div>
+      <p className="caption muted">Si el paciente lleva lo recetado, agréguelo a la venta y ponga el precio. Si no, cobre solo el servicio.</p>
+      {prescriptions.map((p) => (
+        <div key={p.id} style={{ marginTop: 'var(--space-3)' }}>
+          <p className="caption"><strong className="tabular">{p.code}</strong>{p.prescriber ? ` · ${p.prescriber}` : ''}</p>
+          <ul className="context-list">
+            {p.items.map((i, k) => {
+              const name = rxLine(i);
+              const added = inSale(name);
+              return (
+                <li key={k} className="chip-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span><strong>{i.medication}</strong>{i.dose ? ` ${i.dose}` : ''}<span className="caption muted">{[i.frequency, i.duration].filter(Boolean).length ? ` · ${[i.frequency, i.duration].filter(Boolean).join(' · ')}` : ''}</span></span>
+                  <Button size="sm" variant={added ? 'tertiary' : 'secondary'} disabled={added} onClick={() => onAdd(name)} aria-label={added ? `${i.medication} ya está en la venta` : `Agregar ${i.medication} a la venta`}>{added ? 'En la venta' : 'Agregar'}</Button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
+    </section>
   );
 }
 

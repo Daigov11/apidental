@@ -17,7 +17,8 @@ import type { ContingencyDto } from './dto/apiworking.dto.js';
 const IDENTIFIER_TO_DOC_TYPE = { DNI: '1', CE: '4', PASSPORT: '7' } as const;
 const IDENTIFIER_LABEL = { DNI: 'DNI', CE: 'Carné de extranjería', PASSPORT: 'Pasaporte' } as const;
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
-const limaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date());
+const limaDay = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(d);
+const limaToday = () => limaDay(new Date());
 
 /**
  * Cobro de contingencia: Apiworking es la caja real; si no responde, el cobro se guarda aquí (venta «por emitir») y el dinero entra en la
@@ -34,8 +35,11 @@ export class ApiworkingContingencyService {
     private readonly cashbox: CashboxService,
   ) {}
 
-  /** Datos para cobrar desde una cita atendida o desde un paciente: cliente por su documento, servicio y precio de referencia. */
-  async billingDraft(principal: AuthPrincipal, q: { appointmentId?: string; patientId?: string }) {
+  /**
+   * Datos para cobrar desde una cita atendida o desde un paciente: cliente por su documento, servicio y precio de referencia, y las
+   * recetas que dio el odontólogo (para vender lo recetado o solo el servicio).
+   */
+  async billingDraft(principal: AuthPrincipal, q: { appointmentId?: string; patientId?: string }, meta?: RequestMeta) {
     const { clinicId } = clinicScope(principal);
     if (!q.appointmentId && !q.patientId) throw new BadRequestException('Indique la cita o el paciente');
     const appointment = q.appointmentId
@@ -50,7 +54,21 @@ export class ApiworkingContingencyService {
     const billed = appointment
       ? await this.db.apiworkingSale.findFirst({ where: { appointmentId: appointment.id, docStatus: { in: [...LIVE_SALE_STATUSES] } }, orderBy: { createdAt: 'desc' } })
       : null;
+    const prescriptions = await this.prescriptionsFor(clinicId, patientId, appointment);
+    if (prescriptions.length > 0 && meta) {
+      await this.audit.recordSafely({
+        action: AuditAction.PrescriptionShownForBilling,
+        entity: 'Prescription',
+        entityId: prescriptions[0]!.id,
+        userId: principal.user.id,
+        clinicId,
+        patientId,
+        meta,
+        summary: { numbers: prescriptions.map((p) => p.number), appointmentId: appointment?.id ?? null },
+      });
+    }
     return {
+      prescriptions,
       patient: { id: patient.id, name: [patient.firstName, patient.lastName, patient.secondLastName].filter(Boolean).join(' ') },
       appointment: appointment ? { id: appointment.id, status: appointment.status } : null,
       description: appointment?.service.name ?? null,
@@ -60,6 +78,41 @@ export class ApiworkingContingencyService {
       alreadyBilled: billed ? presentSale(billed) : null,
       canBill: appointment ? appointment.status === 'ATTENDED' && !billed : true,
     };
+  }
+
+  /**
+   * Recetas vigentes para el cobro: las emitidas en la visita abierta desde la cita y las del paciente emitidas ese mismo día (hora de
+   * Lima), con o sin visita. Sin cita: las de hoy. Solo lo necesario para vender: medicamento, dosis, frecuencia y duración.
+   */
+  private async prescriptionsFor(clinicId: string, patientId: string, appointment: { id: string; startsAt: Date } | null) {
+    const day = appointment ? limaDay(appointment.startsAt) : limaToday();
+    const from = new Date(`${day}T00:00:00-05:00`);
+    const to = new Date(from.getTime() + 24 * 3600 * 1000);
+    const visits = appointment ? await this.db.clinicalVisit.findMany({ where: { clinicId, appointmentId: appointment.id }, select: { id: true } }) : [];
+    const rows = await this.db.prescription.findMany({
+      where: {
+        clinicId,
+        patientId,
+        status: 'ACTIVE',
+        deletedAt: null,
+        OR: [{ createdAt: { gte: from, lt: to } }, ...(visits.length ? [{ visitId: { in: visits.map((v) => v.id) } }] : [])],
+      },
+      include: { items: { orderBy: { position: 'asc' } } },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+    const prescribers = new Map(
+      (await this.db.user.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.prescriberId))] } }, select: { id: true, firstName: true, lastName: true } }))
+        .map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]),
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      number: r.number,
+      code: `RX-${String(r.number).padStart(6, '0')}`,
+      prescriber: prescribers.get(r.prescriberId) ?? null,
+      createdAt: r.createdAt.toISOString(),
+      items: r.items.map((i) => ({ medication: i.medication, dose: i.dose, frequency: i.frequency, duration: i.duration })),
+    }));
   }
 
   async record(principal: AuthPrincipal, dto: ContingencyDto, meta: RequestMeta) {

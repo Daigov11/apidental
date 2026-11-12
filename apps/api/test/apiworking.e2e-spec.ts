@@ -616,6 +616,27 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     await ctx.http().get('/v1/apiworking/billing-draft').set(bearer(sel.body.accessToken)).expect(400);
   });
 
+  it('el borrador de cobro trae las recetas del día del paciente (sin las anuladas ni las de otros días) y lo audita', async () => {
+    const author = (await ctx.db.user.findFirstOrThrow()).id;
+    const patient = await ctx.db.patient.create({ data: { clinicId, firstName: 'Rosa', lastName: 'Receta', createdById: author } });
+    const last = (await ctx.db.prescription.aggregate({ where: { clinicId }, _max: { number: true } }))._max.number ?? 0;
+    const rx = (n: number, extra: Record<string, unknown> = {}) => ctx.db.prescription.create({
+      data: { clinicId, patientId: patient.id, number: last + n, prescriberId: author, diagnosis: 'Dato clínico que no debe salir', ...extra, items: { create: [{ position: 1, medication: 'Amoxicilina', dose: '500 mg', frequency: 'cada 8 horas', duration: '7 días', instructions: 'Indicación privada' }] } },
+    });
+    const today = await rx(1);
+    await rx(2, { createdAt: new Date(Date.now() - 3 * 86_400_000) });
+    await rx(3, { status: 'DELETED', deletedAt: new Date() });
+    const login = await enter();
+    const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);
+    const d = await ctx.http().get(`/v1/apiworking/billing-draft?patientId=${patient.id}`).set(bearer(sel.body.accessToken)).expect(200);
+    expect(d.body.prescriptions).toHaveLength(1);
+    expect(d.body.prescriptions[0]).toMatchObject({ id: today.id, number: last + 1, code: `RX-${String(last + 1).padStart(6, '0')}`, items: [{ medication: 'Amoxicilina', dose: '500 mg', frequency: 'cada 8 horas', duration: '7 días' }] });
+    // Solo lo necesario para vender: ni diagnóstico ni indicaciones.
+    expect(JSON.stringify(d.body)).not.toContain('Dato clínico');
+    expect(JSON.stringify(d.body)).not.toContain('Indicación privada');
+    expect(await ctx.db.auditLog.count({ where: { action: 'PRESCRIPTION_SHOWN_FOR_BILLING', patientId: patient.id } })).toBe(1);
+  });
+
   it('una cuenta de Apiworking confirma su identidad (reautenticación) con la contraseña de Apiworking', async () => {
     const login = await enter();
     const sel = await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200);

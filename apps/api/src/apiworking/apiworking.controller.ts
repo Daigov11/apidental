@@ -72,8 +72,8 @@ export class ApiworkingController {
   /** Datos para cobrar desde una cita atendida o un paciente (no consulta a Apiworking: sirve también en contingencia). */
   @Get('billing-draft')
   @RequirePermissions('apiworking:sell')
-  billingDraft(@CurrentPrincipal() a: AuthPrincipal, @Query() q: BillingDraftQuery) {
-    return this.contingency.billingDraft(a, q);
+  billingDraft(@CurrentPrincipal() a: AuthPrincipal, @Query() q: BillingDraftQuery, @Meta() m: RequestMeta) {
+    return this.contingency.billingDraft(a, q, m);
   }
 
   /** Cobro en contingencia: Apiworking no responde; el dinero entra en la caja local y el documento queda por emitir. */
