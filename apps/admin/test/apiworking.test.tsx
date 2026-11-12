@@ -190,59 +190,46 @@ describe('Ventas Apiworking', () => {
   });
 });
 
-describe('Reapertura y cierre de caja', () => {
-  const PREVIEW = { hash: 'a'.repeat(64), caja: 'Caja Glow', turn: '1', openingCents: 10000, openingText: 'S/ 100.00', alreadyOpen: false, write: true };
-
-  it('se revisa, se aprueba y recién entonces se envía el hash aprobado', async () => {
+describe('Apertura y cierre de caja', () => {
+  it('«Abrir caja» abre en un clic con el monto inicial, sin vista previa ni aprobación', async () => {
     const { called } = mockApi(routes({
       ...sessionRoutes([...PERMS, 'apiworking:cash', 'cashbox:read'], ['CLINIC_ADMIN']),
-      'POST /apiworking/cash/preview': { json: PREVIEW },
       'POST /apiworking/cash/open': { json: { status: 'OPENED', message: 'Caja abierta', movementId: '9001' } },
     } as never));
     renderApp('/caja-chica');
     const user = userEvent.setup();
     const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
-    await user.selectOptions(await within(card).findByLabelText('Caja a reabrir'), '5');
-    await user.clear(within(card).getByLabelText('Monto inicial (S/)'));
-    await user.type(within(card).getByLabelText('Monto inicial (S/)'), '100');
-    await user.click(within(card).getByRole('button', { name: 'Revisar reapertura' }));
-    expect(await within(card).findByText('S/ 100.00')).toBeInTheDocument();
-    expect(called('POST', '/apiworking/cash/preview')[0]?.body).toEqual({ idCaja: '5', openingCents: 10000, idTurno: '1' });
-    const abrir = within(card).getByRole('button', { name: 'Reabrir caja' });
-    expect(abrir).toBeDisabled();
-    expect(called('POST', '/apiworking/cash/open')).toHaveLength(0);
-    await user.click(within(card).getByRole('checkbox'));
-    await user.click(abrir);
+    await user.clear(await within(card).findByLabelText(/Monto inicial/));
+    await user.type(within(card).getByLabelText(/Monto inicial/), '100');
+    expect(within(card).queryByRole('checkbox')).not.toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Abrir caja' }));
     await waitFor(() => expect(called('POST', '/apiworking/cash/open')).toHaveLength(1));
-    expect(called('POST', '/apiworking/cash/open')[0]?.body).toEqual({ idCaja: '5', openingCents: 10000, idTurno: '1', approvedHash: 'a'.repeat(64) });
+    expect(called('POST', '/apiworking/cash/open')[0]?.body).toEqual({ idCaja: '5', openingCents: 10000, idTurno: '1' });
+    expect(called('POST', '/apiworking/cash/preview')).toHaveLength(0);
+    expect(await screen.findByText('Caja abierta en Apiworking')).toBeInTheDocument();
   });
 
-  it('sin el permiso apiworking:cash se ve el estado pero no se ofrece abrir', async () => {
-    mockApi(routes(sessionRoutes([...PERMS, 'cashbox:read'], ['CLINIC_ADMIN']) as never));
-    renderApp('/caja-chica');
-    const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
-    expect(await within(card).findByText('Cerrada')).toBeInTheDocument();
-    expect(within(card).queryByRole('button', { name: 'Revisar reapertura' })).not.toBeInTheDocument();
-  });
-});
-
-describe('Cierre de caja', () => {
-  it('se revisa, se aprueba y se envía el hash aprobado', async () => {
+  it('«Cerrar caja» cierra en un clic', async () => {
     const { called } = mockApi(routes({
       ...sessionRoutes([...PERMS, 'apiworking:cash', 'cashbox:read'], ['CLINIC_ADMIN']),
       'GET /apiworking/cash': { json: { ...CASH, cajas: [{ id: '5', name: 'Caja Glow', branch: 'Principal', opened: true }] } },
-      'POST /apiworking/cash/close-preview': { json: { hash: 'b'.repeat(64), caja: 'Caja Glow', turn: '1', isOpen: true, write: true } },
       'POST /apiworking/cash/close': { json: { status: 'CLOSED', message: 'Caja cerrada' } },
     } as never));
     renderApp('/caja-chica');
     const user = userEvent.setup();
     const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
-    await user.selectOptions(await within(card).findByLabelText('Caja a cerrar'), '5');
-    await user.click(within(card).getByRole('button', { name: 'Revisar cierre' }));
-    await user.click(await within(card).findByRole('checkbox'));
-    await user.click(within(card).getByRole('button', { name: 'Cerrar caja' }));
+    await user.click(await within(card).findByRole('button', { name: 'Cerrar caja' }));
     await waitFor(() => expect(called('POST', '/apiworking/cash/close')).toHaveLength(1));
-    expect(called('POST', '/apiworking/cash/close')[0]?.body).toEqual({ idCaja: '5', approvedHash: 'b'.repeat(64) });
+    expect(called('POST', '/apiworking/cash/close')[0]?.body).toEqual({ idCaja: '5' });
+    expect(called('POST', '/apiworking/cash/close-preview')).toHaveLength(0);
+  });
+
+  it('sin el permiso apiworking:cash se ve el estado pero no se ofrece abrir ni cerrar', async () => {
+    mockApi(routes(sessionRoutes([...PERMS, 'cashbox:read'], ['CLINIC_ADMIN']) as never));
+    renderApp('/caja-chica');
+    const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
+    expect(await within(card).findByText('Cerrada')).toBeInTheDocument();
+    expect(within(card).queryByRole('button', { name: 'Abrir caja' })).not.toBeInTheDocument();
   });
 });
 

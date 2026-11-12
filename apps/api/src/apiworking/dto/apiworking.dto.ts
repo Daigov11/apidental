@@ -116,12 +116,13 @@ export class CashCloseDraftDto {
 }
 
 export class CashCloseDto extends CashCloseDraftDto {
-  @Matches(/^[0-9a-f]{64}$/) approvedHash!: string;
+  /// Opcional: el cierre se hace en un clic; si llega, debe coincidir con la vista previa.
+  @IsOptional() @Matches(/^[0-9a-f]{64}$/) approvedHash?: string;
 }
 
 export class CashOpenDto extends CashOpenDraftDto {
-  /// SHA-256 de la vista previa que la persona aprobó.
-  @Matches(/^[0-9a-f]{64}$/) approvedHash!: string;
+  /// Opcional: la apertura se hace en un clic; si llega, debe coincidir con la vista previa.
+  @IsOptional() @Matches(/^[0-9a-f]{64}$/) approvedHash?: string;
 }
 
 /// Cobro en contingencia (Apiworking no responde): se guarda aquí y el dinero entra en la caja local.

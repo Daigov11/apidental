@@ -712,6 +712,28 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     }
   });
 
+  it('abre y cierra la caja en un clic: sin vista previa ni aprobación, un solo envío', async () => {
+    const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
+    const savedCap = appCfg.maxRealOperations;
+    appCfg.maxRealOperations = 500;
+    const aperturas = () => seen.filter((x) => x.method === 'POST' && x.path.startsWith('/api/CajaChica/AperturaCajaChica')).length;
+    const cierres = () => seen.filter((x) => x.method === 'POST' && x.path.startsWith('/api/CajaChica/PostCierreCajaChica')).length;
+    try {
+      scenario.cajaOpen = false;
+      const a0 = aperturas();
+      const opened = await ctx.http().post('/v1/apiworking/cash/open').set(bearer(token)).send({ idCaja: '5', openingCents: 0 }).expect(200);
+      expect(opened.body.status).toBe('OPENED');
+      expect(aperturas()).toBe(a0 + 1);
+      const c0 = cierres();
+      const closed = await ctx.http().post('/v1/apiworking/cash/close').set(bearer(token)).send({ idCaja: '5' }).expect(200);
+      expect(closed.body.status).toBe('CLOSED');
+      expect(cierres()).toBe(c0 + 1);
+    } finally {
+      appCfg.maxRealOperations = savedCap;
+      scenario.cajaOpen = true;
+    }
+  });
+
   it('busca los nombres por DNI para precargar al paciente: usa lo que ya hay y solo consulta ClienteDoc si falta', async () => {
     const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
     const savedCap = appCfg.maxRealOperations;

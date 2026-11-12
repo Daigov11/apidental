@@ -54,7 +54,7 @@ export class ApiworkingCashService {
     return { hash: built.hash, caja: built.cajaName, turn: built.turn, openingCents: draft.openingCents, openingText: soles(draft.openingCents), alreadyOpen: built.alreadyOpen, write: this.config.apiworking.write };
   }
 
-  async open(principal: AuthPrincipal, dto: CashOpenDraftDto & { approvedHash: string }, meta: RequestMeta) {
+  async open(principal: AuthPrincipal, dto: CashOpenDraftDto & { approvedHash?: string }, meta: RequestMeta) {
     const { clinicId } = clinicScope(principal);
     const cfg = this.config.apiworking;
     if (!cfg.write) throw new ServiceUnavailableException({ message: 'Las escrituras reales de Apiworking están desactivadas en esta instalación', code: 'WRITE_DISABLED' });
@@ -62,7 +62,8 @@ export class ApiworkingCashService {
     this.inFlight.add(dto.idCaja);
     try {
       const built = await this.build(principal, dto);
-      if (built.hash !== dto.approvedHash) throw new ConflictException({ message: 'La apertura cambió después de la vista previa: revise y apruebe de nuevo', code: 'PREVIEW_CHANGED' });
+      // Apertura en un clic: la aprobación es opcional y solo se compara si llega.
+      if (dto.approvedHash && built.hash !== dto.approvedHash) throw new ConflictException({ message: 'La apertura cambió después de la vista previa: revise y apruebe de nuevo', code: 'PREVIEW_CHANGED' });
       if (built.alreadyOpen) throw new ConflictException({ message: 'La caja ya está abierta en Apiworking', code: 'ALREADY_OPEN' });
 
       await this.enforceCap();
@@ -106,7 +107,7 @@ export class ApiworkingCashService {
     return { hash: b.hash, caja: b.cajaName, turn: b.turn, isOpen: b.isOpen, write: this.config.apiworking.write };
   }
 
-  async close(principal: AuthPrincipal, dto: CashCloseDraftDto & { approvedHash: string }, meta: RequestMeta) {
+  async close(principal: AuthPrincipal, dto: CashCloseDraftDto & { approvedHash?: string }, meta: RequestMeta) {
     const { clinicId } = clinicScope(principal);
     const cfg = this.config.apiworking;
     if (!cfg.write) throw new ServiceUnavailableException({ message: 'Las escrituras reales de Apiworking están desactivadas en esta instalación', code: 'WRITE_DISABLED' });
@@ -114,7 +115,7 @@ export class ApiworkingCashService {
     this.inFlight.add(dto.idCaja);
     try {
       const built = await this.buildClose(principal, dto);
-      if (built.hash !== dto.approvedHash) throw new ConflictException({ message: 'El cierre cambió después de la vista previa: revise y apruebe de nuevo', code: 'PREVIEW_CHANGED' });
+      if (dto.approvedHash && built.hash !== dto.approvedHash) throw new ConflictException({ message: 'El cierre cambió después de la vista previa: revise y apruebe de nuevo', code: 'PREVIEW_CHANGED' });
       if (!built.isOpen) throw new ConflictException({ message: 'La caja no está abierta en Apiworking', code: 'NOT_OPEN' });
       await this.enforceCap();
 
