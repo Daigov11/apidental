@@ -19,7 +19,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
   const seen: Seen[] = [];
   const saved: Record<string, string | undefined> = {};
   /** Escenarios que la prueba activa en el servidor simulado. */
-  const scenario = { registro: 'ok' as 'ok' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject', clientes: 'ok' as 'ok' | 'boom', registrarPago: 'ok' as 'ok' | 'reject' | 'boom' };
+  const scenario = { facturacion: null as null | Record<string, unknown>[], registro: 'ok' as 'ok' | 'list' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject', clientes: 'ok' as 'ok' | 'boom', registrarPago: 'ok' as 'ok' | 'reject' | 'boom' };
 
   const customers = [
     { total: 3, id_cliente: 202600000038, id_persona: 202600000049, nombrecompleto: 'ROBERTO CARLOS ESPINAR VICHARRA', email: '', tipoDoc: 'D.N.I.', numerodocumento: '74908568', telefono: '', tipo_persona: 'N', estado: 'A', limite_credito: '0.00', saldo: 0, whatsapp: '', saldo_restante: '0.00' },
@@ -63,10 +63,12 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
         if (scenario.registro === 'boom') return { status: 500, body: { error: 'x' } };
         if (scenario.registro === 'reject') return { status: 200, body: { codResponse: 0, message: 'Serie sin correlativo' } };
         if (scenario.registro === 'incomplete') return { status: 200, body: ok({ result: 0, error: 'algo' }) };
+        // Forma real (guía, aqua 31-10-2026): data es una LISTA de un elemento y el número llega sin serie.
+        if (scenario.registro === 'list') return { status: 200, body: ok([{ result: 1, duplicado: 0, idComprobante: 22600001578, idSerie: 11, numero: '1423', numeroactual: 1424, error: null }]) };
         return { status: 200, body: ok({ result: 1, error: null, idComprobante: 201900000123, nroComprobante: 'B001-00000123' }) };
       case 'GET /api/Facturacion/controlPagos':
         return scenario.pagos === 'paid' ? { status: 200, body: ok([{ metodopago: 'Efectivo', importe: '1,000.00', estado: 'P' }]) } : { status: 200, body: { codResponse: 0, message: 'No se pudo encontrar pagos' } };
-      case 'GET /api/Facturacion': return { status: 200, body: ok([{ nroComprobante: 'B001-00000123', estado: scenario.registro === 'ok' ? 'ANULADO' : 'EMITIDO', totalVenta: '100.00', monto_saldo: '100.00', metodospagos: '' }]) };
+      case 'GET /api/Facturacion': return { status: 200, body: scenario.facturacion ? ok(scenario.facturacion) : ok([{ nroComprobante: 'B001-00000123', estado: scenario.registro === 'ok' ? 'ANULADO' : 'EMITIDO', totalVenta: '100.00', monto_saldo: '100.00', metodospagos: '' }]) };
       case 'POST /api/Facturacion/registrar-pago':
         if (scenario.registrarPago === 'boom') return { status: 500, body: { error: 'x' } };
         if (scenario.registrarPago === 'reject') return { status: 200, body: { codResponse: 0, message: 'El documento ya está pagado' } };
@@ -272,7 +274,8 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
 
     const before = registros();
     const created = await ctx.http().post('/v1/apiworking/sales').set(bearer(token)).send(body).expect(201);
-    expect(created.body).toMatchObject({ docStatus: 'SENT', externalDocId: '201900000123', externalNumber: 'B001-00000123', paymentStatus: 'NO_EVIDENCE', totalCents: 10_000, serie: 'B001' });
+    // El pago se aplica en el mismo paso (registrar-pago), sin otra acción de la persona.
+    expect(created.body).toMatchObject({ docStatus: 'SENT', externalDocId: '201900000123', externalNumber: 'B001-00000123', paymentStatus: 'CONFIRMED_REMOTE', totalCents: 10_000, serie: 'B001' });
     expect(registros()).toBe(before + 1);
     expect(seen.filter((s) => s.path === '/api/Facturacion/registro-documento').at(-1)!.auth).toBe(`Bearer ${EXTERNAL_TOKEN}`);
 
@@ -288,6 +291,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
 
   it('el cobro es un estado aparte: solo se confirma si controlPagos cubre el total', async () => {
     const sale = (await ctx.http().get('/v1/apiworking/sales').set(bearer(token)).expect(200)).body.items[0];
+    await ctx.db.apiworkingSale.update({ where: { id: sale.id }, data: { paymentStatus: 'NO_EVIDENCE' } });
     scenario.pagos = 'none';
     let v = await ctx.http().post(`/v1/apiworking/sales/${sale.id}/verify`).set(bearer(token)).expect(200);
     expect(v.body.sale.paymentStatus).toBe('NO_EVIDENCE');
@@ -627,7 +631,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     scenario.tenant = TENANT;
   });
 
-  it('registra el pago de un documento: un solo envío, con tope, sin reintento si el resultado es dudoso', async () => {
+  it('el pago se aplica solo tras registrar; si falla, el documento queda registrado y el pago manual no se reintenta a ciegas', async () => {
     const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
     const savedCap = appCfg.maxRealOperations;
     appCfg.maxRealOperations = 500; // el tope ya lo agotaron las pruebas anteriores
@@ -635,19 +639,19 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     const login = await enter(); // la prueba anterior borró la sesión externa
     token = ((await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200)).body.accessToken as string);
     try {
-      const pagos = () => seen.filter((x) => x.path === '/api/Facturacion/registrar-pago');
-      const body1 = await approve({ description: 'Para pagar' });
-      const created = await ctx.http().post('/v1/apiworking/sales').set(bearer(token)).send(body1).expect(201);
-      expect(created.body).toMatchObject({ docStatus: 'SENT', paymentStatus: 'NO_EVIDENCE' });
-      expect(created.body.actions.pay).toBe(true);
+      const base = seen.filter((x) => x.path === '/api/Facturacion/registrar-pago').length;
+      const attemptsBefore = await ctx.db.auditLog.count({ where: { action: 'APIWORKING_PAYMENT_ATTEMPT' } });
+      const pagos = () => seen.filter((x) => x.path === '/api/Facturacion/registrar-pago').slice(base);
+      const direct = (over: Record<string, unknown> = {}) => ({ ...draft(over), idempotencyKey: randomUUID() });
 
-      // Rechazo del proveedor: queda sin pago y se puede intentar otra vez.
+      // Pago rechazado al vender: la venta queda registrada, con el pago pendiente y el motivo.
       scenario.registrarPago = 'reject';
-      const rej = await ctx.http().post(`/v1/apiworking/sales/${created.body.id}/pay`).set(bearer(token)).expect(409);
-      expect(rej.body.code).toBe('PAYMENT_REJECTED');
+      const created = await ctx.http().post('/v1/apiworking/sales').set(bearer(token)).send(direct({ description: 'Para pagar' })).expect(201);
+      expect(created.body).toMatchObject({ docStatus: 'SENT', paymentStatus: 'NO_EVIDENCE' });
+      expect(created.body.failureReason).toMatch(/Pago no aplicado en Apiworking: El documento ya está pagado/);
       expect(pagos().length).toBe(1);
 
-      // Resultado dudoso: no se reintenta solo ni se da por aplicado.
+      // Resultado dudoso en el reintento manual: no se reintenta solo ni se da por aplicado.
       scenario.registrarPago = 'boom';
       const unk = await ctx.http().post(`/v1/apiworking/sales/${created.body.id}/pay`).set(bearer(token)).expect(409);
       expect(unk.body.code).toBe('PAYMENT_UNCONFIRMED');
@@ -655,29 +659,56 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       expect(again.body.code).toBe('PAYMENT_ALREADY_SENT');
       expect(pagos().length).toBe(2);
 
-      // Una venta distinta, con respuesta buena: cuerpo exacto de la guía y cobro confirmado.
+      // Venta directa (sin vista previa ni aprobación) con la respuesta REAL de Apiworking (data en lista): registrada y pagada.
       scenario.registrarPago = 'ok';
-      const body2 = await approve({ description: 'Segunda' });
-      const second = await ctx.http().post('/v1/apiworking/sales').set(bearer(token)).send(body2).expect(201);
-      const paid = await ctx.http().post(`/v1/apiworking/sales/${second.body.id}/pay`).set(bearer(token));
-      expect(paid.body.message ?? '').toBe('');
-      expect(paid.status).toBe(200);
-      expect(paid.body.paymentStatus).toBe('CONFIRMED_REMOTE');
-      expect(paid.body.actions.pay).toBe(false);
+      scenario.registro = 'list';
+      const second = await ctx.http().post('/v1/apiworking/sales').set(bearer(token)).send(direct({ description: 'Segunda' })).expect(201);
+      expect(second.body).toMatchObject({ docStatus: 'SENT', externalDocId: '22600001578', externalNumber: 'B001-1423', paymentStatus: 'CONFIRMED_REMOTE', failureReason: null });
+      expect(second.body.actions.pay).toBe(false);
       const call = pagos().at(-1)!;
       expect(call.auth).toBe(`Bearer ${EXTERNAL_TOKEN}`);
-      expect(call.body).toEqual({ idDocumentoPago: 201900000123, cadenaPago: [{ idMetodoPago: '1', importePago: 100 }], vuelto: 0 });
+      expect(call.body).toEqual({ idDocumentoPago: 22600001578, cadenaPago: [{ idMetodoPago: '1', importePago: 100 }], vuelto: 0 });
+      // La caja es la de la sesión: el cuerpo lleva la primera caja que informa GET /api/Caja.
+      expect(seen.filter((x) => x.path === '/api/Facturacion/registro-documento').at(-1)!.body).toMatchObject({ idCaja: '5' });
       await ctx.http().post(`/v1/apiworking/sales/${second.body.id}/pay`).set(bearer(token)).expect(409);
       expect(pagos().length).toBe(3);
 
-      // Cada intento queda auditado antes del envío y el tope los cuenta.
-      const attempts = await ctx.db.auditLog.count({ where: { action: 'APIWORKING_PAYMENT_ATTEMPT' } });
-      expect(attempts).toBe(3);
-      appCfg.maxRealOperations = 1;
+      // Cada intento queda auditado antes del envío; el pago no cuenta aparte en el tope (es parte de la venta).
+      expect(await ctx.db.auditLog.count({ where: { action: 'APIWORKING_PAYMENT_ATTEMPT' } })).toBe(attemptsBefore + 3);
       const third = await ctx.db.apiworkingSale.findFirstOrThrow({ where: { id: created.body.id } });
       expect(third.paymentStatus).toBe('NO_EVIDENCE');
     } finally {
       appCfg.maxRealOperations = savedCap;
+      scenario.registro = 'ok';
+    }
+  });
+
+  it('un resultado dudoso se resuelve solo: busca el comprobante en Apiworking, lo da por registrado y aplica el pago', async () => {
+    const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
+    const savedCap = appCfg.maxRealOperations;
+    appCfg.maxRealOperations = 500;
+    try {
+      const registrosAntes = seen.filter((x) => x.path === '/api/Facturacion/registro-documento').length;
+      scenario.registro = 'boom';
+      scenario.pagos = 'none';
+      scenario.facturacion = [
+        { nroComprobante: 'B001-00000999', id_documento_pago: '22600009999', estado: 'E', totalVenta: '77.00', monto_saldo: 77 },
+        { nroComprobante: 'F001-00000001', id_documento_pago: '22600000001', estado: 'E', totalVenta: '77.00', monto_saldo: 77 },
+      ];
+      const r = await ctx.http().post('/v1/apiworking/sales').set(bearer(token)).send({ ...draft({ description: 'Dudosa', lines: [{ name: 'Control', quantity: 1, unitPriceCents: 7700 }] }), idempotencyKey: randomUUID() }).expect(201);
+      expect(r.body).toMatchObject({ docStatus: 'SENT', externalNumber: 'B001-00000999', externalDocId: '22600009999', paymentStatus: 'CONFIRMED_REMOTE', failureReason: null });
+      // El documento se envió UNA sola vez: lo encontrado se usa, nunca se reenvía.
+      expect(seen.filter((x) => x.path === '/api/Facturacion/registro-documento').length).toBe(registrosAntes + 1);
+      expect(seen.filter((x) => x.path === '/api/Facturacion/registrar-pago').at(-1)!.body).toMatchObject({ idDocumentoPago: 22600009999 });
+
+      // Sin una coincidencia única queda «número por confirmar», sin mensajes de conciliación.
+      scenario.facturacion = [];
+      const u = await ctx.http().post('/v1/apiworking/sales').set(bearer(token)).send({ ...draft({ description: 'Sin rastro', lines: [{ name: 'Control', quantity: 1, unitPriceCents: 6600 }] }), idempotencyKey: randomUUID() }).expect(201);
+      expect(u.body).toMatchObject({ docStatus: 'PENDING_RECONCILIATION', docStatusLabel: 'Enviado: número por confirmar' });
+    } finally {
+      appCfg.maxRealOperations = savedCap;
+      scenario.registro = 'ok';
+      scenario.facturacion = null;
     }
   });
 

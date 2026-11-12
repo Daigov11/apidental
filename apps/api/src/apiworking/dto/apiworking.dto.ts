@@ -51,7 +51,8 @@ export class SaleLineDto {
 export class SaleDraftDto {
   /// id_cliente de la lista de clientes de Apiworking.
   @Matches(EXT_ID) customerId!: string;
-  @Matches(EXT_ID) idCaja!: string;
+  /// Opcional: por defecto, la caja del usuario que inició sesión (GET /api/Caja).
+  @IsOptional() @Matches(EXT_ID) idCaja?: string;
   @Matches(EXT_ID) idTipoDocumento!: string;
   @Matches(EXT_ID) idSerie!: string;
   @Matches(EXT_ID) idMetodoPago!: string;
@@ -68,8 +69,8 @@ export class SaleDraftDto {
 }
 
 export class CreateSaleDto extends SaleDraftDto {
-  /// SHA-256 de la vista previa que la persona aprobó: si el JSON cambió, no se envía.
-  @Matches(/^[0-9a-f]{64}$/) approvedHash!: string;
+  /// Opcional: si se envía, el JSON debe coincidir con el de la vista previa. La venta normal se hace directo, sin aprobación.
+  @IsOptional() @Matches(/^[0-9a-f]{64}$/) approvedHash?: string;
   /// Clave local de idempotencia: la misma clave nunca envía dos veces la misma operación.
   @IsUUID() idempotencyKey!: string;
 }

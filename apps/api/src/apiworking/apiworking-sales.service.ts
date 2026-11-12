@@ -10,15 +10,17 @@ import { resolveBillingLink } from './billing-link.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { enforceRealOperationsCap } from './real-operations.js';
-import { ApiworkingClient, ApiworkingError, asRecord, asRows, cajaId, cajaName, allowed, clip, isNoData, moneyToCents, optText, reqId, reqIdAny } from './apiworking.client.js';
+import { ApiworkingClient, ApiworkingError, asResult, asRows, cajaId, cajaName, allowed, clip, isNoData, moneyToCents, optText, reqId, reqIdAny } from './apiworking.client.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import type { ExternalSession } from './apiworking-session.store.js';
 import type { ReconcileSaleDto, SaleDraftDto } from './dto/apiworking.dto.js';
 
 type SaleRow = Prisma.ApiworkingSaleGetPayload<object>;
 
-const DOC_LABELS = { PENDING_ISSUE: 'Cobrado en contingencia: por emitir', PENDING: 'Enviando', SENT: 'Registrado en Apiworking', REJECTED: 'Rechazado', PENDING_RECONCILIATION: 'Resultado desconocido: conciliar' } as const;
-const PAYMENT_LABELS = { NO_EVIDENCE: 'Cobro sin confirmar', CONFIRMED_REMOTE: 'Cobro confirmado en Apiworking', CONFIRMED_RECONCILED: 'Cobro conciliado' } as const;
+const DOC_LABELS = { PENDING_ISSUE: 'Cobrado en contingencia: por emitir', PENDING: 'Enviando', SENT: 'Registrado en Apiworking', REJECTED: 'Rechazado', PENDING_RECONCILIATION: 'Enviado: número por confirmar' } as const;
+const PAYMENT_LABELS = { NO_EVIDENCE: 'Pago pendiente', CONFIRMED_REMOTE: 'Pagado', CONFIRMED_RECONCILED: 'Pagado' } as const;
+/** Cada cuánto se vuelve a buscar en Apiworking una venta con número por confirmar (al listar). */
+const LOCATE_EVERY_MS = 2 * 60 * 1000;
 const VOID_LABELS = { IN_PROGRESS: 'Anulación en curso', VOIDED: 'Anulado', TO_RECONCILE: 'Anulación por conciliar' } as const;
 /** Unidad de medida por defecto: «1» = NIU (según el responsable del tenant). */
 const DEFAULT_UNIT = '1';
@@ -70,14 +72,16 @@ export function presentSale(s: SaleRow) {
 }
 
 /**
- * Ventas por `registro-documento` de Apiworking. Reglas (guía de integración): una escritura real puede tener efecto
- * tributario, así que cada envío (1) exige que la persona apruebe el JSON exacto (SHA-256), (2) se hace UNA sola vez y sin
- * reintentos, (3) respeta un tope de envíos por 24 h, (4) separa documento, cobro y anulación como estados distintos
- * (registrar el documento NO aplica el pago) y (5) trata un tiempo agotado como resultado DESCONOCIDO: se concilia a mano.
+ * Ventas por `registro-documento` de Apiworking, de un solo paso (flujo «venta cobrada» de la guía de integración):
+ * caja del usuario que inició sesión -> registro-documento (UNA vez, sin reintentos) -> registrar-pago automático. Un resultado
+ * dudoso no se reenvía: el sistema busca solo el comprobante en GET /api/Facturacion y, si lo encuentra, lo da por registrado
+ * y aplica el pago. Documento, cobro y anulación siguen siendo estados distintos. El tope por 24 h es opcional.
  */
 @Injectable()
 export class ApiworkingSalesService {
   private readonly diag = new Logger('ApiworkingSales');
+  /** Última búsqueda automática de cada venta con número por confirmar (evita consultar Apiworking en cada listado). */
+  private readonly located = new Map<string, number>();
   constructor(
     @Inject(PRISMA) private readonly db: PrismaDb,
     private readonly config: AppConfig,
@@ -161,6 +165,14 @@ export class ApiworkingSalesService {
     return asRows(data, 'las formas de pago').map((r) => ({ id: reqId(r, 'id_metodo_pago', 'una forma de pago'), name: label(r, ['metodoPago'], 'Pago') }));
   }
 
+  /** Caja con la que se vende: la del usuario que inició sesión (GET /api/Caja), dentro de las autorizadas si las hay. */
+  private async sessionCaja(session: ExternalSession): Promise<string> {
+    const cfg = this.config.apiworking;
+    const id = asRows(await this.client.call('caja', { token: session.token }), 'las cajas').map(cajaId).find((c) => allowed(cfg.authorizedCashRegisters, c));
+    if (!id) throw new ConflictException({ message: 'Su usuario de Apiworking no tiene una caja asignada', code: 'NO_CASH_REGISTER' });
+    return id;
+  }
+
   // --- Vista previa: el JSON exacto que se enviaría, con su SHA-256 ---
 
   async preview(principal: AuthPrincipal, draft: SaleDraftDto) {
@@ -175,17 +187,15 @@ export class ApiworkingSalesService {
       suggestedDocument: suggestDocument(built.customer.docType),
       mode: this.config.apiworking.write ? 'LIVE' : 'READ_ONLY',
       writeEnabled: this.config.apiworking.write,
-      warnings: [
-        'Apiworking registra el documento, pero NO aplica el cobro: el cobro quedará «sin confirmar» hasta verificarlo.',
-        'Una Boleta o Factura real puede llegar a SUNAT. Revise el JSON antes de aprobarlo.',
-      ],
+      warnings: [] as string[],
     };
   }
 
   private async build(principal: AuthPrincipal, draft: SaleDraftDto) {
     const cfg = this.config.apiworking;
     const session = this.clients.requireSession(principal);
-    if (!allowed(cfg.authorizedCashRegisters, draft.idCaja) || !allowed(cfg.authorizedDocumentTypes, draft.idTipoDocumento) || !allowed(cfg.authorizedSeries, draft.idSerie)) {
+    const idCaja = draft.idCaja ?? (await this.sessionCaja(session));
+    if (!allowed(cfg.authorizedCashRegisters, idCaja) || !allowed(cfg.authorizedDocumentTypes, draft.idTipoDocumento) || !allowed(cfg.authorizedSeries, draft.idSerie)) {
       throw new BadRequestException('La caja, el tipo de documento o la serie no están autorizados para esta instalación');
     }
     const warehouse = warehouseOf(cfg, session);
@@ -199,10 +209,10 @@ export class ApiworkingSalesService {
     if (!customer) throw new BadRequestException('El cliente no existe (o está inactivo) en Apiworking');
 
     // Se revalidan caja, tipo, serie y forma de pago en cada vista previa y en cada envío: pueden cambiar.
-    const movement = await this.openMovement(session, draft.idCaja);
+    const movement = await this.openMovement(session, idCaja);
     if (!movement) throw new ConflictException({ message: 'La caja no tiene una apertura vigente en Apiworking', code: 'CASH_REGISTER_CLOSED' });
-    if (!(await this.documentTypes(session, draft.idCaja)).some((t) => t.id === draft.idTipoDocumento)) throw new BadRequestException('El tipo de documento no corresponde a la caja');
-    const serie = (await this.seriesOf(session, draft.idCaja, draft.idTipoDocumento)).find((s) => s.id === draft.idSerie);
+    if (!(await this.documentTypes(session, idCaja)).some((t) => t.id === draft.idTipoDocumento)) throw new BadRequestException('El tipo de documento no corresponde a la caja');
+    const serie = (await this.seriesOf(session, idCaja, draft.idTipoDocumento)).find((s) => s.id === draft.idSerie);
     if (!serie) throw new BadRequestException('La serie no corresponde a la caja y al tipo de documento');
     if (!(await this.paymentMethods(session, movement)).some((m) => m.id === draft.idMetodoPago)) throw new BadRequestException('La forma de pago no está disponible en la apertura de caja');
 
@@ -212,7 +222,7 @@ export class ApiworkingSalesService {
     if (Number.isNaN(Date.parse(`${docDate}T00:00:00Z`))) throw new BadRequestException('Fecha inválida');
 
     const body = {
-      idCaja: draft.idCaja,
+      idCaja,
       idCliente: Number(draft.customerId),
       idSerie: Number(draft.idSerie),
       observacion: draft.description,
@@ -243,19 +253,19 @@ export class ApiworkingSalesService {
     };
     // El enlace con paciente y cita también queda aprobado: cambiarlo invalida la vista previa.
     const linkSuffix = link.appointmentId || link.patientId ? `|p:${link.patientId ?? ''}|a:${link.appointmentId ?? ''}` : '';
-    return { body, hash: sha256(JSON.stringify(body) + linkSuffix), totalCents, customer, serie: serie.serie, docDate, patientId: link.patientId, appointmentId: link.appointmentId };
+    return { body, idCaja, hash: sha256(JSON.stringify(body) + linkSuffix), totalCents, customer, serie: serie.serie, docDate, patientId: link.patientId, appointmentId: link.appointmentId };
   }
 
-  // --- Registro: un solo envío, con aprobación, tope y sin reintentos ---
+  // --- Venta: un solo envío del documento, sin reintentos, y el pago aplicado a continuación ---
 
-  async create(principal: AuthPrincipal, dto: SaleDraftDto & { approvedHash: string; idempotencyKey: string }, meta: RequestMeta) {
+  async create(principal: AuthPrincipal, dto: SaleDraftDto & { approvedHash?: string; idempotencyKey: string }, meta: RequestMeta) {
     const { clinicId } = clinicScope(principal);
     const cfg = this.config.apiworking;
     if (!cfg.write) throw new ServiceUnavailableException({ message: 'Las escrituras reales de Apiworking están desactivadas en esta instalación', code: 'WRITE_DISABLED' });
 
     const existing = await this.db.apiworkingSale.findUnique({ where: { idempotencyKey: dto.idempotencyKey } });
     if (existing) {
-      if (existing.clinicId !== clinicId || existing.requestHash !== dto.approvedHash) throw new ConflictException({ message: 'La clave de idempotencia ya se usó con otra venta', code: 'IDEMPOTENCY_MISMATCH' });
+      if (existing.clinicId !== clinicId || (dto.approvedHash && existing.requestHash !== dto.approvedHash)) throw new ConflictException({ message: 'La clave de idempotencia ya se usó con otra venta', code: 'IDEMPOTENCY_MISMATCH' });
       return presentSale(existing);
     }
 
@@ -268,7 +278,7 @@ export class ApiworkingSalesService {
     }
 
     const built = await this.build(principal, dto);
-    if (built.hash !== dto.approvedHash) throw new ConflictException({ message: 'La venta cambió después de la vista previa: revise y apruebe de nuevo', code: 'PREVIEW_CHANGED' });
+    if (dto.approvedHash && built.hash !== dto.approvedHash) throw new ConflictException({ message: 'La venta cambió después de la vista previa: revise y apruebe de nuevo', code: 'PREVIEW_CHANGED' });
     if (pending && (built.customer.id !== pending.externalCustomerId || built.totalCents !== pending.totalCents)) {
       throw new ConflictException({ message: 'El cliente y el monto de una venta cobrada en contingencia no se pueden cambiar al emitirla', code: 'PENDING_CHANGED' });
     }
@@ -288,7 +298,7 @@ export class ApiworkingSalesService {
             data: {
               idempotencyKey: dto.idempotencyKey,
               requestHash: built.hash,
-              idCaja: dto.idCaja,
+              idCaja: built.idCaja,
               idSerie: dto.idSerie,
               serie: built.serie,
               documentTypeId: dto.idTipoDocumento,
@@ -311,7 +321,7 @@ export class ApiworkingSalesService {
               customerName: built.customer.name.slice(0, 200),
               customerDocType: built.customer.docType.slice(0, 20),
               customerDocNumber: built.customer.docNumber.slice(0, 20),
-              idCaja: dto.idCaja,
+              idCaja: built.idCaja,
               idSerie: dto.idSerie,
               serie: built.serie,
               documentTypeId: dto.idTipoDocumento,
@@ -335,7 +345,7 @@ export class ApiworkingSalesService {
     let updated: SaleRow;
     try {
       const data = await this.client.call('registroDocumento', { token: session.token, body: built.body });
-      const r = asRecord(data, 'el registro del documento');
+      const r = asResult(data, 'el registro del documento');
       const result = r['result'];
       const hasError = r['error'] !== null && r['error'] !== undefined && r['error'] !== '';
       if ((result !== 1 && result !== '1') || hasError) {
@@ -343,13 +353,78 @@ export class ApiworkingSalesService {
         updated = await this.settle(sale.id, { docStatus: 'PENDING_RECONCILIATION', failureReason: 'Respuesta de Apiworking incompleta: verifique si el documento existe' });
         await this.log(AuditAction.ApiworkingSaleUnknown, updated, principal, meta, { reason: 'unexpected_shape' });
       } else {
-        updated = await this.settle(sale.id, { docStatus: 'SENT', externalDocId: reqIdAny(r, ['idComprobante', 'idDocumentoPago', 'idDocumento', 'id_comprobante', 'id'], 'el registro del documento'), externalNumber: optText(r, 'nroComprobante') || optText(r, 'numeroComprobante') || null });
+        const numero = optText(r, 'numero');
+        updated = await this.settle(sale.id, { docStatus: 'SENT', failureReason: null, externalDocId: reqIdAny(r, ['idComprobante', 'idDocumentoPago', 'idDocumento', 'id_comprobante', 'id'], 'el registro del documento'), externalNumber: optText(r, 'nroComprobante') || optText(r, 'numeroComprobante') || (numero ? `${built.serie}-${numero}` : null) });
         await this.log(updated.contingency ? AuditAction.ApiworkingContingencyIssued : AuditAction.ApiworkingSaleSent, updated, principal, meta, {});
       }
     } catch (error) {
       updated = await this.settleFailure(sale.id, error, principal, meta);
     }
+    // Resultado dudoso: se busca solo el comprobante en Apiworking (lectura) en vez de pedir una conciliación manual.
+    if (updated.docStatus === 'PENDING_RECONCILIATION') updated = await this.locate(updated, principal, meta);
+    // Venta cobrada: el pago se aplica en el mismo paso (registro-documento no lo aplica). La de contingencia ya se cobró en la caja local.
+    if (updated.docStatus === 'SENT' && !updated.contingency && updated.paymentStatus === 'NO_EVIDENCE') updated = await this.autoPay(updated, principal, meta);
     return presentSale(updated);
+  }
+
+  /** Aplica el pago sin interrumpir la venta: si falla, el documento queda registrado y el pago pendiente. */
+  private async autoPay(sale: SaleRow, principal: AuthPrincipal, meta: RequestMeta): Promise<SaleRow> {
+    try {
+      return await this.applyPayment(sale, principal, meta, true);
+    } catch (error) {
+      const raw = error instanceof ConflictException || error instanceof ServiceUnavailableException ? (error.getResponse() as { message?: unknown }).message : error instanceof Error ? error.message : '';
+      const msg = typeof raw === 'string' ? raw : '';
+      this.diag.warn(`pago automático no aplicado (${sale.id}): ${clip(msg)}`);
+      return this.settle(sale.id, { failureReason: clip(`Pago no aplicado en Apiworking: ${msg || 'sin detalle'}`) });
+    }
+  }
+
+  /**
+   * Busca en GET /api/Facturacion el comprobante de una venta con resultado dudoso (mismo total y serie, del día, sin otra venta
+   * local que lo tenga). Con UNA coincidencia la da por registrada; si además trae su id y no tiene pagos, aplica el pago.
+   * Nunca reenvía el documento. Un fallo de la búsqueda deja la venta como estaba.
+   */
+  private async locate(sale: SaleRow, principal: AuthPrincipal, meta: RequestMeta): Promise<SaleRow> {
+    this.located.set(sale.id, Date.now());
+    try {
+      const session = this.clients.requireSession(principal);
+      const day = sale.docDate.toISOString().slice(0, 10);
+      const next = new Date(sale.docDate.getTime() + 86_400_000).toISOString().slice(0, 10);
+      const data = await this.client
+        .call('facturacion', { token: session.token, query: { idSucursal: session.branchId ?? undefined, fechaInicio: dmy(day), fechaFin: dmy(next), displayStart: 0, displayLength: 100, allFechas: 0 } })
+        .catch((e: unknown) => {
+          if (isNoData(e)) return [];
+          throw e;
+        });
+      const rows = asRows(data, 'los documentos');
+      const taken = new Set((await this.db.apiworkingSale.findMany({ where: { tenant: sale.tenant, externalNumber: { not: null }, NOT: { id: sale.id } }, select: { externalNumber: true } })).map((s) => s.externalNumber));
+      const matches = rows
+        .map((r) => ({ number: optText(r, 'nroComprobante'), id: optText(r, 'id_documento_pago') || optText(r, 'idDocumentoPago') || optText(r, 'idComprobante'), status: optText(r, 'estado'), totalCents: moneyToCents(r['totalVenta']), doc: optText(r, 'numerodocumento_cliente') }))
+        .filter((f) => f.number && !taken.has(f.number) && f.totalCents === sale.totalCents && (!sale.serie || f.number.startsWith(`${sale.serie}-`)) && (!f.doc || f.doc === sale.customerDocNumber) && !/^a/i.test(f.status));
+      if (matches.length !== 1) return sale;
+      const m = matches[0]!;
+      let updated = await this.settle(sale.id, { docStatus: 'SENT', externalNumber: m.number, externalDocId: m.id && Number.isSafeInteger(Number(m.id)) ? m.id : null, failureReason: null });
+      await this.audit.recordSafely({ action: AuditAction.ApiworkingSaleReconciled, entity: 'ApiworkingSale', entityId: sale.id, userId: principal.user.id, clinicId: sale.clinicId, meta, summary: { outcome: 'REGISTERED', auto: true, externalNumber: m.number } });
+      if (updated.externalDocId && !updated.contingency && updated.paymentStatus === 'NO_EVIDENCE') {
+        const paid = await this.paidCents(session, updated.externalDocId);
+        updated = paid >= updated.totalCents ? await this.settle(sale.id, { paymentStatus: 'CONFIRMED_REMOTE' }) : await this.autoPay(updated, principal, meta);
+      }
+      return updated;
+    } catch (error) {
+      this.diag.warn(`búsqueda automática del comprobante sin resultado (${sale.id}): ${clip(error instanceof Error ? error.message : '')}`);
+      return sale;
+    }
+  }
+
+  /** Suma de pagos aplicados a un documento (controlPagos). «No se encontraron pagos» = 0. */
+  private async paidCents(session: ExternalSession, externalDocId: string): Promise<number> {
+    try {
+      const rows = asRows(await this.client.call('controlPagos', { token: session.token, query: { idDocumentoPago: externalDocId } }), 'el control de pagos');
+      return rows.reduce((sum, r) => sum + (moneyToCents(r['importe']) ?? 0), 0);
+    } catch (error) {
+      if (error instanceof ApiworkingError && error.kind === 'REJECTED') return 0;
+      throw error;
+    }
   }
 
   private async settleFailure(id: string, error: unknown, principal: AuthPrincipal, meta: RequestMeta): Promise<SaleRow> {
@@ -385,12 +460,17 @@ export class ApiworkingSalesService {
 
   // --- Consulta, verificación y conciliación ---
 
-  async list(principal: AuthPrincipal, q: { limit: number; offset: number }) {
+  async list(principal: AuthPrincipal, q: { limit: number; offset: number }, meta?: RequestMeta) {
     const { clinicId } = clinicScope(principal);
     const [rows, total] = await Promise.all([
       this.db.apiworkingSale.findMany({ where: { clinicId }, orderBy: { createdAt: 'desc' }, take: q.limit, skip: q.offset }),
       this.db.apiworkingSale.count({ where: { clinicId } }),
     ]);
+    // Las ventas con número por confirmar se buscan solas en Apiworking (como mucho 3 por listado y cada 2 minutos).
+    if (meta && this.config.apiworking.read && this.clients.hasSession(principal)) {
+      const due = rows.filter((r) => r.docStatus === 'PENDING_RECONCILIATION' && Date.now() - (this.located.get(r.id) ?? 0) > LOCATE_EVERY_MS).slice(0, 3);
+      for (const r of due) rows[rows.indexOf(r)] = await this.locate(r, principal, meta);
+    }
     return { items: rows.map(presentSale), total };
   }
 
@@ -506,9 +586,13 @@ export class ApiworkingSalesService {
    * reintenta: se comprueba con «Verificar» (controlPagos).
    */
   async pay(principal: AuthPrincipal, id: string, meta: RequestMeta) {
+    return presentSale(await this.applyPayment(await this.load(principal, id), principal, meta));
+  }
+
+  /** `auto`: pago aplicado en el mismo paso que la venta (ya pasó el tope al registrarla). */
+  private async applyPayment(sale: SaleRow, principal: AuthPrincipal, meta: RequestMeta, auto = false): Promise<SaleRow> {
     const cfg = this.config.apiworking;
     if (!cfg.write) throw new ServiceUnavailableException({ message: 'Las escrituras reales de Apiworking están desactivadas en esta instalación', code: 'WRITE_DISABLED' });
-    const sale = await this.load(principal, id);
     if (sale.docStatus !== 'SENT' || !sale.externalDocId) throw new ConflictException('Solo se registra el pago de una venta ya registrada en Apiworking');
     if (sale.voidStatus !== null) throw new ConflictException('La venta tiene una anulación: no se registra su pago');
     if (sale.paymentStatus !== 'NO_EVIDENCE') throw new ConflictException('El pago de esta venta ya está confirmado');
@@ -518,23 +602,23 @@ export class ApiworkingSalesService {
     ]);
     if (attempts > rejected) throw new ConflictException({ message: 'Ya se envió el pago de esta venta y el resultado no está confirmado. Use «Verificar» antes de intentarlo de nuevo.', code: 'PAYMENT_ALREADY_SENT' });
     const session = this.clients.requireSession(principal);
-    await enforceRealOperationsCap(this.db, this.config);
+    if (!auto) await enforceRealOperationsCap(this.db, this.config);
 
     const body = { idDocumentoPago: Number(sale.externalDocId), cadenaPago: [{ idMetodoPago: sale.paymentMethodId, importePago: sale.totalCents / 100 }], vuelto: 0 };
     if (!Number.isSafeInteger(body.idDocumentoPago)) throw new ConflictException('El id del documento en Apiworking no es numérico');
     const log = (action: string, extra: Record<string, unknown>) =>
       this.audit.recordSafely({ action, entity: 'ApiworkingSale', entityId: sale.id, userId: principal.user.id, clinicId: sale.clinicId, patientId: sale.patientId, meta, summary: { totalCents: sale.totalCents, ...extra } });
-    await this.audit.record({ action: AuditAction.ApiworkingPaymentAttempt, entity: 'ApiworkingSale', entityId: sale.id, userId: principal.user.id, clinicId: sale.clinicId, patientId: sale.patientId, meta, summary: { totalCents: sale.totalCents } });
+    await this.audit.record({ action: AuditAction.ApiworkingPaymentAttempt, entity: 'ApiworkingSale', entityId: sale.id, userId: principal.user.id, clinicId: sale.clinicId, patientId: sale.patientId, meta, summary: { totalCents: sale.totalCents, auto } });
 
     try {
-      const r = asRecord(await this.client.call('registrarPago', { token: session.token, body }), 'el registro del pago');
+      const r = asResult(await this.client.call('registrarPago', { token: session.token, body }), 'el registro del pago');
       const hasError = r['error'] !== null && r['error'] !== undefined && r['error'] !== '';
       if ((r['result'] !== 1 && r['result'] !== '1') || hasError) {
         await log(AuditAction.ApiworkingPaymentUnknown, { reason: 'unexpected_shape' });
         throw new ConflictException({ message: 'Apiworking respondió sin la forma esperada: use «Verificar» para comprobar si el pago quedó aplicado.', code: 'PAYMENT_UNCONFIRMED' });
       }
       await log(AuditAction.ApiworkingPaymentRegistered, {});
-      return presentSale(await this.settle(sale.id, { paymentStatus: 'CONFIRMED_REMOTE' }));
+      return await this.settle(sale.id, { paymentStatus: 'CONFIRMED_REMOTE', failureReason: null });
     } catch (error) {
       if (error instanceof ConflictException) throw error;
       const kind = error instanceof ApiworkingError ? error.kind : 'UNKNOWN_RESULT';

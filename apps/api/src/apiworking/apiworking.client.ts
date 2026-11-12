@@ -197,6 +197,10 @@ export function asRecord(v: unknown, what: string): Record<string, unknown> {
 }
 
 /** `data` puede ser una lista o un solo registro: ambos se leen como lista de registros. */
+/** `data` de una escritura: un objeto o una lista de UN elemento (registro-documento responde `data: [{ result, idComprobante… }]`). */
+export function asResult(v: unknown, what: string): Record<string, unknown> {
+  return asRecord(Array.isArray(v) && v.length === 1 ? v[0] : v, what);
+}
 export function asRows(v: unknown, what: string): Record<string, unknown>[] {
   const list = Array.isArray(v) ? v : [v];
   return list.map((x) => asRecord(x, what));

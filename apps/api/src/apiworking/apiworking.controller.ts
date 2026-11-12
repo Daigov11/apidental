@@ -167,8 +167,8 @@ export class ApiworkingController {
 
   @Get('sales')
   @RequirePermissions('apiworking:read')
-  list(@CurrentPrincipal() a: AuthPrincipal, @Query() q: ListSalesQuery) {
-    return this.sales.list(a, q);
+  list(@CurrentPrincipal() a: AuthPrincipal, @Query() q: ListSalesQuery, @Meta() m: RequestMeta) {
+    return this.sales.list(a, q, m);
   }
 
   @Get('sales/summary')

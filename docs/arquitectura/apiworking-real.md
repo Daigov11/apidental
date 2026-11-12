@@ -13,10 +13,18 @@ cuentas vinculadas en `external_identities`; el comprobante simulado conserva su
    El login local sigue disponible para el administrador (`/v1/auth/login`; el panel lo ofrece en «Acceso del administrador local»).
 2. **Clientes** (`GET /v1/apiworking/clients`): lee `GET /api/Cliente/clientes?bd=<tenant>&displayStart=1&displayLength=1000`
    (solo clientes activos, caché de 60 s, sesión de Apiworking obligatoria). No crea ni modifica clientes.
-3. **Ventas** (`/v1/apiworking/sales*`): contexto (caja, apertura, tipos, series, formas de pago, siempre dentro de las listas
-   autorizadas) → **vista previa** con el JSON exacto y su SHA-256 → **envío único** a `registro-documento` con la aprobación
-   (`approvedHash`) y una clave de idempotencia → **verificar** (`controlPagos`, `Facturacion`) → **conciliar** (decisión humana)
-   → **anular** (con motivo).
+3. **Ventas** (`/v1/apiworking/sales*`): **venta directa en un clic** («Cobrar»), según el flujo «venta cobrada» de la guía
+   (`docs/integration/GUIA_INTEGRACION_APIWORKING.pdf`, 09-11-2026). La caja es la del usuario que inició sesión (`GET /api/Caja`,
+   no se elige); se elige el tipo de documento y la forma de pago. El servidor revalida apertura, tipo, serie y forma de pago,
+   envía `registro-documento` **una sola vez** (clave de idempotencia; sin vista previa ni aprobación: `approvedHash` es opcional
+   y solo se compara si llega) y a continuación aplica el pago con `registrar-pago`. Después: **anular** (con motivo).
+   - `data` de las escrituras puede llegar como objeto o como lista de un elemento (`registro-documento` responde
+     `data: [{ result, idComprobante, numero… }]`): se aceptan las dos. El número es `<serie>-<numero>`.
+   - **Resultado dudoso** (5xx, tiempo agotado, forma inesperada): no se reenvía. El servidor busca solo el comprobante en
+     `GET /api/Facturacion` (mismo total y serie, del día, sin otra venta local que lo tenga). Con una coincidencia única lo da por
+     registrado (auditado como conciliación automática) y aplica el pago si `controlPagos` no lo muestra. Si no, la venta queda
+     «Enviado: número por confirmar» y se vuelve a buscar al listar (como mucho 3 ventas y cada 2 minutos). Verificar y
+     conciliar a mano ya no se ofrecen en el panel (los endpoints siguen para soporte).
 
 ## Controles (de la guía)
 | Control | Cómo |
@@ -39,7 +47,7 @@ Para leer: `APIWORKING_AUTHZ_READ=true`. Para escribir además: `APIWORKING_AUTH
 Las rutas reales solo requieren que `INTEGRATIONS_MODE` pueda seguir en `off`: son independientes de los simuladores.
 
 ## Permisos locales
-`apiworking:read` (clientes, cajas, lista de ventas), `apiworking:sell` (preparar, enviar, verificar, conciliar),
+`apiworking:read` (clientes, cajas, lista de ventas), `apiworking:sell` (vender y crear clientes),
 `apiworking:void` (anular), `apiworking:configure` (ver todas las cajas, documentos y series de Apiworking para decidir qué autorizar; solo lectura).
 Los tienen Administrador de clínica (todos) y Cajero (`read`, `sell`, `void`); Recepción, `read` y `sell`. La plataforma no.
 
@@ -117,13 +125,13 @@ Al vender, el almacén (`idAlmacen`) es la sucursal del usuario en Apiworking (`
 - **Aviso:** el comprobante interno NO es un comprobante de SUNAT; los plazos de SUNAT corren hasta emitirlo.
 - El estado «cobro sin confirmar» de Apiworking se ignora por ahora (decisión del responsable).
 
-## Registrar el pago de un documento (`registrar-pago`)
-`registro-documento` no aplica el pago. Para aplicarlo existe `POST /api/Facturacion/registrar-pago` con
-`{ idDocumentoPago, cadenaPago: [{ idMetodoPago, importePago }], vuelto }`; responde `data.result = 1` y `idComprobante`.
-En el panel: **Ventas → Registrar pago** (solo ventas enviadas, sin anulación y con cobro sin evidencia). La persona confirma
-documento y monto; se envía **una sola vez** con la forma de pago y el total de la venta (sin vuelto), cuenta en el tope de
-operaciones reales y el intento se audita antes (`APIWORKING_PAYMENT_ATTEMPT`). Respuesta buena → cobro confirmado. Rechazo →
-se puede intentar otra vez. Resultado dudoso → no se reintenta: se usa **Verificar** (`controlPagos`).
+## Pago del documento (`registrar-pago`)
+`registro-documento` no aplica el pago. Se aplica con `POST /api/Facturacion/registrar-pago`
+(`{ idDocumentoPago, cadenaPago: [{ idMetodoPago, importePago }], vuelto }`; responde `data.result = 1` e `idComprobante`)
+**automáticamente, en el mismo paso que la venta** (como CERDS), con la forma de pago y el total (sin vuelto). Es parte de la
+venta: no cuenta aparte en el tope. El intento se audita antes (`APIWORKING_PAYMENT_ATTEMPT`, `auto: true`). Respuesta buena →
+«Pagado». Si falla, el documento queda registrado, el pago «pendiente» y el motivo a la vista; no se reintenta solo. Las ventas
+de contingencia no se pagan en Apiworking: el dinero ya entró en la caja local.
 
 ## Nombres por DNI al crear un paciente
 En «Nuevo paciente», con cuenta de Apiworking y el permiso `apiworking:sell`, al completar un DNI de 8 dígitos el panel llama a

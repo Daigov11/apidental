@@ -86,6 +86,10 @@ export class ApiworkingClientsService {
     private readonly config: AppConfig,
   ) {}
 
+  hasSession(principal: AuthPrincipal): boolean {
+    return this.store.get(principal.sessionId) != null;
+  }
+
   /** Sesión de Apiworking de quien opera: sin ella (p. ej. tras reiniciar la API) hay que volver a entrar. */
   requireSession(principal: AuthPrincipal): ExternalSession {
     const session = this.store.get(principal.sessionId);

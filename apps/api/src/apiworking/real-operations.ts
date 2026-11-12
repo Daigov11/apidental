@@ -5,12 +5,14 @@ import type { PrismaDb } from '../prisma/client.js';
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
-/** Auditoría que cuenta como «envío real» en el tope (el intento se guarda ANTES de llamar a Apiworking). */
+/**
+ * Auditoría que cuenta como «envío real» en el tope (el intento se guarda ANTES de llamar a Apiworking). El pago del documento
+ * no cuenta aparte: es parte de la venta, que ya cuenta como un envío.
+ */
 export const REAL_ATTEMPT_ACTIONS: string[] = [
   AuditAction.ApiworkingCashOpenAttempt,
   AuditAction.ApiworkingCashCloseAttempt,
   AuditAction.ApiworkingCustomerAttempt,
-  AuditAction.ApiworkingPaymentAttempt,
 ];
 
 /** Tope OPCIONAL de envíos reales en 24 h (APIWORKING_MAX_REAL_OPERATIONS; 0 o ausente = sin tope): ventas + aperturas/cierres de caja + altas de cliente. */
