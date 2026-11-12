@@ -37,6 +37,10 @@ export class SalesContextQuery {
   @IsOptional() @Matches(EXT_ID) idTipoDocumento?: string;
 }
 
+export class SalesSummaryQuery {
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date debe tener el formato YYYY-MM-DD' }) date?: string;
+}
+
 export class SaleLineDto {
   @Transform(trim) @IsString() @MinLength(2) @MaxLength(120) name!: string;
   @IsInt() @Min(1) @Max(999) quantity!: number;

@@ -14,6 +14,7 @@ import { ReasonDialog } from '../ui/overlays';
 import { ConfigDrawer } from './cashbox/ConfigDrawer';
 import { MovementDialog } from './cashbox/MovementDialog';
 import { ReportDialog } from './cashbox/ReportDialog';
+import { ApiworkingCash } from './cashbox/ApiworkingCash';
 import { CloseCashDialog, OpenCashDialog } from './cashbox/SessionDialogs';
 
 const PAGE = 50;
@@ -21,7 +22,8 @@ type Modal = null | 'income' | 'expense' | 'open' | 'close' | 'report' | 'config
 
 /** Caja chica de la sede: saldos, movimientos, apertura y cierre con conciliación, y reporte en PDF. */
 export function CashBoxPage() {
-  const { me, can } = useAuth();
+  const { me, can, authMode } = useAuth();
+  const awCash = authMode === 'apiworking' && can('apiworking:read');
   const toast = useToast();
   const hasBranch = Boolean(me?.context?.branch);
   const summary = useAsync(() => (hasBranch ? get<CashSummary>('/cashbox/summary') : Promise.resolve(null)), [hasBranch]);
@@ -43,6 +45,7 @@ export function CashBoxPage() {
       <>
         <div className="page-head"><h1>Caja chica</h1></div>
         <Alert tone="info" title="Elija una sede">La caja chica es de cada sede. Use «Cambiar sede» para trabajar en una sede concreta.</Alert>
+        {awCash && <ApiworkingCash />}
       </>
     );
   }
@@ -79,6 +82,7 @@ export function CashBoxPage() {
           {s.lastClosedAt ? `Se cerró el ${fmtDateTime(s.lastClosedAt)}. ` : ''}Para registrar ingresos y egresos hay que abrirla con el saldo inicial.
         </Alert>
       )}
+      {awCash && <ApiworkingCash />}
       {s && (
         <>
           <div className="grid-stats" aria-label="Resumen de la caja">

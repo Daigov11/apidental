@@ -8,6 +8,49 @@ afterEach(() => vi.unstubAllGlobals());
 const NEW = { id: 'p-9', fullName: 'Ana Quispe Rojas', firstName: 'Ana', lastName: 'Quispe', status: 'ACTIVE', age: 30, isMinor: false, birthDate: '1996-02-10', identifiers: [{ type: 'DNI', number: '71234567' }], primaryMobile: '987654321' };
 const CLEAN = { json: { identifierConflict: null, possibleDuplicates: [] } };
 
+describe('Alta de paciente: nombres desde Apiworking', () => {
+  const base = (lookup: unknown, perms = [...RECEPTION_PERMS, 'apiworking:sell']) => ({
+    ...sessionRoutes(perms), 'GET /patients': { json: [] }, 'GET /appointments': { json: [] }, 'GET /auth/config': { json: { mode: 'apiworking' } },
+    'POST /apiworking/clients/lookup': lookup as { json: unknown },
+  });
+
+  it('al escribir un DNI completo trae nombres y apellidos, sin pisar lo que ya se escribió', async () => {
+    const { called } = mockApi(base({ json: { status: 'FOUND', source: 'LOOKUP', names: { firstName: 'DIEGO ALBERTO', lastName: 'MENDIETA', secondLastName: 'HUAROTO' } } }));
+    renderApp('/pacientes');
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Buscar por DNI, nombre o celular'), '72557843');
+    await user.click(await screen.findByRole('button', { name: /Crear a «72557843»/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Nuevo paciente' });
+    await waitFor(() => expect(within(dialog).getByLabelText('Nombres')).toHaveValue('DIEGO ALBERTO'));
+    expect(within(dialog).getByLabelText('Apellido paterno')).toHaveValue('MENDIETA');
+    expect(within(dialog).getByLabelText(/Apellido materno/)).toHaveValue('HUAROTO');
+    expect(await within(dialog).findByText(/Nombres obtenidos de Apiworking/)).toBeInTheDocument();
+    expect(called('POST', '/apiworking/clients/lookup')).toHaveLength(1);
+    expect(called('POST', '/apiworking/clients/lookup')[0]!.body).toEqual({ docType: '1', docNumber: '72557843' });
+  });
+
+  it('si Apiworking no responde, avisa y deja escribir a mano', async () => {
+    mockApi(base({ status: 503, json: { message: 'Apiworking no disponible' } }));
+    renderApp('/pacientes');
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Buscar por DNI, nombre o celular'), '72557845');
+    await user.click(await screen.findByRole('button', { name: /Crear a «72557845»/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Nuevo paciente' });
+    expect(await within(dialog).findByText(/a mano/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Nombres')).toHaveValue('');
+  });
+
+  it('sin el permiso de ventas de Apiworking no consulta nada', async () => {
+    const { called } = mockApi(base({ json: {} }, RECEPTION_PERMS));
+    renderApp('/pacientes');
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Buscar por DNI, nombre o celular'), '72557845');
+    await user.click(await screen.findByRole('button', { name: /Crear a «72557845»/ }));
+    await screen.findByRole('dialog', { name: 'Nuevo paciente' });
+    expect(called('POST', '/apiworking/clients/lookup')).toHaveLength(0);
+  });
+});
+
 describe('Alta de paciente', () => {
   it('Pacientes: sin resultados ofrece crear a la persona, con los datos ya escritos', async () => {
     const { called } = mockApi({

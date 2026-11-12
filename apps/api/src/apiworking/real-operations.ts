@@ -10,11 +10,13 @@ export const REAL_ATTEMPT_ACTIONS: string[] = [
   AuditAction.ApiworkingCashOpenAttempt,
   AuditAction.ApiworkingCashCloseAttempt,
   AuditAction.ApiworkingCustomerAttempt,
+  AuditAction.ApiworkingPaymentAttempt,
 ];
 
-/** Tope de envíos reales en 24 h: ventas + aperturas/cierres de caja + altas de cliente. */
+/** Tope OPCIONAL de envíos reales en 24 h (APIWORKING_MAX_REAL_OPERATIONS; 0 o ausente = sin tope): ventas + aperturas/cierres de caja + altas de cliente. */
 export async function enforceRealOperationsCap(db: PrismaDb, config: AppConfig): Promise<void> {
   const cfg = config.apiworking;
+  if (!(cfg.maxRealOperations > 0)) return; // 0 = sin tope (las escrituras siguen exigiendo APIWORKING_AUTHZ_WRITE=true)
   const since = new Date(Date.now() - WINDOW_MS);
   const [sales, other] = await Promise.all([
     db.apiworkingSale.count({ where: { tenant: cfg.expectedDatabase!, attemptedAt: { gte: since } } }),

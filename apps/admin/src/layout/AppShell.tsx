@@ -7,6 +7,7 @@ import { usePendingRequests } from '../lib/bookingRequests';
 import { IntegrationsProvider, useIntegrations } from '../lib/integrations';
 import { SimulationBanner } from '../ui/SimulationBanner';
 import { Button } from '../ui/Button';
+import { ClinicLogo } from '../ui/ClinicLogo';
 import logoBlanco from '../assets/brand/apimedical-blanco.png';
 import mascota from '../assets/brand/mascota.png';
 
@@ -51,7 +52,7 @@ function Shell() {
       <div className={`shell${collapsed ? ' shell-collapsed' : ''}`}>
         <aside className="sidebar">
           <div className="brand">
-            <img className="brand-logo" src={logoBlanco} alt="APIMedical" />
+            <div className="brand-row"><img className="brand-logo" src={logoBlanco} alt="APIMedical" /><ClinicLogo className="clinic-logo" /></div>
             <img className="brand-mini" src={mascota} alt="" aria-hidden="true" />
             <span className="brand-sub">ApiDental<small>by Apiworking</small></span>
           </div>

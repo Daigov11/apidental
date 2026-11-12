@@ -19,6 +19,8 @@ export const ROUTES = {
   controlPagos: { method: 'GET', path: '/api/Facturacion/controlPagos', kind: 'read' },
   registroDocumento: { method: 'POST', path: '/api/Facturacion/registro-documento', kind: 'write' },
   anular: { method: 'POST', path: '/api/Facturacion/anular', kind: 'write' },
+  /** Aplica el pago a un documento ya registrado (registro-documento NO lo aplica). Cuerpo: { idDocumentoPago, cadenaPago: [{ idMetodoPago, importePago }], vuelto }. */
+  registrarPago: { method: 'POST', path: '/api/Facturacion/registrar-pago', kind: 'write' },
   /** Crea o vincula al cliente por documento: tipoDoc y nroDoc van en la query y NO hay cuerpo. El DNI queda en la URL: nunca se registra. */
   clienteDoc: { method: 'POST', path: '/api/Cliente/ClienteDoc', kind: 'write' },
   turnos: { method: 'GET', path: '/api/CajaChica/turnos', kind: 'read' },
@@ -42,6 +44,7 @@ const QUERY_PARAMS: Record<RouteName, readonly string[]> = {
   controlPagos: ['idDocumentoPago'],
   registroDocumento: [],
   anular: ['idDocumentoPago', 'motivoAnulacion', 'usuario'],
+  registrarPago: [],
   clienteDoc: ['tipoDoc', 'nroDoc'],
   turnos: [],
   aperturaCaja: [],

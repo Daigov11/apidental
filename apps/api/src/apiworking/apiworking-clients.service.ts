@@ -10,6 +10,7 @@ import { clinicScope } from '../patients/patient-access.js';
 import { AppConfig } from '../config/app-config.js';
 import { ApiworkingClient, ApiworkingError, asRows, clip, optText, reqId, reqIdAny } from './apiworking.client.js';
 import { enforceRealOperationsCap } from './real-operations.js';
+import { splitPersonName } from './person-name.js';
 import { ApiworkingSessionStore, type ExternalSession } from './apiworking-session.store.js';
 
 export interface ExternalCustomer {
@@ -228,6 +229,12 @@ export class ApiworkingClientsService {
     const p = await this.previewCreate(principal, dto);
     if (p.hash !== dto.approvedHash) throw new ConflictException({ message: 'Los datos cambiaron después de la vista previa: revise y apruebe de nuevo', code: 'PREVIEW_CHANGED' });
     if (p.exists) throw new ConflictException({ message: 'Ese cliente ya existe en Apiworking', code: 'ALREADY_EXISTS', customerId: p.exists.id });
+    return this.send(principal, session, n, dto.name, meta);
+  }
+
+  /** Envía ClienteDoc (un solo intento, con tope y auditoría previa) y guarda al cliente en el espejo local. */
+  private async send(principal: AuthPrincipal, session: ExternalSession, n: { docType: string; docNumber: string; label: string }, givenName: string | undefined, meta: RequestMeta) {
+    const cfg = this.config.apiworking;
     await enforceRealOperationsCap(this.db, this.config);
 
     // Nunca se guarda el número de documento (queda en la URL de Apiworking): solo el tipo y el id resultante.
@@ -236,9 +243,15 @@ export class ApiworkingClientsService {
     await this.audit.record({ action: AuditAction.ApiworkingCustomerAttempt, entity: 'ApiworkingCustomer', userId: principal.user.id, clinicId: principal.context?.clinicId ?? null, meta, summary: { docType: n.docType } });
 
     let id: string;
+    let apiName = '';
+    let apiGiven = '';
     try {
       const data = await this.client.call('clienteDoc', { token: session.token, query: { tipoDoc: n.docType, nroDoc: n.docNumber } });
-      id = reqIdAny(asRows(data, 'el alta del cliente')[0] ?? {}, ['id', 'idCliente', 'id_cliente'], 'el alta del cliente');
+      const row = asRows(data, 'el alta del cliente')[0] ?? {};
+      id = reqIdAny(row, ['id', 'idCliente', 'id_cliente'], 'el alta del cliente');
+      apiName = optText(row, 'nombrecompleto') || optText(row, 'nombre');
+      apiGiven = optText(row, 'nombre');
+      this.logger.log(`ClienteDoc: campos recibidos: ${Object.keys(row).slice(0, 20).join(', ')}`);
     } catch (error) {
       const kind = error instanceof ApiworkingError ? error.kind : 'UNKNOWN_RESULT';
       if (kind === 'UNKNOWN_RESULT' || kind === 'DUPLICATE' || kind === 'BAD_RESPONSE') {
@@ -253,14 +266,33 @@ export class ApiworkingClientsService {
     await log(AuditAction.ApiworkingCustomerCreated, { customerId: id });
     // Espejo local: así el cliente se encuentra aunque Apiworking no lo liste o no responda.
     const tenant = cfg.expectedDatabase!;
-    const name = (dto.name?.trim() || `${n.label} ${n.docNumber}`).slice(0, 200);
+    const name = (givenName?.trim() || apiName || `${n.label} ${n.docNumber}`).slice(0, 200);
     const clinicId = clinicScope(principal).clinicId;
     const mirror = await this.db.apiworkingCustomer.upsert({
       where: { tenant_externalCustomerId: { tenant, externalCustomerId: id } },
       create: { clinicId, tenant, externalCustomerId: id, docType: n.docType, docNumber: n.docNumber, name, createdById: principal.user.id },
-      update: { docType: n.docType, docNumber: n.docNumber, ...(dto.name?.trim() ? { name } : {}) },
+      update: { docType: n.docType, docNumber: n.docNumber, ...(givenName?.trim() || apiName ? { name } : {}) },
     });
     const found = fromMirror(mirror);
-    return { status: 'CREATED' as const, id, customer: found };
+    return { status: 'CREATED' as const, id, customer: found, ...(apiName ? { names: splitPersonName(apiName, apiGiven) } : {}) };
+  }
+
+  /**
+   * Datos de una persona por su documento, para precargar la ficha de un paciente nuevo. Si el cliente ya está en el espejo o en
+   * la lista de Apiworking con su nombre real, lo usa SIN escribir nada. Si no, consulta `ClienteDoc` (que también lo crea como
+   * cliente en Apiworking): es un envío real y cuenta en el tope. Un fallo nunca impide crear el paciente: se escribe a mano.
+   */
+  async lookup(principal: AuthPrincipal, draft: { docType: string; docNumber: string }, meta: RequestMeta) {
+    const session = this.requireSession(principal);
+    const n = this.normalize(draft);
+    const have = await this.findByDocument(principal, n.docNumber);
+    const placeholder = (name: string) => !name.trim() || name.trim().toUpperCase() === `${n.label} ${n.docNumber}`.toUpperCase();
+    if (have && !placeholder(have.name)) return { status: 'FOUND' as const, source: 'EXISTING' as const, customerId: have.id, name: have.name, names: splitPersonName(have.name) };
+    if (!this.config.apiworking.write) throw new ServiceUnavailableException({ message: 'La consulta por documento a Apiworking está desactivada en esta instalación', code: 'WRITE_DISABLED' });
+    const out = await this.send(principal, session, n, undefined, meta);
+    if (out.status !== 'CREATED') return { status: 'UNKNOWN' as const, message: out.message };
+    const names = 'names' in out ? out.names : undefined;
+    if (!names?.firstName) return { status: 'NO_NAME' as const, customerId: out.id, message: 'Apiworking no devolvió el nombre de esa persona: escríbalo a mano.' };
+    return { status: 'FOUND' as const, source: 'LOOKUP' as const, customerId: out.id, name: out.customer.name, names };
   }
 }

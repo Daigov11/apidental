@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../ui/Button';
 import { TextField } from '../ui/fields';
 import { Alert, errorText } from '../ui/feedback';
+import { ClinicLogo } from '../ui/ClinicLogo';
 import logoNegro from '../assets/brand/apimedical-negro.png';
 import mascota from '../assets/brand/mascota.png';
 
@@ -42,7 +43,7 @@ export function LoginPage() {
     <main className="auth-page" id="main">
       <div className="card auth-card">
         <div className="auth-brand">
-          <div><img className="auth-logo" src={logoNegro} alt="APIMedical" /><p className="auth-product">ApiDental <span className="muted">by Apiworking</span></p></div>
+          <div><div className="brand-row"><img className="auth-logo" src={logoNegro} alt="APIMedical" /><ClinicLogo className="clinic-logo clinic-logo-lg" /></div><p className="auth-product">ApiDental <span className="muted">by Apiworking</span></p></div>
           <img className="auth-mascot" src={mascota} alt="" aria-hidden="true" />
         </div>
         <h1 className="h2" style={{ margin: 'var(--space-5) 0' }}>Ingrese a su clínica</h1>

@@ -169,7 +169,7 @@ export interface AwSale {
   docStatus: AwDocStatus; docStatusLabel: string; paymentStatus: 'NO_EVIDENCE' | 'CONFIRMED_REMOTE' | 'CONFIRMED_RECONCILED'; paymentStatusLabel: string;
   voidStatus: 'IN_PROGRESS' | 'VOIDED' | 'TO_RECONCILE' | null; voidStatusLabel: string | null;
   externalDocId: string | null; externalNumber: string | null; failureReason: string | null; attemptedAt: string | null; createdAt: string;
-  actions: { issue: boolean; verify: boolean; reconcile: boolean; void: boolean };
+  actions: { issue: boolean; verify: boolean; reconcile: boolean; pay: boolean; void: boolean };
 }
 export interface AwVerify { sale: AwSale; paidCents?: number; paymentMessage?: string; candidates?: { number: string; status: string; totalCents: number | null; balanceCents: number | null }[] }
 export interface AwCustomerPreview { hash: string; docType: string; docTypeLabel: string; docNumber: string; exists: { id: string; name: string } | null; write: boolean }
@@ -184,6 +184,7 @@ export interface AwCash {
 export interface AwCashPreview { hash: string; caja: string; turn: string; openingCents: number; openingText: string; alreadyOpen: boolean; write: boolean }
 export interface AwCashClosePreview { hash: string; caja: string; turn: string; isOpen: boolean; write: boolean }
 export interface AwCashResult { status: 'OPENED' | 'CLOSED' | 'UNKNOWN' | 'UNCONFIRMED'; message: string; movementId?: string; note?: string }
+export interface AwSalesSummary { date: string; count: number; totalCents: number; totalText: string; methods: { methodId: string; name: string; count: number; totalCents: number; totalText: string }[] }
 export interface AwDiscovery {
   cajas: { id: string; name: string; branch: string; authorized: boolean }[]; write: boolean; warehouseId: string | null; unitId: string | null;
   opened?: boolean; documentTypes?: { id: string; name: string; authorized: boolean }[];

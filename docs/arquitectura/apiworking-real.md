@@ -25,7 +25,7 @@ cuentas vinculadas en `external_identities`; el comprobante simulado conserva su
 | Solo el servidor habla con Apiworking | el navegador nunca ve el JWT externo |
 | Interruptores separados, apagados por defecto | `APIWORKING_AUTHZ_READ` / `APIWORKING_AUTHZ_WRITE` (escribir exige leer) |
 | Listas cerradas para escribir | cajas, tipos de documento y series autorizados; vacío = nada |
-| Tope de envíos reales | `APIWORKING_MAX_REAL_OPERATIONS` por 24 h (0 = ninguno) |
+| Tope de envíos reales (opcional) | `APIWORKING_MAX_REAL_OPERATIONS` por 24 h; **0 o ausente = sin tope** (así operan `dental` y `angeldent`) |
 | Sin reintentos en escrituras | una sola llamada; un 5xx/tiempo agotado = **resultado desconocido** → `PENDING_RECONCILIATION` |
 | Lectura estricta | `codResponse` distinto de 1 es rechazo; campo ausente es error; ids grandes como texto; importes sin `parseFloat` |
 | Documento, cobro y anulación separados | `docStatus`, `paymentStatus`, `voidStatus`. **Registrar no aplica el pago**: el cobro solo pasa a «confirmado» si `controlPagos` cubre el total |
@@ -34,7 +34,7 @@ cuentas vinculadas en `external_identities`; el comprobante simulado conserva su
 
 ## Variables de entorno
 Ver `.env.example`. Mínimo para el login: `AUTH_MODE=apiworking`, `APIWORKING_SYSTEM_ID`, `APIWORKING_AUTHZ_EXPECTED_DATABASE`.
-Para leer: `APIWORKING_AUTHZ_READ=true`. Para escribir además: `APIWORKING_AUTHZ_WRITE=true`, `APIWORKING_MAX_REAL_OPERATIONS>0`,
+Para leer: `APIWORKING_AUTHZ_READ=true`. Para escribir además: `APIWORKING_AUTHZ_WRITE=true`. Opcionales: `APIWORKING_MAX_REAL_OPERATIONS` (tope por 24 h),
 `APIWORKING_AUTHORIZED_CASH_REGISTERS`, `_DOCUMENT_TYPES`, `_SERIES`, `APIWORKING_WAREHOUSE_ID` y `APIWORKING_UNIT_ID`.
 Las rutas reales solo requieren que `INTEGRATIONS_MODE` pueda seguir en `off`: son independientes de los simuladores.
 
@@ -57,8 +57,7 @@ Con la instancia ya creada (`deploy/scripts/instance-new.sh`) y migrada:
    series que Apiworking informa, con los valores listos para copiar. Fijarlos en las listas autorizadas del `.env` junto con
    `APIWORKING_WAREHOUSE_ID` y `APIWORKING_UNIT_ID` (estos dos no se pueden consultar: los indica el responsable del tenant).
    Mientras las listas estén vacías, la pantalla de ventas no muestra cajas (falla cerrado).
-5. **Primera escritura** (solo con la aprobación escrita del titular): `APIWORKING_AUTHZ_WRITE=true` y
-   `APIWORKING_MAX_REAL_OPERATIONS=1`; enviar **una** venta de prueba; verificarla en Apiworking; recién entonces subir el tope.
+5. **Primera escritura** (solo con la aprobación escrita del titular): `APIWORKING_AUTHZ_WRITE=true`; enviar **una** venta de prueba y verificarla en Apiworking. (Si se quiere, `APIWORKING_MAX_REAL_OPERATIONS` pone un tope por 24 h.)
 
 ## Supuestos por confirmar con la primera llamada real (sin evidencia)
 Apiworking no entregó contrato. Esto se implementó según la guía y el ejemplo recibido, y **hay que validarlo**:
@@ -117,3 +116,18 @@ Al vender, el almacén (`idAlmacen`) es la sucursal del usuario en Apiworking (`
 - **Emitir después:** «Emitir en Apiworking» completa ESA fila (`pendingSaleId`): el cliente y el monto no pueden cambiar, se elige caja, tipo, serie y forma de pago y se confirma la fecha del documento (por defecto la original; **decisión tributaria pendiente con el contador**). Mismo flujo controlado: vista previa, aprobación, un envío, sin reintentos ni envío automático. Un rechazo deja la venta otra vez por emitir.
 - **Aviso:** el comprobante interno NO es un comprobante de SUNAT; los plazos de SUNAT corren hasta emitirlo.
 - El estado «cobro sin confirmar» de Apiworking se ignora por ahora (decisión del responsable).
+
+## Registrar el pago de un documento (`registrar-pago`)
+`registro-documento` no aplica el pago. Para aplicarlo existe `POST /api/Facturacion/registrar-pago` con
+`{ idDocumentoPago, cadenaPago: [{ idMetodoPago, importePago }], vuelto }`; responde `data.result = 1` y `idComprobante`.
+En el panel: **Ventas → Registrar pago** (solo ventas enviadas, sin anulación y con cobro sin evidencia). La persona confirma
+documento y monto; se envía **una sola vez** con la forma de pago y el total de la venta (sin vuelto), cuenta en el tope de
+operaciones reales y el intento se audita antes (`APIWORKING_PAYMENT_ATTEMPT`). Respuesta buena → cobro confirmado. Rechazo →
+se puede intentar otra vez. Resultado dudoso → no se reintenta: se usa **Verificar** (`controlPagos`).
+
+## Nombres por DNI al crear un paciente
+En «Nuevo paciente», con cuenta de Apiworking y el permiso `apiworking:sell`, al completar un DNI de 8 dígitos el panel llama a
+`POST /v1/apiworking/clients/lookup`. Orden: (1) si el cliente ya está en el espejo local o en la lista de Apiworking con su nombre
+real, se usa **sin escribir nada**; (2) si no, `ClienteDoc` (que además lo crea como cliente en Apiworking: envío real, un solo
+intento, auditado y contado en el tope). El nombre completo se separa en nombres, apellido paterno y materno (los dos últimos
+términos son apellidos) como **sugerencia**: la persona la revisa. Un fallo nunca impide crear el paciente (se escribe a mano).

@@ -12,7 +12,7 @@ import { ApiworkingContingencyService } from './apiworking-contingency.service.j
 import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
-import { ApiworkingLoginDto, BillingDraftQuery, CashCloseDraftDto, CashCloseDto, ContingencyDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, VoidSaleDto } from './dto/apiworking.dto.js';
+import { ApiworkingLoginDto, BillingDraftQuery, CashCloseDraftDto, CashCloseDto, ContingencyDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, SalesSummaryQuery, VoidSaleDto } from './dto/apiworking.dto.js';
 
 const uuid = () => new ParseUUIDPipe();
 
@@ -90,6 +90,14 @@ export class ApiworkingController {
     return this.clients.previewCreate(a, dto);
   }
 
+  /** Nombres de una persona por su documento (para el alta de pacientes). */
+  @Post('clients/lookup')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:sell')
+  customerLookup(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CustomerDraftDto, @Meta() m: RequestMeta) {
+    return this.clients.lookup(a, dto, m);
+  }
+
   @Post('clients')
   @HttpCode(200)
   @RequirePermissions('apiworking:sell')
@@ -163,6 +171,12 @@ export class ApiworkingController {
     return this.sales.list(a, q);
   }
 
+  @Get('sales/summary')
+  @RequirePermissions('apiworking:read')
+  salesSummary(@CurrentPrincipal() a: AuthPrincipal, @Query() q: SalesSummaryQuery) {
+    return this.sales.summary(a, q.date);
+  }
+
   @Get('sales/:id')
   @RequirePermissions('apiworking:read')
   get(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string) {
@@ -181,6 +195,13 @@ export class ApiworkingController {
   @RequirePermissions('apiworking:sell')
   reconcile(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string, @Body() dto: ReconcileSaleDto, @Meta() m: RequestMeta) {
     return this.sales.reconcile(a, id, dto, m);
+  }
+
+  @Post('sales/:id/pay')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:sell')
+  pay(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string, @Meta() m: RequestMeta) {
+    return this.sales.pay(a, id, m);
   }
 
   @Post('sales/:id/void')

@@ -327,3 +327,24 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .amount-out { color: var(--state-danger-fg); }
 tr.row-voided td { opacity: 0.55; text-decoration: line-through; }
 tr.row-voided td:last-child, tr.row-voided td[data-label='Estado'] { text-decoration: none; opacity: 1; }
+
+/* Logo de la clínica: al costado del de APIMedical (redondo, sobre blanco). Con el menú contraído solo queda la mascota. */
+.brand-row { display: flex; align-items: center; gap: var(--space-3); }
+.brand-row .brand-logo { width: auto; max-width: 112px; flex: 0 1 auto; }
+.clinic-logo { width: 44px; height: 44px; flex: none; border-radius: 50%; background: #fff; object-fit: contain; }
+.clinic-logo-lg { width: 64px; height: 64px; }
+.brand-row .auth-logo { width: 150px; }
+.shell-collapsed .clinic-logo { display: none; }
+@media (max-width: 1023px) { .clinic-logo { display: none; } }
+
+/* Nueva venta: formulario sencillo a la izquierda y resumen con la forma de pago a la derecha */
+.sale-layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: var(--space-6); align-items: start; }
+.sale-main { display: grid; gap: var(--space-5); }
+.sale-main .card + .card { margin-top: 0; }
+.sale-side { position: sticky; top: var(--space-5); display: grid; gap: var(--space-3); }
+.sale-total { font: 800 2.25rem/1.1 var(--font-display); color: var(--brand-strong, var(--text-link, inherit)); margin: 0; }
+.pay-options { border: 0; padding: 0; margin: var(--space-4) 0 0; display: grid; gap: var(--space-3); }
+.pay-option { display: flex; align-items: center; gap: var(--space-3); min-height: 48px; padding: 0 var(--space-4); background: var(--bg-surface); border: 1px solid var(--border-strong); border-radius: var(--radius-md); font: inherit; cursor: pointer; text-align: left; }
+.pay-option:hover { background: var(--bg-subtle); }
+.pay-option[aria-pressed="true"] { border-color: var(--brand, currentColor); background: var(--bg-subtle); font-weight: 600; box-shadow: inset 0 0 0 1px var(--brand, currentColor); }
+@media (max-width: 900px) { .sale-layout { grid-template-columns: minmax(0, 1fr); } .sale-side { position: static; } }

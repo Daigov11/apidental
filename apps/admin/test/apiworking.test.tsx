@@ -12,13 +12,14 @@ const SALE = {
   id: 's-1', description: 'Limpieza dental', customer: { name: CUSTOMER.name, docType: 'D.N.I.', docNumber: '74908568' }, totalCents: 10000, totalText: 'S/ 100.00',
   lines: [{ name: 'Profilaxis', quantity: 2, unitPriceCents: 5000 }], docDate: '2026-11-02', serie: 'B001', docStatus: 'SENT', docStatusLabel: 'Registrado en Apiworking',
   paymentStatus: 'NO_EVIDENCE', paymentStatusLabel: 'Cobro sin confirmar', voidStatus: null, voidStatusLabel: null, externalDocId: '201900000123', externalNumber: 'B001-00000123',
-  failureReason: null, attemptedAt: '2026-11-02T15:00:00.000Z', createdAt: '2026-11-02T15:00:00.000Z', actions: { verify: true, reconcile: false, void: true },
+  failureReason: null, attemptedAt: '2026-11-02T15:00:00.000Z', createdAt: '2026-11-02T15:00:00.000Z', actions: { verify: true, reconcile: false, pay: true, void: true },
 };
 const CTX = {
   cajas: [{ id: '5', name: 'Caja Glow', branch: 'Principal' }], authorizedConfigured: true, opened: true,
   documentTypes: [{ id: '2', name: 'Boleta' }], series: [{ id: '11', serie: 'B001' }], paymentMethods: [{ id: '1', name: 'Efectivo' }],
 };
 
+const SUMMARY = { date: '2026-11-12', count: 3, totalCents: 25000, totalText: 'S/ 250.00', methods: [{ methodId: '1', name: 'Efectivo', count: 2, totalCents: 15000, totalText: 'S/ 150.00' }, { methodId: '2', name: 'Yape / Plin', count: 1, totalCents: 10000, totalText: 'S/ 100.00' }] };
 const CASH = { cajas: [{ id: '5', name: 'Caja Glow', branch: 'Principal', opened: false }], turnos: [{ id: '1', name: 'Mañana' }], defaultTurn: '1', write: true };
 
 type Routes = Parameters<typeof mockApi>[0];
@@ -31,6 +32,11 @@ const routes = (over: Routes = {}): Routes => ({
   'GET /apiworking/clients': { json: { items: [CUSTOMER], total: 1 } },
   'GET /apiworking/sales/context': { json: CTX },
   'GET /apiworking/cash': { json: CASH },
+  'GET /apiworking/sales/summary': { json: SUMMARY },
+  'GET /auth/config': { json: { mode: 'apiworking' } },
+  'GET /cashbox/summary': { json: { branch: { id: 'b', name: 'Sede' }, register: null, session: null, lastClosedAt: null, accounts: [], totals: { openingCents: 0, incomeCents: 0, expenseCents: 0, balanceCents: 0 } } },
+  'GET /cashbox/config': { json: { accounts: [], categories: [], users: [] } },
+  'GET /cashbox/movements': { json: { items: [], total: 0, incomeCents: 0, expenseCents: 0 } },
   ...over,
 });
 
@@ -117,7 +123,7 @@ describe('Ventas Apiworking', () => {
     mockApi(routes({ 'GET /apiworking/status': { json: { ...STATUS, session: false } } }));
     renderApp('/ventas');
     expect(await screen.findByText('Vuelva a ingresar')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Nueva venta' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Buscar cliente')).not.toBeInTheDocument();
   });
 
   it('lista las ventas con documento y cobro como estados separados', async () => {
@@ -141,22 +147,20 @@ describe('Ventas Apiworking', () => {
 
     await user.type(screen.getByLabelText('Buscar cliente'), 'robert');
     await user.click(await screen.findByRole('button', { name: /ROBERTO CARLOS/ }));
-    await user.selectOptions(screen.getByLabelText('Caja'), '5');
-    await user.selectOptions(await screen.findByLabelText('Tipo de documento'), '2');
-    await user.selectOptions(await screen.findByLabelText('Serie'), '11');
-    await user.selectOptions(await screen.findByLabelText('Forma de pago'), '1');
-    await user.type(screen.getByLabelText('Descripción'), 'Limpieza dental');
+    // Con una sola caja, un solo tipo y una sola serie, todo queda elegido; la forma de pago arranca en Efectivo.
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Efectivo' })).toHaveAttribute('aria-pressed', 'true'));
+    expect(screen.getByLabelText('Serie')).toHaveValue('11');
     await user.type(screen.getByLabelText('Concepto 1'), 'Profilaxis');
     await user.clear(screen.getByLabelText('Cantidad'));
     await user.type(screen.getByLabelText('Cantidad'), '2');
     await user.type(screen.getByLabelText(/Precio unitario/), '50');
-    expect(screen.getByText('Total S/ 100.00')).toBeInTheDocument();
+    expect(screen.getAllByText('S/ 100.00').length).toBeGreaterThan(0);
 
     // Sin revisión no hay envío.
     expect(screen.queryByRole('button', { name: 'Enviar a Apiworking' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Revisar venta' }));
     const region = await screen.findByRole('region', { name: 'Revisión antes de enviar' });
-    expect(called('POST', '/apiworking/sales/preview')[0]?.body).toMatchObject({ customerId: '202600000038', idCaja: '5', idTipoDocumento: '2', idSerie: '11', idMetodoPago: '1', description: 'Limpieza dental', lines: [{ name: 'Profilaxis', quantity: 2, unitPriceCents: 5000 }] });
+    expect(called('POST', '/apiworking/sales/preview')[0]?.body).toMatchObject({ customerId: '202600000038', idCaja: '5', idTipoDocumento: '2', idSerie: '11', idMetodoPago: '1', description: 'Profilaxis', lines: [{ name: 'Profilaxis', quantity: 2, unitPriceCents: 5000 }] });
     expect(within(region).getByText(hash)).toBeInTheDocument();
     expect(within(region).getByText(/Boleta \(según el documento del cliente\)/)).toBeInTheDocument();
 
@@ -167,7 +171,7 @@ describe('Ventas Apiworking', () => {
     expect(sendBtn).toBeEnabled();
 
     // Cambiar algo invalida la aprobación y obliga a revisar de nuevo.
-    await user.type(screen.getByLabelText('Descripción'), ' y control');
+    await user.type(screen.getByLabelText('Concepto 1'), ' y control');
     expect(screen.queryByRole('button', { name: 'Enviar a Apiworking' })).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Revisar venta' }));
     await user.click(within(await screen.findByRole('region', { name: 'Revisión antes de enviar' })).getByRole('checkbox'));
@@ -175,7 +179,7 @@ describe('Ventas Apiworking', () => {
 
     await waitFor(() => expect(called('POST', '/apiworking/sales')).toHaveLength(1));
     const sent = called('POST', '/apiworking/sales')[0]!.body as { approvedHash: string; idempotencyKey: string; description: string };
-    expect(sent).toMatchObject({ approvedHash: hash, description: 'Limpieza dental y control' });
+    expect(sent).toMatchObject({ approvedHash: hash, description: 'Profilaxis y control' });
     expect(sent.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/);
     expect(await screen.findByText(/Venta registrada en Apiworking/)).toBeInTheDocument();
   });
@@ -190,11 +194,7 @@ describe('Ventas Apiworking', () => {
     expect(await screen.findByText('Modo de solo lectura')).toBeInTheDocument();
     await user.type(await screen.findByLabelText('Buscar cliente'), 'robert');
     await user.click(await screen.findByRole('button', { name: /ROBERTO CARLOS/ }));
-    await user.selectOptions(screen.getByLabelText('Caja'), '5');
-    await user.selectOptions(await screen.findByLabelText('Tipo de documento'), '2');
-    await user.selectOptions(await screen.findByLabelText('Serie'), '11');
-    await user.selectOptions(await screen.findByLabelText('Forma de pago'), '1');
-    await user.type(screen.getByLabelText('Descripción'), 'Consulta');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Efectivo' })).toHaveAttribute('aria-pressed', 'true'));
     await user.type(screen.getByLabelText('Concepto 1'), 'Consulta');
     await user.type(screen.getByLabelText(/Precio unitario/), '50');
     await user.click(screen.getByRole('button', { name: 'Revisar venta' }));
@@ -234,6 +234,17 @@ describe('Ventas Apiworking', () => {
     expect(called('POST', '/apiworking/sales/s-1/void')[0]?.body).toEqual({ reason: 'Error en el monto' });
   });
 
+  it('registrar el pago pide confirmar el monto y envía una sola vez', async () => {
+    const { called } = mockApi(routes({ 'POST /apiworking/sales/s-1/pay': { json: { ...SALE, paymentStatus: 'CONFIRMED_REMOTE' } } }));
+    renderApp('/ventas');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Registrar pago' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Registrar el pago en Apiworking' });
+    expect(called('POST', '/apiworking/sales/s-1/pay')).toHaveLength(0);
+    await user.click(within(dialog).getByRole('button', { name: 'Registrar pago' }));
+    await waitFor(() => expect(called('POST', '/apiworking/sales/s-1/pay')).toHaveLength(1));
+  });
+
   it('sin permiso de anular no se ofrece el botón', async () => {
     mockApi(routes({ ...sessionRoutes(['apiworking:read', 'apiworking:sell', 'appointment:read', 'branch:read', 'clinic:read'], ['RECEPTIONIST']) }));
     renderApp('/ventas');
@@ -248,11 +259,11 @@ describe('Reapertura y cierre de caja', () => {
 
   it('se revisa, se aprueba y recién entonces se envía el hash aprobado', async () => {
     const { called } = mockApi(routes({
-      ...sessionRoutes([...PERMS, 'apiworking:cash'], ['CLINIC_ADMIN']),
+      ...sessionRoutes([...PERMS, 'apiworking:cash', 'cashbox:read'], ['CLINIC_ADMIN']),
       'POST /apiworking/cash/preview': { json: PREVIEW },
       'POST /apiworking/cash/open': { json: { status: 'OPENED', message: 'Caja abierta', movementId: '9001' } },
     } as never));
-    renderApp('/ventas');
+    renderApp('/caja-chica');
     const user = userEvent.setup();
     const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
     await user.selectOptions(await within(card).findByLabelText('Caja a reabrir'), '5');
@@ -271,8 +282,8 @@ describe('Reapertura y cierre de caja', () => {
   });
 
   it('sin el permiso apiworking:cash se ve el estado pero no se ofrece abrir', async () => {
-    mockApi(routes());
-    renderApp('/ventas');
+    mockApi(routes(sessionRoutes([...PERMS, 'cashbox:read'], ['CLINIC_ADMIN']) as never));
+    renderApp('/caja-chica');
     const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
     expect(await within(card).findByText('Cerrada')).toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: 'Revisar reapertura' })).not.toBeInTheDocument();
@@ -282,12 +293,12 @@ describe('Reapertura y cierre de caja', () => {
 describe('Cierre de caja', () => {
   it('se revisa, se aprueba y se envía el hash aprobado', async () => {
     const { called } = mockApi(routes({
-      ...sessionRoutes([...PERMS, 'apiworking:cash'], ['CLINIC_ADMIN']),
+      ...sessionRoutes([...PERMS, 'apiworking:cash', 'cashbox:read'], ['CLINIC_ADMIN']),
       'GET /apiworking/cash': { json: { ...CASH, cajas: [{ id: '5', name: 'Caja Glow', branch: 'Principal', opened: true }] } },
       'POST /apiworking/cash/close-preview': { json: { hash: 'b'.repeat(64), caja: 'Caja Glow', turn: '1', isOpen: true, write: true } },
       'POST /apiworking/cash/close': { json: { status: 'CLOSED', message: 'Caja cerrada' } },
     } as never));
-    renderApp('/ventas');
+    renderApp('/caja-chica');
     const user = userEvent.setup();
     const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
     await user.selectOptions(await within(card).findByLabelText('Caja a cerrar'), '5');
@@ -296,6 +307,17 @@ describe('Cierre de caja', () => {
     await user.click(within(card).getByRole('button', { name: 'Cerrar caja' }));
     await waitFor(() => expect(called('POST', '/apiworking/cash/close')).toHaveLength(1));
     expect(called('POST', '/apiworking/cash/close')[0]?.body).toEqual({ idCaja: '5', approvedHash: 'b'.repeat(64) });
+  });
+});
+
+describe('Ventas del día en la caja chica', () => {
+  it('muestra cuántas ventas hubo con cada forma de pago', async () => {
+    mockApi(routes(sessionRoutes([...PERMS, 'cashbox:read'], ['CLINIC_ADMIN']) as never));
+    renderApp('/caja-chica');
+    const card = (await screen.findByRole('heading', { name: 'Ventas de hoy por forma de pago' })).closest('section')!;
+    expect(await within(card).findByText('Yape / Plin')).toBeInTheDocument();
+    expect(within(card).getByText('S/ 150.00')).toBeInTheDocument();
+    expect(within(card).getByText('S/ 250.00')).toBeInTheDocument();
   });
 });
 
@@ -340,7 +362,6 @@ describe('Contingencia', () => {
     await user.click(await screen.findByRole('button', { name: 'Apiworking no responde: cobrar en contingencia' }));
     expect(await screen.findByText('Modo contingencia')).toBeInTheDocument();
     await user.click(await screen.findByRole('button', { name: new RegExp(CUSTOMER.name) }));
-    await user.type(screen.getByLabelText('Descripción'), 'Limpieza dental');
     await user.type(screen.getByLabelText('Concepto 1'), 'Profilaxis');
     await user.type(screen.getByLabelText(/Precio unitario/), '50');
     await user.selectOptions(await screen.findByLabelText('Cuenta o medio de pago'), 'acc-1');
@@ -351,7 +372,7 @@ describe('Contingencia', () => {
     await user.click(go);
     await waitFor(() => expect(called('POST', '/apiworking/contingency')).toHaveLength(1));
     const body = called('POST', '/apiworking/contingency')[0]?.body as Record<string, unknown>;
-    expect(body).toMatchObject({ customerId: CUSTOMER.id, description: 'Limpieza dental', accountId: 'acc-1', categoryId: 'cat-1', lines: [{ name: 'Profilaxis', quantity: 1, unitPriceCents: 5000 }] });
+    expect(body).toMatchObject({ customerId: CUSTOMER.id, description: 'Profilaxis', accountId: 'acc-1', categoryId: 'cat-1', lines: [{ name: 'Profilaxis', quantity: 1, unitPriceCents: 5000 }] });
     expect(body['requestKey']).toMatch(/^[0-9a-f-]{36}$/);
     expect(called('POST', '/apiworking/sales')).toHaveLength(0);
   });
@@ -374,7 +395,7 @@ describe('Contingencia', () => {
     renderApp('/ventas?appointmentId=a-1');
     expect(await screen.findByText('Cobro de Diego Mendieta')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Cambiar' })).toBeInTheDocument();
-    expect(screen.getByLabelText('Descripción')).toHaveValue('Limpieza dental');
+    expect(screen.getByLabelText('Concepto 1')).toHaveValue('Limpieza dental');
     expect(screen.getByLabelText(/Precio unitario/)).toHaveValue('80.00');
   });
 });

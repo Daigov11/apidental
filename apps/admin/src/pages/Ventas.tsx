@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, RefreshCw, Search, Send, Trash2 } from 'lucide-react';
+import { Banknote, CreditCard, Landmark, Plus, RefreshCw, Search, Send, Smartphone, Trash2, Wallet } from 'lucide-react';
 import { get, post } from '../api/client';
-import type { AwBillingDraft, AwCash, AwCustomerPreview, AwCustomerResult, AwCashClosePreview, AwCashPreview, AwCashResult, AwContext, AwCustomer, AwDiscovery, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify, CashConfig, CashSummary } from '../api/types';
+import type { AwBillingDraft, AwCustomerPreview, AwCustomerResult, AwContext, AwCustomer, AwDiscovery, AwDraft, AwLine, AwPreview, AwSale, AwStatus, AwVerify, CashConfig, CashSummary } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { fmtDateTime } from '../lib/format';
 import { fmtMoney, parseSoles } from '../lib/money';
@@ -56,12 +56,21 @@ export function VentasPage() {
   const [idMetodoPago, setIdMetodoPago] = useState('');
   const ctx = useAsync(() => (session && !contingency ? get<AwContext>('/apiworking/sales/context', { idCaja, idTipoDocumento }) : Promise.resolve(null)), [session, contingency, idCaja, idTipoDocumento]);
   const c = ctx.data;
+  // Lo que solo tiene una opción se elige solo; la forma de pago arranca en Efectivo (o la primera) y se cambia con un toque.
+  useEffect(() => {
+    if (!c || ctx.loading) return;
+    if (!idCaja && c.cajas.length === 1) setIdCaja(c.cajas[0]!.id);
+    else if (idCaja && !idTipoDocumento && c.documentTypes?.length === 1) setIdTipoDocumento(c.documentTypes[0]!.id);
+    else if (idTipoDocumento && !idSerie && c.series?.length === 1) setIdSerie(c.series[0]!.id);
+    if (idTipoDocumento && !idMetodoPago && c.paymentMethods && c.paymentMethods.length > 0) setIdMetodoPago((c.paymentMethods.find((m) => /efectivo/i.test(m.name)) ?? c.paymentMethods[0]!).id);
+  }, [c, ctx.loading, idCaja, idTipoDocumento, idSerie, idMetodoPago]);
 
   // --- Detalle ---
-  const [description, setDescription] = useState('');
   const [lines, setLines] = useState<LineField[]>([emptyLine()]);
   const parsed = useMemo(() => lines.map((l) => ({ name: l.name.trim(), quantity: Number(l.quantity), cents: parseSoles(l.price) })), [lines]);
   const validLines = parsed.every((l) => l.name.length >= 2 && Number.isInteger(l.quantity) && l.quantity >= 1 && l.quantity <= 999 && l.cents !== null && l.cents > 0);
+  // La descripción del documento sale de los conceptos (o es la de la venta que se está emitiendo): no se pide aparte.
+  const description = pendingSale ? pendingSale.description : parsed.map((l) => l.name).filter(Boolean).join(', ').slice(0, 200);
   const total = parsed.reduce((s, l) => s + (l.cents ?? 0) * (Number.isFinite(l.quantity) ? l.quantity : 0), 0);
 
   const draft: AwDraft | null = customer && idCaja && idTipoDocumento && idSerie && idMetodoPago && description.trim().length >= 3 && validLines
@@ -80,7 +89,6 @@ export function VentasPage() {
     if (!b || prefilled.current === (b.appointment?.id ?? b.patient.id)) return;
     prefilled.current = b.appointment?.id ?? b.patient.id;
     if (b.customer) setCustomer(b.customer);
-    if (b.description) setDescription(b.description);
     if (b.description && b.amountCents) setLines([{ name: b.description, quantity: '1', price: (b.amountCents / 100).toFixed(2) }]);
   }, [billing.data]);
 
@@ -103,7 +111,7 @@ export function VentasPage() {
     finally { setBusy(null); }
   };
 
-  const reset = () => { setPendingSale(null); setDocDate(''); setCustomer(null); setQuery(''); setDescription(''); setLines([emptyLine()]); setPreview(null); setApproved(false); setIdSerie(''); setIdMetodoPago(''); };
+  const reset = () => { setPendingSale(null); setDocDate(''); setCustomer(null); setQuery(''); setLines([emptyLine()]); setPreview(null); setApproved(false); setIdSerie(''); setIdMetodoPago(''); };
   // Una sola clave por envío: un doble clic o un reintento no registra dos veces la misma venta.
   const sending = useRef(false);
   const send = async () => {
@@ -125,6 +133,8 @@ export function VentasPage() {
   const [verifyResult, setVerifyResult] = useState<AwVerify | null>(null);
   const [reconcileOf, setReconcileOf] = useState<AwSale | null>(null);
   const [voidOf, setVoidOf] = useState<AwSale | null>(null);
+  const [payOf, setPayOf] = useState<AwSale | null>(null);
+  const [payBusy, setPayBusy] = useState(false);
   const [rowBusy, setRowBusy] = useState<string | null>(null);
   const verify = async (s: AwSale) => {
     setRowBusy(s.id);
@@ -136,7 +146,6 @@ export function VentasPage() {
   const startIssue = (s: AwSale) => {
     setContingency(false); setPendingSale(s); setPreview(null); setApproved(false); setIdCaja(''); setIdTipoDocumento(''); setIdSerie(''); setIdMetodoPago('');
     setCustomer({ id: s.customerId, personId: '', name: s.customer.name, email: '', docType: s.customer.docType, docNumber: s.customer.docNumber, phone: '', whatsapp: '', personType: '', active: true });
-    setDescription(s.description);
     setLines(s.lines.map((l) => ({ name: l.name, quantity: String(l.quantity), price: (l.unitPriceCents / 100).toFixed(2) })));
     setDocDate(s.docDate);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -150,7 +159,7 @@ export function VentasPage() {
   return (
     <>
       <div className="page-head">
-        <div><h1>Ventas Apiworking</h1><p className="muted">Tenant: <span className="tabular">{st.tenant ?? '—'}</span></p></div>
+        <div><h1>Nueva venta</h1><p className="muted">Registra una venta o cobra una cita. Tenant: <span className="tabular">{st.tenant ?? '—'}</span></p></div>
         {canSell && can('cashbox:write') && st.read && (
           <Button size="sm" variant={contingency ? 'primary' : 'tertiary'} onClick={() => { setContingency((v) => !v); setPendingSale(null); setPreview(null); setApproved(false); }}>
             {contingency ? 'Salir de contingencia' : 'Apiworking no responde: cobrar en contingencia'}
@@ -180,117 +189,131 @@ export function VentasPage() {
       {contingency && <Alert tone="warning" title="Modo contingencia">Apiworking no responde. El cobro se guarda aquí y entra en la caja local; el comprobante interno NO es un comprobante de SUNAT: la Boleta o Factura queda pendiente de emitir en Apiworking.</Alert>}
 
       {canSell && st.read && (session || contingency) && (
-        <section className="card" aria-labelledby="new-h" style={{ marginTop: 'var(--space-5)' }}>
-          <div className="card-head"><h2 id="new-h" className="h3">Nueva venta</h2></div>
-
-          <h3 className="h3" style={{ margin: 'var(--space-4) 0 var(--space-3)' }}>1. Cliente</h3>
-          {customer ? (
-            <p>
-              <strong>{customer.name}</strong> · <span className="tabular">{customer.docType} {customer.docNumber}</span>{' '}
-              <Button size="sm" variant="tertiary" onClick={() => { setCustomer(null); setPreview(null); }}>Cambiar</Button>
-            </p>
-          ) : (
-            <>
-              <TextField label="Buscar cliente" help="Por nombre, documento o teléfono. Solo aparecen clientes ya creados en Apiworking." value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
-              {found.loading && <p className="caption muted"><Search size={14} aria-hidden="true" /> Buscando…</p>}
-              {found.error != null && <ErrorState error={found.error} onRetry={found.reload} />}
-              {found.data?.offline && <Alert tone="warning">Apiworking no respondió: se muestran solo los clientes guardados en este sistema.</Alert>}
-              {found.data && found.data.items.length > 0 && (
-                <ul className="context-list">
-                  {found.data.items.map((cu) => (
-                    <li key={cu.id}><button type="button" onClick={() => setCustomer(cu)}><strong>{cu.name}</strong><span className="caption muted">{cu.docType} {cu.docNumber}</span></button></li>
-                  ))}
-                </ul>
+        <>
+        <div className="sale-layout" style={{ marginTop: 'var(--space-5)' }}>
+          <div className="sale-main">
+            <section className="card" aria-labelledby="cli-h">
+              <div className="card-head"><h2 id="cli-h" className="h3">Cliente</h2></div>
+              {customer ? (
+                <p>
+                  <strong>{customer.name}</strong> · <span className="tabular">{customer.docType} {customer.docNumber}</span>{' '}
+                  <Button size="sm" variant="tertiary" onClick={() => { setCustomer(null); setPreview(null); }}>Cambiar</Button>
+                </p>
+              ) : (
+                <>
+                  <TextField label="Buscar cliente" help="Por nombre, documento o teléfono." value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
+                  {found.loading && <p className="caption muted"><Search size={14} aria-hidden="true" /> Buscando…</p>}
+                  {found.error != null && <ErrorState error={found.error} onRetry={found.reload} />}
+                  {found.data?.offline && <Alert tone="warning">Apiworking no respondió: se muestran solo los clientes guardados en este sistema.</Alert>}
+                  {found.data && found.data.items.length > 0 && (
+                    <ul className="context-list">
+                      {found.data.items.map((cu) => (
+                        <li key={cu.id}><button type="button" onClick={() => setCustomer(cu)}><strong>{cu.name}</strong><span className="caption muted">{cu.docType} {cu.docNumber}</span></button></li>
+                      ))}
+                    </ul>
+                  )}
+                  {found.data && found.data.items.length === 0 && !found.loading && <p className="caption muted">No hay clientes que coincidan.</p>}
+                  <NewCustomer key={billing.data?.identifier?.docNumber ?? 'manual'} write={st.write} initial={billing.data && !billing.data.customer && billing.data.identifier ? { docType: billing.data.identifier.docType, docNumber: billing.data.identifier.docNumber, name: billing.data.patient.name } : undefined} onCreated={(cu) => { setCustomer(cu); setPreview(null); found.reload(); }} />
+                </>
               )}
-              {found.data && found.data.items.length === 0 && !found.loading && <p className="caption muted">No hay clientes que coincidan.</p>}
-              <NewCustomer key={billing.data?.identifier?.docNumber ?? 'manual'} write={st.write} initial={billing.data && !billing.data.customer && billing.data.identifier ? { docType: billing.data.identifier.docType, docNumber: billing.data.identifier.docNumber, name: billing.data.patient.name } : undefined} onCreated={(cu) => { setCustomer(cu); setPreview(null); found.reload(); }} />
-            </>
-          )}
+            </section>
 
-          {!contingency && (<>
-          <h3 className="h3" style={{ margin: 'var(--space-5) 0 var(--space-3)' }}>2. Caja y documento</h3>
-          {c && c.cajas.length === 0 && <Alert tone="warning">No hay cajas autorizadas para esta instalación.</Alert>}
-          <SelectField label="Caja" value={idCaja} onChange={(e) => { setIdCaja(e.target.value); setIdTipoDocumento(''); setIdSerie(''); setIdMetodoPago(''); }}>
-            <option value="">Elija la caja</option>
-            {c?.cajas.map((x) => <option key={x.id} value={x.id}>{x.name}{x.branch ? ` · ${x.branch}` : ''}</option>)}
-          </SelectField>
-          {idCaja && c?.opened === false && <Alert tone="danger">La caja no tiene una apertura vigente en Apiworking. Ábrala allá antes de vender.</Alert>}
-          {idCaja && c?.documentTypes && (
-            <SelectField label="Tipo de documento" value={idTipoDocumento} onChange={(e) => { setIdTipoDocumento(e.target.value); setIdSerie(''); setIdMetodoPago(''); }}>
-              <option value="">Elija el tipo</option>
-              {c.documentTypes.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-            </SelectField>
-          )}
-          {idTipoDocumento && c?.series && (
-            <SelectField label="Serie" value={idSerie} onChange={(e) => setIdSerie(e.target.value)}>
-              <option value="">Elija la serie</option>
-              {c.series.map((x) => <option key={x.id} value={x.id}>{x.serie}</option>)}
-            </SelectField>
-          )}
-          {idTipoDocumento && c?.paymentMethods && (
-            <SelectField label="Forma de pago" help="Un solo método por venta, por el importe completo." value={idMetodoPago} onChange={(e) => setIdMetodoPago(e.target.value)}>
-              <option value="">Elija la forma de pago</option>
-              {c.paymentMethods.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-            </SelectField>
-          )}
+            {!contingency && (
+              <section className="card" aria-labelledby="doc-h">
+                <div className="card-head"><h2 id="doc-h" className="h3">Comprobante</h2></div>
+                {c && c.cajas.length === 0 && <Alert tone="warning">No hay cajas autorizadas para esta instalación.</Alert>}
+                {idCaja && c?.opened === false && <Alert tone="danger">La caja no tiene una apertura vigente en Apiworking. Ábrala en «Caja chica» antes de vender.</Alert>}
+                <div className="row-2">
+                  {c && c.cajas.length > 1 && (
+                    <SelectField label="Caja" value={idCaja} onChange={(e) => { setIdCaja(e.target.value); setIdTipoDocumento(''); setIdSerie(''); setIdMetodoPago(''); }}>
+                      <option value="">Elija la caja</option>
+                      {c.cajas.map((x) => <option key={x.id} value={x.id}>{x.name}{x.branch ? ` · ${x.branch}` : ''}</option>)}
+                    </SelectField>
+                  )}
+                  {idCaja && c?.documentTypes && (
+                    <SelectField label="Tipo de documento" value={idTipoDocumento} onChange={(e) => { setIdTipoDocumento(e.target.value); setIdSerie(''); setIdMetodoPago(''); }}>
+                      <option value="">Elija el tipo</option>
+                      {c.documentTypes.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+                    </SelectField>
+                  )}
+                  {idTipoDocumento && c?.series && (
+                    <SelectField label="Serie" value={idSerie} onChange={(e) => setIdSerie(e.target.value)}>
+                      <option value="">Elija la serie</option>
+                      {c.series.map((x) => <option key={x.id} value={x.id}>{x.serie}</option>)}
+                    </SelectField>
+                  )}
+                </div>
+              </section>
+            )}
 
-          </>)}
-
-          <h3 className="h3" style={{ margin: 'var(--space-5) 0 var(--space-3)' }}>3. Detalle de la venta o del servicio</h3>
-          <TextField label="Descripción" help="Por ejemplo: Limpieza dental y control." value={description} onChange={(e) => setDescription(e.target.value)} maxLength={200} />
-          {lines.map((l, i) => (
-            <div key={i} className="chip-row" style={{ alignItems: 'flex-end', marginBottom: 'var(--space-3)' }}>
-              <TextField label={`Concepto ${i + 1}`} value={l.name} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} maxLength={120} />
-              <TextField label="Cantidad" inputMode="numeric" value={l.quantity} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)))} style={{ width: '6rem' }} />
-              <TextField label="Precio unitario (S/)" help="IGV incluido" inputMode="decimal" value={l.price} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, price: e.target.value } : x)))} style={{ width: '9rem' }} />
-              {lines.length > 1 && <Button size="sm" variant="tertiary" aria-label={`Quitar el concepto ${i + 1}`} icon={<Trash2 size={16} aria-hidden="true" />} onClick={() => setLines((all) => all.filter((_, j) => j !== i))} />}
-            </div>
-          ))}
-          <div className="chip-row">
-            <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setLines((all) => [...all, emptyLine()])} disabled={lines.length >= 30}>Agregar concepto</Button>
-            <p className="money" style={{ margin: 0 }}>Total {fmtMoney(total)}</p>
+            <section className="card" aria-labelledby="det-h">
+              <div className="card-head"><h2 id="det-h" className="h3">Detalle de venta</h2><span className="caption muted">{lines.length} {lines.length === 1 ? 'concepto' : 'conceptos'}</span></div>
+              {lines.map((l, i) => (
+                <div key={i} className="chip-row" style={{ alignItems: 'flex-end', marginBottom: 'var(--space-3)' }}>
+                  <TextField label={`Concepto ${i + 1}`} value={l.name} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} maxLength={120} />
+                  <TextField label="Cantidad" inputMode="numeric" value={l.quantity} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)))} style={{ width: '6rem' }} />
+                  <TextField label="Precio unitario (S/)" help="IGV incluido" inputMode="decimal" value={l.price} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, price: e.target.value } : x)))} style={{ width: '9rem' }} />
+                  {lines.length > 1 && <Button size="sm" variant="tertiary" aria-label={`Quitar el concepto ${i + 1}`} icon={<Trash2 size={16} aria-hidden="true" />} onClick={() => setLines((all) => all.filter((_, j) => j !== i))} />}
+                </div>
+              ))}
+              <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setLines((all) => [...all, emptyLine()])} disabled={lines.length >= 30}>Agregar concepto</Button>
+            </section>
           </div>
 
-          {contingency && customer && (
-            <ContingencyBlock customer={customer} description={description.trim()} lines={parsed} validLines={validLines && description.trim().length >= 3} link={link} docDate={docDate} onDone={() => { reset(); sales.reload(); if (urlAppointmentId || urlPatientId) setParams({}, { replace: true }); }} />
-          )}
+          <aside className="card sale-side" aria-labelledby="sum-h">
+            <h2 id="sum-h" className="h3">Resumen de venta</h2>
+            <p className="muted" style={{ margin: 'var(--space-4) 0 0' }}>Importe total</p>
+            <p className="money sale-total">{fmtMoney(total)}</p>
+            <p className="caption muted">IGV incluido</p>
+            {!contingency && idTipoDocumento && c?.paymentMethods && (
+              <fieldset className="pay-options">
+                <legend className="h3">Forma de pago</legend>
+                {c.paymentMethods.map((m) => (
+                  <button key={m.id} type="button" className="pay-option" aria-pressed={idMetodoPago === m.id} onClick={() => setIdMetodoPago(m.id)}>
+                    <PayIcon name={m.name} /> <span>{m.name}</span>
+                  </button>
+                ))}
+              </fieldset>
+            )}
+            {contingency && customer && (
+              <ContingencyBlock customer={customer} description={description} lines={parsed} validLines={validLines && description.length >= 3} link={link} docDate={docDate} onDone={() => { reset(); sales.reload(); if (urlAppointmentId || urlPatientId) setParams({}, { replace: true }); }} />
+            )}
+            {!contingency && (
+              <>
+                {error && <Alert tone="danger">{error}</Alert>}
+                <Button variant="primary" disabled={!draft || c?.opened === false} loading={busy === 'preview'} loadingText="Preparando…" onClick={() => void review()}>Revisar venta</Button>
+                <Button variant="tertiary" onClick={reset}>Limpiar venta</Button>
+              </>
+            )}
+          </aside>
+        </div>
 
-          {!contingency && (<>
-          {error && <div style={{ marginTop: 'var(--space-4)' }}><Alert tone="danger">{error}</Alert></div>}
-          <div className="chip-row" style={{ marginTop: 'var(--space-5)' }}>
-            <Button variant="primary" disabled={!draft || c?.opened === false} loading={busy === 'preview'} loadingText="Preparando…" onClick={() => void review()}>Revisar venta</Button>
-            <Button variant="tertiary" onClick={reset}>Limpiar</Button>
-          </div>
-
-          {current && (
-            <div role="region" aria-label="Revisión antes de enviar" style={{ marginTop: 'var(--space-6)' }}>
-              <h3 className="h3">4. Revise antes de enviar</h3>
-              <dl className="facts" style={{ margin: 'var(--space-4) 0' }}>
-                <dt>Cliente</dt><dd>{current.data.customer.name} · {current.data.customer.docType} {current.data.customer.docNumber}</dd>
-                <dt>Documento sugerido</dt><dd>{SUGGESTED[current.data.suggestedDocument]} (según el documento del cliente)</dd>
-                <dt>Serie</dt><dd className="tabular">{current.data.serie}</dd>
-                <dt>Total</dt><dd className="tabular">{current.data.totalText}</dd>
-                <dt>Huella (SHA-256)</dt><dd className="tabular caption" style={{ wordBreak: 'break-all' }}>{current.data.hash}</dd>
-              </dl>
-              {current.data.warnings.map((w) => <Alert key={w} tone="warning">{w}</Alert>)}
-              <details style={{ margin: 'var(--space-4) 0' }}>
-                <summary>Ver el JSON exacto que se enviará</summary>
-                <pre className="tabular caption" style={{ overflow: 'auto', maxHeight: '22rem' }}>{JSON.stringify(current.data.request, null, 2)}</pre>
-              </details>
-              <label className="check" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
-                <input type="checkbox" checked={approved} disabled={readOnly} onChange={(e) => setApproved(e.target.checked)} />
-                <span>Revisé el documento y autorizo enviarlo a Apiworking. Una Boleta o Factura puede llegar a SUNAT y no se reintenta sola.</span>
-              </label>
-              <div className="chip-row" style={{ marginTop: 'var(--space-4)' }}>
-                <Button variant="primary" icon={<Send size={18} aria-hidden="true" />} disabled={!approved || readOnly} loading={busy === 'send'} loadingText="Enviando…" onClick={() => void send()}>Enviar a Apiworking</Button>
-              </div>
+        {!contingency && current && (
+          <section className="card" role="region" aria-label="Revisión antes de enviar" style={{ marginTop: 'var(--space-5)' }}>
+            <h2 className="h3">Revise antes de enviar</h2>
+            <dl className="facts" style={{ margin: 'var(--space-4) 0' }}>
+              <dt>Cliente</dt><dd>{current.data.customer.name} · {current.data.customer.docType} {current.data.customer.docNumber}</dd>
+              <dt>Documento sugerido</dt><dd>{SUGGESTED[current.data.suggestedDocument]} (según el documento del cliente)</dd>
+              <dt>Serie</dt><dd className="tabular">{current.data.serie}</dd>
+              <dt>Total</dt><dd className="tabular">{current.data.totalText}</dd>
+              <dt>Huella (SHA-256)</dt><dd className="tabular caption" style={{ wordBreak: 'break-all' }}>{current.data.hash}</dd>
+            </dl>
+            {current.data.warnings.map((w) => <Alert key={w} tone="warning">{w}</Alert>)}
+            <details style={{ margin: 'var(--space-4) 0' }}>
+              <summary>Ver el JSON exacto que se enviará</summary>
+              <pre className="tabular caption" style={{ overflow: 'auto', maxHeight: '22rem' }}>{JSON.stringify(current.data.request, null, 2)}</pre>
+            </details>
+            <label className="check" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
+              <input type="checkbox" checked={approved} disabled={readOnly} onChange={(e) => setApproved(e.target.checked)} />
+              <span>Revisé el documento y autorizo enviarlo a Apiworking. Una Boleta o Factura puede llegar a SUNAT y no se reintenta sola.</span>
+            </label>
+            <div className="chip-row" style={{ marginTop: 'var(--space-4)' }}>
+              <Button variant="primary" icon={<Send size={18} aria-hidden="true" />} disabled={!approved || readOnly} loading={busy === 'send'} loadingText="Enviando…" onClick={() => void send()}>Enviar a Apiworking</Button>
             </div>
-          )}
-          </>)}
-        </section>
+          </section>
+        )}
+        </>
       )}
-
-      {st.read && session && <CashCard />}
 
       {can('apiworking:configure') && st.read && session && <DiscoveryCard />}
 
@@ -321,6 +344,7 @@ export function VentasPage() {
                       <div className="chip-row">
                         {s.actions.issue && canSell && !readOnly && <Button size="sm" variant="primary" onClick={() => startIssue(s)}>Emitir en Apiworking</Button>}
                         {s.actions.verify && canSell && <Button size="sm" loading={rowBusy === s.id} loadingText="Consultando…" onClick={() => void verify(s)}>Verificar</Button>}
+                        {s.actions.pay && canSell && !readOnly && <Button size="sm" variant="primary" onClick={() => setPayOf(s)}>Registrar pago</Button>}
                         {s.actions.reconcile && canSell && <Button size="sm" onClick={() => setReconcileOf(s)}>Conciliar</Button>}
                         {s.actions.void && can('apiworking:void') && !readOnly && <Button size="sm" variant="danger" onClick={() => setVoidOf(s)}>Anular</Button>}
                       </div>
@@ -335,6 +359,20 @@ export function VentasPage() {
 
       {verifyResult && <VerifyDialog result={verifyResult} onClose={() => setVerifyResult(null)} />}
       {reconcileOf && <ReconcileDialog sale={reconcileOf} onClose={() => setReconcileOf(null)} onDone={() => { setReconcileOf(null); sales.reload(); toast.success('Venta conciliada.'); }} />}
+      {payOf && (
+        <Dialog
+          title="Registrar el pago en Apiworking" onClose={() => (payBusy ? undefined : setPayOf(null))}
+          footer={<><Button onClick={() => setPayOf(null)} disabled={payBusy}>Volver</Button><Button variant="primary" loading={payBusy} loadingText="Enviando…" onClick={async () => {
+            setPayBusy(true);
+            try { await post(`/apiworking/sales/${payOf.id}/pay`); setPayOf(null); toast.success('Pago registrado en Apiworking.'); }
+            catch (e) { toast.error(errorText(e)); setPayOf(null); }
+            finally { setPayBusy(false); sales.reload(); }
+          }}>Registrar pago</Button></>}
+        >
+          <p>Se enviará a Apiworking el pago de <strong>{payOf.externalNumber ?? 'este documento'}</strong> por <strong>{payOf.totalText}</strong>, a nombre de {payOf.customer.name}.</p>
+          <p className="muted">Se envía una sola vez, sin vuelto. Si el resultado no se confirma, use «Verificar» antes de intentarlo de nuevo.</p>
+        </Dialog>
+      )}
       {voidOf && (
         <ReasonDialog
           title="Anular venta en Apiworking" danger confirmLabel="Anular venta" example="Error en el monto"
@@ -345,6 +383,15 @@ export function VentasPage() {
       )}
     </>
   );
+}
+
+function PayIcon({ name }: { name: string }) {
+  const p = { size: 20, 'aria-hidden': true } as const;
+  if (/efectivo/i.test(name)) return <Banknote {...p} />;
+  if (/tarjeta|visa|master/i.test(name)) return <CreditCard {...p} />;
+  if (/yape|plin|billetera/i.test(name)) return <Smartphone {...p} />;
+  if (/transfer|banco|dep[oó]sito/i.test(name)) return <Landmark {...p} />;
+  return <Wallet {...p} />;
 }
 
 function VerifyDialog({ result, onClose }: { result: AwVerify; onClose: () => void }) {
@@ -444,139 +491,6 @@ function DiscoveryCard() {
               <p className="caption muted">Opcional: sin estas listas vale lo que Apiworking informa al usuario. Para vender se usa como almacén la sucursal del usuario{x.warehouseId ? ` (${x.warehouseId})` : ''} y como unidad de medida {x.unitId ?? '1'} (NIU).</p>
             </div>
           )}
-        </>
-      )}
-    </section>
-  );
-}
-
-/** Reapertura y cierre de la caja de Apiworking (AperturaCajaChica reabre una caja cerrada): vista previa del JSON, aprobación explícita y un solo envío (sin reintentos). */
-function CashCard() {
-  const { can } = useAuth();
-  const toast = useToast();
-  const st = useAsync(() => get<AwCash>('/apiworking/cash'), []);
-  const [idCaja, setIdCaja] = useState('');
-  const [turn, setTurn] = useState('');
-  const [amount, setAmount] = useState('0');
-  const [preview, setPreview] = useState<{ data: AwCashPreview; signature: string } | null>(null);
-  const [approved, setApproved] = useState(false);
-  const [busy, setBusy] = useState<'preview' | 'open' | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<AwCashResult | null>(null);
-  const sending = useRef(false);
-  const x = st.data;
-  const cents = parseSoles(amount === '0' ? '0.00' : amount);
-  const body = x && idCaja && cents !== null && cents >= 0 ? { idCaja, openingCents: cents, idTurno: turn || x.defaultTurn } : null;
-  const signature = JSON.stringify(body);
-  const current = preview && preview.signature === signature ? preview : null;
-  useEffect(() => { if (preview && preview.signature !== signature) setApproved(false); }, [preview, signature]);
-  const canOpen = can('apiworking:cash');
-  const [closeId, setCloseId] = useState('');
-  const [closePrev, setClosePrev] = useState<AwCashClosePreview | null>(null);
-  const [closeOk, setCloseOk] = useState(false);
-  const reviewClose = async () => {
-    setBusy('preview'); setError(null); setCloseOk(false); setResult(null);
-    try { setClosePrev(await post<AwCashClosePreview>('/apiworking/cash/close-preview', { idCaja: closeId })); }
-    catch (e) { setError(errorText(e)); setClosePrev(null); }
-    finally { setBusy(null); }
-  };
-  const closeCash = async () => {
-    if (!closePrev || sending.current) return;
-    sending.current = true; setBusy('open'); setError(null);
-    try {
-      const r = await post<AwCashResult>('/apiworking/cash/close', { idCaja: closeId, approvedHash: closePrev.hash });
-      setResult(r); setClosePrev(null); setCloseOk(false); setCloseId('');
-      if (r.status === 'CLOSED') toast.success('Caja cerrada');
-    } catch (e) { setError(errorText(e)); }
-    finally { sending.current = false; setBusy(null); st.reload(); }
-  };
-  const caja = x?.cajas.find((c) => c.id === idCaja);
-
-  const review = async () => {
-    if (!body) return;
-    setBusy('preview'); setError(null); setApproved(false); setResult(null);
-    try { setPreview({ data: await post<AwCashPreview>('/apiworking/cash/preview', body), signature }); }
-    catch (e) { setError(errorText(e)); setPreview(null); }
-    finally { setBusy(null); }
-  };
-  const open = async () => {
-    if (!current || !body || sending.current) return;
-    sending.current = true; setBusy('open'); setError(null);
-    try {
-      const r = await post<AwCashResult>('/apiworking/cash/open', { ...body, approvedHash: current.data.hash });
-      setResult(r); setPreview(null); setApproved(false);
-      if (r.status === 'OPENED') toast.success('Caja reabierta');
-    } catch (e) { setError(errorText(e)); }
-    finally { sending.current = false; setBusy(null); st.reload(); }
-  };
-
-  return (
-    <section className="card" aria-labelledby="cash-h" style={{ marginTop: 'var(--space-8)' }}>
-      <div className="card-head"><h2 id="cash-h" className="h3">Caja de Apiworking</h2><Button size="sm" icon={<RefreshCw size={16} aria-hidden="true" />} onClick={st.reload}>Actualizar</Button></div>
-      {st.error != null && <ErrorState error={st.error} onRetry={st.reload} />}
-      {x && x.cajas.length === 0 && <p className="muted">No hay cajas autorizadas en esta instalación. Un administrador puede verlas en «Configuración de Apiworking».</p>}
-      {x && x.cajas.length > 0 && (
-        <>
-          <div className="table-wrap table-cards">
-            <table>
-              <caption className="sr-only">Estado de las cajas autorizadas</caption>
-              <thead><tr><th scope="col">Caja</th><th scope="col">Sucursal</th><th scope="col">Estado</th></tr></thead>
-              <tbody>{x.cajas.map((c) => <tr key={c.id}><td data-label="Caja">{c.name}</td><td data-label="Sucursal">{c.branch}</td><td data-label="Estado"><Badge tone={c.opened ? 'success' : 'warning'}>{c.opened ? 'Abierta' : 'Cerrada'}</Badge></td></tr>)}</tbody>
-            </table>
-          </div>
-          {canOpen && !x.write && <Alert tone="info">Las escrituras reales están desactivadas en esta instalación: puede preparar la apertura, pero no enviarla.</Alert>}
-          {canOpen && (
-            <div style={{ marginTop: 'var(--space-4)' }}>
-              <SelectField label="Caja a reabrir" value={idCaja} onChange={(e) => setIdCaja(e.target.value)}>
-                <option value="">Elija una caja</option>
-                {x.cajas.filter((c) => !c.opened).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </SelectField>
-              {x.turnos.length > 0 ? (
-                <SelectField label="Turno" value={turn || x.defaultTurn} onChange={(e) => setTurn(e.target.value)}>
-                  {x.turnos.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                </SelectField>
-              ) : <TextField label="Turno (id)" value={turn || x.defaultTurn} inputMode="numeric" onChange={(e) => setTurn(e.target.value.replace(/\D/g, ''))} />}
-              <TextField label="Monto inicial (S/)" value={amount} inputMode="decimal" onChange={(e) => setAmount(e.target.value)} />
-              {error && <Alert tone="danger">{error}</Alert>}
-              <div className="chip-row"><Button variant="secondary" disabled={!body} loading={busy === 'preview'} loadingText="Preparando…" onClick={() => void review()}>Revisar reapertura</Button></div>
-            </div>
-          )}
-          {current && (
-            <div style={{ marginTop: 'var(--space-4)' }}>
-              <p><strong>{caja?.name ?? current.data.caja}</strong> · turno {current.data.turn} · monto inicial <strong>{current.data.openingText}</strong></p>
-              {current.data.alreadyOpen && <Alert tone="warning">Esta caja ya figura abierta en Apiworking: no se enviará nada.</Alert>}
-              <label className="check" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
-                <input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} />
-                <span>Revisé los datos y autorizo reabrir esta caja en Apiworking. No se reintenta sola.</span>
-              </label>
-              <div className="chip-row" style={{ marginTop: 'var(--space-4)' }}>
-                <Button variant="primary" icon={<Send size={18} aria-hidden="true" />} disabled={!approved || current.data.alreadyOpen || !x.write} loading={busy === 'open'} loadingText="Reabriendo…" onClick={() => void open()}>Reabrir caja</Button>
-              </div>
-            </div>
-          )}
-          {canOpen && x.cajas.some((c) => c.opened) && (
-            <div style={{ marginTop: 'var(--space-6)' }}>
-              <h3 className="h3">Cerrar caja</h3>
-              <SelectField label="Caja a cerrar" value={closeId} onChange={(e) => { setCloseId(e.target.value); setClosePrev(null); setCloseOk(false); }}>
-                <option value="">Elija una caja</option>
-                {x.cajas.filter((c) => c.opened).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </SelectField>
-              <div className="chip-row"><Button variant="secondary" disabled={!closeId} loading={busy === 'preview'} loadingText="Preparando…" onClick={() => void reviewClose()}>Revisar cierre</Button></div>
-              {closePrev && (
-                <div style={{ marginTop: 'var(--space-4)' }}>
-                  <p>Se cerrará <strong>{closePrev.caja}</strong> (turno {closePrev.turn}). El cierre no se puede deshacer desde aquí.</p>
-                  <label className="check" style={{ display: 'flex', gap: 'var(--space-3)', alignItems: 'flex-start' }}>
-                    <input type="checkbox" checked={closeOk} onChange={(e) => setCloseOk(e.target.checked)} />
-                    <span>Revisé los datos y autorizo cerrar esta caja en Apiworking. No se reintenta sola.</span>
-                  </label>
-                  <div className="chip-row" style={{ marginTop: 'var(--space-4)' }}>
-                    <Button variant="danger" disabled={!closeOk || !x.write} loading={busy === 'open'} loadingText="Cerrando…" onClick={() => void closeCash()}>Cerrar caja</Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          {result && <Alert tone={result.status === 'OPENED' || result.status === 'CLOSED' ? 'success' : 'warning'}>{result.message}{result.note ? ` ${result.note}.` : ''}</Alert>}
         </>
       )}
     </section>

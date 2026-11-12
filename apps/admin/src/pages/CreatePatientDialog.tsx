@@ -1,6 +1,7 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { ApiError, get, post } from '../api/client';
+import { useAuth } from '../auth/AuthProvider';
 import type { PatientSummary } from '../api/types';
 import { limaDate } from '../lib/format';
 import { Button } from '../ui/Button';
@@ -10,6 +11,7 @@ import { Dialog } from '../ui/overlays';
 
 interface Candidate { patientId: string; fullName: string; birthDate: string | null; reasons: string[]; confidence: string }
 interface Check { identifierConflict: { id: string; fullName: string } | null; possibleDuplicates: Candidate[] }
+interface NameLookup { status: 'FOUND' | 'NO_NAME' | 'UNKNOWN'; message?: string; names?: { firstName: string; lastName: string; secondLastName: string } }
 interface Created { patient: PatientSummary; warnings?: string[] }
 
 const REASON: Record<string, string> = {
@@ -59,6 +61,30 @@ function CreatePatientForm({ initialText = '', initial, onCreated, onClose }: Pr
   const [error, setError] = useState<string | null>(null);
   const [check, setCheck] = useState<Check | null>(null);
 
+  // Con cuenta de Apiworking, el DNI trae los nombres solo: primero lo que ya hay y, si falta, la consulta por documento.
+  const { authMode, can } = useAuth();
+  const [lookup, setLookup] = useState<{ state: 'busy' | 'found' | 'manual'; text?: string } | null>(null);
+  const looked = useRef<string | null>(null);
+  const canLookup = authMode === 'apiworking' && can('apiworking:sell');
+  useEffect(() => {
+    if (!canLookup || docType !== 'DNI' || !/^\d{8}$/.test(docNumber) || looked.current === docNumber) return;
+    if (firstName.trim() || lastName.trim()) return; // no se pisa lo que la persona ya escribió
+    const number = docNumber;
+    looked.current = number;
+    setLookup({ state: 'busy' });
+    post<NameLookup>('/apiworking/clients/lookup', { docType: '1', docNumber: number })
+      .then((r) => {
+        if (looked.current !== number) return;
+        if (r.status === 'FOUND' && r.names) {
+          setFirstName((cur) => cur.trim() || r.names!.firstName);
+          setLastName((cur) => cur.trim() || r.names!.lastName);
+          setSecondLastName((cur) => cur.trim() || r.names!.secondLastName);
+          setLookup({ state: 'found' });
+        } else setLookup({ state: 'manual', text: r.message ?? 'No se pudo obtener el nombre: escríbalo a mano.' });
+      })
+      .catch((e) => { if (looked.current === number) setLookup({ state: 'manual', text: `${errorText(e)} Escriba los nombres a mano.` }); });
+  }, [canLookup, docType, docNumber, firstName, lastName]);
+
   const rule = DOC_RULES[docType];
   const errs = {
     docNumber: docNumber && !rule.re.test(docNumber) ? rule.msg : null,
@@ -103,7 +129,7 @@ function CreatePatientForm({ initialText = '', initial, onCreated, onClose }: Pr
     setError(null);
     try {
       // La comprobación no recibe `contacts`: pide el celular y el correo como campos sueltos.
-      const { contacts: _contacts, ...person } = payload();
+      const { contacts: _contacts, sex: _sex, ...person } = payload(); // el chequeo de duplicados no recibe el sexo
       const found = await post<Check>('/patients/duplicate-check', { ...person, mobile: mobile.replace(/\s/g, '') || undefined, email: email.trim() || undefined });
       if (found.identifierConflict || found.possibleDuplicates.length > 0) { setCheck(found); setBusy(false); return; }
     } catch (err) {
@@ -159,6 +185,9 @@ function CreatePatientForm({ initialText = '', initial, onCreated, onClose }: Pr
           </SelectField>
           <TextField label="Número" optional value={docNumber} inputMode={rule.inputMode} maxLength={rule.max} onChange={(e) => setDocNumber(docType === 'DNI' ? e.target.value.replace(/\D/g, '') : e.target.value)} error={show('docNumber')} />
         </div>
+        {lookup?.state === 'busy' && <p className="caption muted" role="status">Buscando los datos en Apiworking…</p>}
+        {lookup?.state === 'found' && <p className="caption muted" role="status">Nombres obtenidos de Apiworking: revíselos y corríjalos si hace falta.</p>}
+        {lookup?.state === 'manual' && <p className="caption muted" role="status">{lookup.text}</p>}
         <TextField label="Nombres" value={firstName} maxLength={100} autoComplete="off" onChange={(e) => setFirstName(e.target.value)} error={show('firstName')} />
         <div className="row-2">
           <TextField label="Apellido paterno" value={lastName} maxLength={100} autoComplete="off" onChange={(e) => setLastName(e.target.value)} error={show('lastName')} />
