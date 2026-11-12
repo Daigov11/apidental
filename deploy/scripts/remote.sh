@@ -6,12 +6,13 @@
 #   ./deploy/scripts/remote.sh dental db:create-admin --email admin@clinica.pe     # pide la contraseña sin eco (use su terminal)
 #   ./deploy/scripts/remote.sh dental db:grant-role --username system --role CLINIC_ADMIN --clinic <id>
 #   ./deploy/scripts/remote.sh dental db:seed                                       # sincroniza el catálogo de roles/permisos
+#   ./deploy/scripts/remote.sh dental db:create-test-agenda --clinic <id> --domain dental   # servicios, consultorios y 2 odontólogos «(prueba)»
 #   ./deploy/scripts/remote.sh dental db:create-clinic --name "..." --ruc 10074654016
 # Tras desplegar permisos nuevos, ejecute db:seed en CADA instancia (sincroniza roles y permisos).
 set -euo pipefail
 
-NAME="${1:?Instancia (dental, demod1, demod2…)}"; SCRIPT="${2:?Comando: db:seed | db:create-admin | db:create-clinic | db:grant-role}"; shift 2
-case "$SCRIPT" in db:seed|db:create-admin|db:create-clinic|db:grant-role) ;; *) echo "Comando no permitido: $SCRIPT" >&2; exit 1 ;; esac
+NAME="${1:?Instancia (dental, demod1, demod2…)}"; SCRIPT="${2:?Comando: db:seed | db:create-admin | db:create-clinic | db:grant-role | db:create-test-agenda}"; shift 2
+case "$SCRIPT" in db:seed|db:create-admin|db:create-clinic|db:grant-role|db:create-test-agenda) ;; *) echo "Comando no permitido: $SCRIPT" >&2; exit 1 ;; esac
 [[ "$NAME" =~ ^[a-z][a-z0-9]{1,30}$ ]] || { echo "Nombre de instancia inválido" >&2; exit 1; }
 
 HOST="${SSH_HOST:-vision-support-vps}"
