@@ -10,16 +10,20 @@ import { PRISMA } from '../prisma/prisma.module.js';
 import { AgendaAvailabilityService } from './agenda-availability.service.js';
 import { AgendaConfigService, agendaScope, assertBranchAllowed, type Scope } from './agenda-config.service.js';
 import { ACTIVE_STATUSES, APPOINTMENT_LABELS, type AppointmentStatusCode } from './agenda-labels.js';
-import { addMinutes, parseInstant, slotStarts, utcToLima } from './agenda-time.js';
+import { addMinutes, limaToUtc, parseInstant, slotStarts, utcToLima } from './agenda-time.js';
 import type {
   CreateAppointmentDto, ListAppointmentsQuery, ReasonVersionDto, RescheduleAppointmentDto, UpdateNotesDto, VersionDto,
 } from './dto/agenda.dto.js';
 
 /** Vigencia de la relación asistencial que nace de una cita: fin de la cita + 30 días [por validar]. */
 export const APPOINTMENT_CARE_DAYS = 30;
-/** El odontólogo puede abrir la atención desde 30 min antes del inicio y hasta 6 h después del fin. */
-const START_EARLY_MS = 30 * 60_000;
+/**
+ * El odontólogo puede abrir la atención en cualquier momento del DÍA de la cita (hora de Lima, aunque falten horas) y hasta 6 h
+ * después del fin. Una cita de otro día futuro no se puede iniciar: quedaría marcada como atendida por adelantado.
+ */
 const START_LATE_MS = 6 * 3_600_000;
+/** Inicio (00:00 de Lima) del día de la cita: desde ahí se puede iniciar la atención. */
+const attentionOpensAt = (startsAt: Date) => limaToUtc(utcToLima(startsAt).date, 0).getTime();
 
 const INCLUDE = {
   patient: { select: { id: true, firstName: true, lastName: true, secondLastName: true, contacts: { where: { type: 'MOBILE' as const, status: 'ACTIVE' as const }, orderBy: { isPrimary: 'desc' as const }, take: 1, select: { value: true } } } },
@@ -72,7 +76,7 @@ export class AppointmentsService {
     const active = (ACTIVE_STATUSES as readonly string[]).includes(a.status);
     const manage = actor.permissions.has('appointment:manage');
     const isDentist = a.dentistUserId === actor.user.id;
-    const inWindow = now >= a.startsAt.getTime() - START_EARLY_MS && now <= a.endsAt.getTime() + START_LATE_MS;
+    const inWindow = now >= attentionOpensAt(a.startsAt) && now <= a.endsAt.getTime() + START_LATE_MS;
     const clinicalView = actor.permissions.has('clinical:read') || actor.permissions.has('clinical:write');
     const local = utcToLima(a.startsAt);
     return {
@@ -358,7 +362,7 @@ export class AppointmentsService {
     if (actor.context?.branchId !== pre.branchId) throw new ConflictException({ message: 'Seleccione la sede de la cita para iniciar la atención', code: 'BRANCH_CONTEXT_REQUIRED' });
     const now = new Date();
     if (pre.status !== 'ATTENDED') {
-      if (now.getTime() < pre.startsAt.getTime() - START_EARLY_MS) throw new ConflictException({ message: 'Aún es temprano para iniciar esta atención', code: 'TOO_EARLY' });
+      if (now.getTime() < attentionOpensAt(pre.startsAt)) throw new ConflictException({ message: 'La cita es de otro día: podrá iniciar la atención ese día', code: 'TOO_EARLY' });
       if (now.getTime() > pre.endsAt.getTime() + START_LATE_MS) throw new ConflictException({ message: 'La cita ya venció; reprográmela', code: 'EXPIRED' });
     }
     try {

@@ -306,4 +306,18 @@ describe('Agenda y citas (4.0)', () => {
     expect(dup.body.code).toBe('VISIT_ALREADY_OPEN');
     expect((await ctx.db.appointment.findUniqueOrThrow({ where: { id: a2.id } })).status).toBe('RESERVED');
   });
+
+  it('inicio de atención: una cita de HOY se puede iniciar aunque falten horas (y lo indica en sus acciones)', async () => {
+    const w = await world();
+    // Lo más tarde posible dentro del día de Lima (como mucho 3 h después): siempre es hoy, aunque se corra de noche.
+    const today = utcToLima(new Date()).date;
+    const endOfDay = limaToUtc(today, 23 * 60 + 25).getTime();
+    const startsAt = new Date(Math.floor(Math.min(Date.now() + 3 * 3_600_000, endOfDay) / 300_000) * 300_000);
+    if (startsAt.getTime() <= Date.now() + 31 * 60_000) return; // a esta hora ya no «faltan horas»: el caso lo cubre la prueba anterior
+    const later = await ctx.db.appointment.create({ data: { clinicId: w.clinic.id, branchId: w.branchA.id, patientId: w.patient, dentistUserId: w.dentist.user.id, roomId: w.room2.id, serviceId: w.service.id, startsAt, endsAt: new Date(startsAt.getTime() + 1_800_000), createdById: w.reception.user.id } });
+    const view = await ctx.http().get(`/v1/appointments/${later.id}`).set(bearer(w.dentist.token)).expect(200);
+    expect(view.body.actions.startAttention).toBe(true);
+    await w.post(w.dentist.token, `/appointments/${later.id}/start-attention`).expect(200);
+    expect((await ctx.db.appointment.findUniqueOrThrow({ where: { id: later.id } })).status).toBe('ATTENDED');
+  });
 });

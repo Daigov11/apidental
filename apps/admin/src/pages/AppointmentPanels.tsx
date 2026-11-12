@@ -113,7 +113,7 @@ export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onCl
       onChanged();
       await navigate(`/pacientes/${r.visit.patientId}/atencion/${r.visit.id}`);
     } catch (e) {
-      toast.error(e instanceof ApiError && e.code === 'TOO_EARLY' ? 'Aún es temprano: podrá iniciar la atención 30 minutos antes de la cita.' : explain(e));
+      toast.error(e instanceof ApiError && e.code === 'TOO_EARLY' ? 'La cita es de otro día: podrá iniciar la atención ese día.' : explain(e));
       setBusy(null);
     }
   };
