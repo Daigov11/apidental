@@ -23,7 +23,7 @@ const grantable = (roles: Role[] | null | undefined) => (roles ?? []).filter((r)
 export function UsersPage() {
   const { me, can, authMode } = useAuth();
   const toast = useToast();
-  const users = useAsync(() => get<SystemUser[]>('/users', { limit: 200 }), []);
+  const users = useAsync(() => get<SystemUser[]>('/users', { limit: 100 }), []);
   const roles = useAsync(() => (can('role:read') ? get<Role[]>('/roles') : Promise.resolve([] as Role[])), []);
   const canManage = can('user:manage');
   const canAssign = can('assignment:manage');

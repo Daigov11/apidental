@@ -31,7 +31,7 @@ describe('Usuarios', () => {
   });
 
   it('lista con quién ingresa cada uno; las cuentas de Apiworking sin rol se marcan y no ofrecen restablecer contraseña', async () => {
-    mockApi(routes() as never);
+    const { called } = mockApi(routes() as never);
     renderApp('/usuarios');
     const aw = (await screen.findByText('luis.caja')).closest('tr')!;
     expect(within(aw).getByText('Sin rol: no puede operar')).toBeInTheDocument();
@@ -43,6 +43,8 @@ describe('Usuarios', () => {
     const self = screen.getByText(USER.email).closest('tr')!;
     expect(within(self).queryByRole('button')).not.toBeInTheDocument();
     expect(screen.getByText(/nadie puede verlas, ni siquiera el administrador/)).toBeInTheDocument();
+    // El API acepta como máximo limit=100 (PaginationQuery).
+    expect(Number(called('GET', '/users')[0]?.query.get('limit'))).toBeLessThanOrEqual(100);
   });
 
   it('crea un usuario y muestra la contraseña generada una sola vez', async () => {
