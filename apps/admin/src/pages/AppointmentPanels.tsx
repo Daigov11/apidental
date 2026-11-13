@@ -115,6 +115,22 @@ export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onCl
     finally { setBusy(null); }
   };
 
+  /** Confirma y muestra qué pasó con el aviso por WhatsApp (la confirmación nunca depende del aviso). */
+  const confirmAndNotify = async () => {
+    if (!a) return;
+    setBusy('confirm');
+    try {
+      const r = await post<{ whatsapp?: { status: string; message: string } }>(`/appointments/${id}/confirm`, { expectedVersion: a.version });
+      const w = r.whatsapp;
+      if (w?.status === 'SENT') toast.success('Cita confirmada. Se avisó al paciente por WhatsApp.');
+      else if (w && w.status !== 'SKIPPED') toast.error(`Cita confirmada, pero el WhatsApp no se confirmó: ${w.message}`);
+      else if (w && authMode === 'apiworking') toast.success(`Cita confirmada. No se envió WhatsApp: ${w.message}.`);
+      else toast.success('Cita confirmada.');
+      appt.reload(); onChanged();
+    } catch (e) { toast.error(explain(e)); appt.reload(); }
+    finally { setBusy(null); }
+  };
+
   const startAttention = async () => {
     setBusy('start');
     try {
@@ -168,7 +184,7 @@ export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onCl
             <div className="chip-row" style={{ marginTop: 'var(--space-7)' }}>
               {a.actions.startAttention && <Button variant="primary" icon={<Stethoscope size={18} aria-hidden="true" />} loading={busy === 'start'} loadingText="Abriendo…" onClick={() => void startAttention()}>Iniciar atención</Button>}
               {a.actions.openVisit && a.visitId && <Button variant="primary" icon={<ClipboardList size={18} aria-hidden="true" />} onClick={() => navigate(`/pacientes/${a.patient.id}/atencion/${a.visitId}`)}>Abrir ficha de atención</Button>}
-              {a.actions.confirm && <Button variant="primary" loading={busy === 'confirm'} loadingText="Confirmando…" onClick={() => void run('confirm', () => post(`/appointments/${id}/confirm`, { expectedVersion: a.version }), 'Cita confirmada.')}>Confirmar</Button>}
+              {a.actions.confirm && <Button variant="primary" loading={busy === 'confirm'} loadingText="Confirmando…" onClick={() => void confirmAndNotify()}>Confirmar</Button>}
               {a.actions.reschedule && <Button onClick={() => setResched(true)}>Reprogramar</Button>}
               {a.actions.noShow && <Button onClick={() => setDialog('noShow')}>Marcar ausencia</Button>}
               {a.actions.cancel && <Button variant="danger" onClick={() => setDialog('cancel')}>Cancelar cita</Button>}

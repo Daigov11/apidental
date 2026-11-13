@@ -21,6 +21,6 @@ import { ApiworkingWhatsappService } from './apiworking-whatsapp.service.js';
   imports: [CashboxModule, ProductsModule],
   controllers: [ApiworkingAuthController, ApiworkingController],
   providers: [ApiworkingClient, ApiworkingSessionStore, ApiworkingAuthService, ApiworkingClientsService, ApiworkingSalesService, ApiworkingCashService, ApiworkingContingencyService, ApiworkingWhatsappService],
-  exports: [ApiworkingSessionStore, ApiworkingClient],
+  exports: [ApiworkingSessionStore, ApiworkingClient, ApiworkingWhatsappService],
 })
 export class ApiworkingModule {}

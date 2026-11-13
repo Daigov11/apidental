@@ -1055,6 +1055,49 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     scenario.wa = 'none';
   });
 
+  it('al confirmar una cita, el paciente recibe un WhatsApp: confirmada, horario y cómo reagendar (una vez); sin vincular, se confirma igual', async () => {
+    scenario.waSend = 'ok';
+    const login = await enter();
+    const branch = await fx.branch(clinicId);
+    const t = (await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: branch.id }).expect(200)).body.accessToken as string;
+    const dentist = (await fx.userWithRole('DENTIST', { clinicId, branchId: branch.id })).user;
+    const author = (await ctx.db.user.findFirstOrThrow()).id;
+    const room = (await ctx.db.room.create({ data: { clinicId, branchId: branch.id, name: 'Consultorio C' } as never })) as { id: string };
+    const svc = await ctx.db.agendaService.create({ data: { clinicId, name: `Consulta ${randomUUID().slice(0, 6)}`, durationMinutes: 30 } });
+    const mkAppt = async (mobile: string | null, day: number) => {
+      const patient = await ctx.db.patient.create({ data: { clinicId, firstName: 'Ana', lastName: 'Confirma', createdById: author } });
+      if (mobile) await ctx.db.patientContact.create({ data: { clinicId, patientId: patient.id, type: 'MOBILE', value: mobile, valueKey: mobile, isPrimary: true, createdById: author } as never });
+      const startsAt = new Date(`${new Date(Date.now() + day * 86_400_000).toISOString().slice(0, 10)}T14:00:00.000Z`); // 09:00 en Lima
+      return ctx.db.appointment.create({ data: { clinicId, branchId: branch.id, patientId: patient.id, dentistUserId: dentist.id, roomId: room.id, serviceId: svc.id, startsAt, endsAt: new Date(startsAt.getTime() + 1_800_000), createdById: author } });
+    };
+
+    // WhatsApp vinculado: el aviso sale con el horario y el número de la clínica para reagendar.
+    scenario.wa = 'connected';
+    const a1 = await mkAppt('987111222', 3);
+    const r1 = (await ctx.http().post(`/v1/appointments/${a1.id}/confirm`).set(bearer(t)).send({ expectedVersion: 1 }).expect(200)).body;
+    expect(r1).toMatchObject({ status: 'CONFIRMED', whatsapp: { status: 'SENT' } });
+    const msg = seen.filter((x) => x.path === '/api/Whatsapp/messages/send').at(-1)!.body as { recipient: string; content: { text: string } };
+    expect(msg.recipient).toBe('+51987111222');
+    expect(msg.content.text).toContain('ha sido confirmada');
+    expect(msg.content.text).toContain('Le esperamos de 09:00 a 09:30');
+    expect(msg.content.text).toContain(svc.name);
+    expect(msg.content.text).toContain('comuníquese por WhatsApp o llámenos al +51999888777 para reagendar');
+    const sent = await ctx.db.auditLog.count({ where: { action: 'WHATSAPP_SENT', AND: [{ summary: { path: '$.refId', equals: a1.id } }, { summary: { path: '$.context', equals: 'appointment_confirmed' } }] } });
+    expect(sent).toBe(1);
+    expect((await ctx.db.auditLog.findFirstOrThrow({ where: { action: 'WHATSAPP_SENT', AND: [{ summary: { path: '$.refId', equals: a1.id } }] } })).summary).toMatchObject({ at: a1.startsAt.toISOString() });
+
+    // Sin celular: se confirma y se omite el aviso con el motivo.
+    const a2 = await mkAppt(null, 4);
+    const r2 = (await ctx.http().post(`/v1/appointments/${a2.id}/confirm`).set(bearer(t)).send({ expectedVersion: 1 }).expect(200)).body;
+    expect(r2).toMatchObject({ status: 'CONFIRMED', whatsapp: { status: 'SKIPPED', message: 'el paciente no tiene un celular registrado' } });
+
+    // Sin vincular: se confirma igual.
+    scenario.wa = 'none';
+    const a3 = await mkAppt('987333444', 5);
+    const r3 = (await ctx.http().post(`/v1/appointments/${a3.id}/confirm`).set(bearer(t)).send({ expectedVersion: 1 }).expect(200)).body;
+    expect(r3).toMatchObject({ status: 'CONFIRMED', whatsapp: { status: 'SKIPPED', message: 'WhatsApp de la clínica no está vinculado' } });
+  });
+
   it('busca los nombres por DNI para precargar al paciente: usa lo que ya hay y solo consulta ClienteDoc si falta', async () => {
     const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
     const savedCap = appCfg.maxRealOperations;

@@ -23,7 +23,7 @@ export class WhatsappSendDto {
   @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value)) @Matches(/^\+?[\d\s()-]{8,20}$/, { message: 'Celular inválido' }) phone!: string;
   @IsString() @MinLength(1) @MaxLength(1000) text!: string;
   /** De qué se trata el mensaje (para la auditoría). */
-  @IsOptional() @IsIn(['sale', 'appointment', 'other']) context?: 'sale' | 'appointment' | 'other';
+  @IsOptional() @IsIn(['sale', 'appointment', 'appointment_confirmed', 'other']) context?: 'sale' | 'appointment' | 'appointment_confirmed' | 'other';
   @IsOptional() @IsUUID() refId?: string;
 }
 
@@ -128,7 +128,8 @@ export class ApiworkingWhatsappService {
     return out;
   }
 
-  async send(principal: AuthPrincipal, dto: WhatsappSendDto, meta: RequestMeta) {
+  /** `extra`: datos adicionales para la auditoría (p. ej. el horario de la cita avisada). Nunca el texto. */
+  async send(principal: AuthPrincipal, dto: WhatsappSendDto, meta: RequestMeta, extra: Record<string, unknown> = {}) {
     const { clinicId, branchId } = clinicScope(principal);
     const recipient = toRecipient(dto.phone);
     if (!recipient) throw new BadRequestException('Celular inválido: use 9 dígitos o el número con código de país');
@@ -143,7 +144,7 @@ export class ApiworkingWhatsappService {
     if (st.status === 'banned') throw new ConflictException({ message: 'WhatsApp bloqueó el número de la clínica: vincule otro número', code: 'WHATSAPP_BANNED' });
     if (st.status !== 'connected') throw new ConflictException({ message: 'WhatsApp no está vinculado: pida al administrador que vincule el teléfono (menú WhatsApp)', code: 'WHATSAPP_NOT_LINKED' });
 
-    const summary = { recipient, length: text.length, context: dto.context ?? 'other', refId: dto.refId ?? null };
+    const summary = { recipient, length: text.length, context: dto.context ?? 'other', refId: dto.refId ?? null, ...extra };
     const log = (action: string, extra: Record<string, unknown>) =>
       this.audit.recordSafely({ action, entity: 'Whatsapp', entityId: phoneLabel, userId: principal.user.id, clinicId, branchId, meta, summary: { ...summary, ...extra } });
     let res: unknown;
@@ -179,6 +180,52 @@ export class ApiworkingWhatsappService {
     const r = typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : {};
     const inner = (typeof r['data'] === 'object' && r['data'] !== null ? r['data'] : r) as Record<string, unknown>;
     return { messageId, status: optText(inner, 'status') || optText(inner, 'state') || null };
+  }
+
+  /**
+   * Aviso automático al CONFIRMAR una cita (reserva web o presencial): «su cita ha sido confirmada», horario en que se le espera y
+   * que se comunique por WhatsApp o llame (al número vinculado de la clínica) para reagendar. Nunca falla la confirmación: devuelve
+   * qué pasó (enviado, no confirmado u omitido con el motivo). Una sola vez por cita.
+   */
+  async notifyAppointmentConfirmed(principal: AuthPrincipal, appointmentId: string, meta: RequestMeta): Promise<{ status: 'SENT' | 'UNCONFIRMED' | 'SKIPPED' | 'FAILED'; message: string }> {
+    const cfg = this.config.apiworking;
+    if (this.config.authMode !== 'apiworking' || !cfg.configured || !cfg.whatsapp) return { status: 'SKIPPED', message: 'WhatsApp no está activo en esta instalación' };
+    if (!this.store.get(principal.sessionId)) return { status: 'SKIPPED', message: 'sin sesión de Apiworking' };
+    try {
+      const { clinicId } = clinicScope(principal);
+      const a = await this.db.appointment.findFirst({
+        where: { id: appointmentId, clinicId },
+        include: { patient: { select: { firstName: true } }, dentist: { select: { firstName: true, lastName: true } }, service: { select: { name: true } }, branch: { select: { name: true, address: true } } },
+      });
+      if (!a) return { status: 'SKIPPED', message: 'cita no encontrada' };
+      // Una vez por cita y horario: si se reprograma y se vuelve a confirmar, el paciente recibe el nuevo horario.
+      const at = a.startsAt.toISOString();
+      const already = await this.db.auditLog.count({ where: { action: 'WHATSAPP_SENT', clinicId, AND: [{ summary: { path: '$.refId', equals: appointmentId } }, { summary: { path: '$.context', equals: 'appointment_confirmed' } }, { summary: { path: '$.at', equals: at } }] } });
+      if (already > 0) return { status: 'SKIPPED', message: 'el aviso de esta cita ya se envió' };
+      const contact = await this.db.patientContact.findFirst({ where: { clinicId, patientId: a.patientId, type: 'MOBILE', status: 'ACTIVE' }, orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }], select: { value: true } });
+      const request = contact ? null : await this.db.bookingRequest.findFirst({ where: { appointmentId: a.id }, select: { mobile: true } });
+      const phone = contact?.value ?? request?.mobile ?? null;
+      if (!phone || !toRecipient(phone)) return { status: 'SKIPPED', message: 'el paciente no tiene un celular registrado' };
+      const st = await this.status(principal);
+      if (st.status !== 'connected') return { status: 'SKIPPED', message: 'WhatsApp de la clínica no está vinculado' };
+      const clinic = await this.db.clinic.findUnique({ where: { id: clinicId }, select: { name: true, brandDisplayName: true } });
+      const text = confirmationText({
+        firstName: a.patient.firstName,
+        clinicName: clinic?.brandDisplayName || clinic?.name || 'la clínica',
+        startsAt: a.startsAt,
+        endsAt: a.endsAt,
+        service: a.service.name,
+        dentist: `${a.dentist.firstName} ${a.dentist.lastName}`.trim(),
+        branch: a.branch.name,
+        address: a.branch.address,
+        clinicPhone: st.phoneNumber,
+      });
+      const r = await this.send(principal, { phone, text, context: 'appointment_confirmed', refId: a.id }, meta, { at });
+      return r.status === 'SENT' ? { status: 'SENT', message: 'se avisó al paciente por WhatsApp' } : { status: 'UNCONFIRMED', message: r.message };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : '';
+      return { status: 'FAILED', message: clip(msg) || 'no se pudo enviar el WhatsApp' };
+    }
   }
 
   /**
@@ -221,14 +268,28 @@ export class ApiworkingWhatsappService {
       if (!a) throw new NotFoundException('Cita no encontrada');
       const day = new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima', weekday: 'long', day: 'numeric', month: 'long' }).format(a.startsAt);
       const time = new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false }).format(a.startsAt);
+      const clinicPhone = await this.status(principal).then((x) => x.phoneNumber).catch(() => null);
       const text = [
         `Hola ${a.patient.firstName}, le recordamos su cita en ${clinicName}:`,
         `${day} a las ${time}, ${a.service.name} con ${a.dentist.firstName} ${a.dentist.lastName}.`,
-        `Sede: ${a.branch.name}${a.branch.address ? ` (${a.branch.address})` : ''}.`,
-        'Si no puede asistir, por favor avísenos respondiendo este mensaje.',
+        `Le esperamos de ${time} a ${limaTime(a.endsAt)} en la sede ${a.branch.name}${a.branch.address ? ` (${a.branch.address})` : ''}.`,
+        `Si no puede asistir, comuníquese por WhatsApp o llámenos${clinicPhone ? ` al ${clinicPhone}` : ''} para reagendar.`,
       ].join('\n');
       return { phone: await mobileOf(a.patientId), text, context: 'appointment' as const, refId: a.id, hasLink: false };
     }
     throw new BadRequestException('Indique la venta o la cita');
   }
+}
+
+const limaTime = (d: Date) => new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+const limaDay = (d: Date) => new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima', weekday: 'long', day: 'numeric', month: 'long' }).format(d);
+
+/** Texto del aviso de cita confirmada: horario en que se le espera y cómo reagendar (WhatsApp o llamada). */
+export function confirmationText(i: { firstName: string; clinicName: string; startsAt: Date; endsAt: Date; service: string; dentist: string; branch: string; address: string | null; clinicPhone: string | null }): string {
+  return [
+    `Hola ${i.firstName}, su cita en ${i.clinicName} ha sido confirmada.`,
+    `${limaDay(i.startsAt)}: ${i.service} con ${i.dentist}.`,
+    `Le esperamos de ${limaTime(i.startsAt)} a ${limaTime(i.endsAt)} en la sede ${i.branch}${i.address ? ` (${i.address})` : ''}.`,
+    `Si no puede asistir, comuníquese por WhatsApp o llámenos${i.clinicPhone ? ` al ${i.clinicPhone}` : ''} para reagendar.`,
+  ].join('\n');
 }

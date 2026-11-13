@@ -1,3 +1,4 @@
+import { ApiworkingWhatsappService } from '../apiworking/apiworking-whatsapp.service.js';
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { CurrentPrincipal } from '../common/decorators/current-principal.decorator.js';
@@ -68,7 +69,7 @@ export class AgendaController {
 
 @Controller('appointments')
 export class AppointmentsController {
-  constructor(private readonly appointments: AppointmentsService) {}
+  constructor(private readonly appointments: AppointmentsService, private readonly whatsapp: ApiworkingWhatsappService) {}
 
   @Get() @RequirePermissions('appointment:read')
   list(@CurrentPrincipal() a: AuthPrincipal, @Query() q: ListAppointmentsQuery) { return this.appointments.list(a, q); }
@@ -78,8 +79,13 @@ export class AppointmentsController {
   get(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string) { return this.appointments.get(a, id); }
   @Patch(':id') @RequirePermissions('appointment:manage')
   notes(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string, @Body() dto: UpdateNotesDto, @Meta() m: RequestMeta) { return this.appointments.updateNotes(a, id, dto, m); }
+  /** Confirma la cita y, con WhatsApp vinculado, avisa al paciente (nunca falla la confirmación por el aviso). */
   @Post(':id/confirm') @HttpCode(200) @RequirePermissions('appointment:manage')
-  confirm(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string, @Body() dto: VersionDto, @Meta() m: RequestMeta) { return this.appointments.confirm(a, id, dto, m); }
+  async confirm(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string, @Body() dto: VersionDto, @Meta() m: RequestMeta) {
+    const appt = await this.appointments.confirm(a, id, dto, m);
+    const whatsapp = await this.whatsapp.notifyAppointmentConfirmed(a, id, m);
+    return { ...appt, whatsapp };
+  }
   @Post(':id/reschedule') @HttpCode(200) @RequirePermissions('appointment:manage')
   reschedule(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string, @Body() dto: RescheduleAppointmentDto, @Meta() m: RequestMeta) { return this.appointments.reschedule(a, id, dto, m); }
   @Post(':id/cancel') @HttpCode(200) @RequirePermissions('appointment:manage')

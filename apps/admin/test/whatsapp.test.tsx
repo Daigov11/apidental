@@ -71,6 +71,31 @@ describe('WhatsApp', () => {
     expect(await screen.findByText('Mensaje enviado por WhatsApp.')).toBeInTheDocument();
   });
 
+  it('al confirmar una cita, avisa si el paciente recibió el WhatsApp o por qué no', async () => {
+    const APPT = {
+      id: 'ap-2', branchId: 'b-1', status: 'RESERVED', statusLabel: 'Reservado', startsAt: '2026-11-20T15:00:00.000Z', endsAt: '2026-11-20T15:30:00.000Z', date: '2026-11-20', time: '10:00', durationMinutes: 30,
+      patient: { id: 'p-1', name: 'Lucía Web', mobile: '987654321' }, dentist: { userId: 'd-1', name: 'Gina' }, room: { id: 'r-1', name: 'C1' }, service: { id: 's-1', name: 'Control', durationMinutes: 30 },
+      notes: 'Solicitud web W-1', cancelReason: null, noShowReason: null, rescheduledCount: 0, version: 1, hasVisit: false,
+      actions: { confirm: true, reschedule: true, cancel: true, noShow: false, editNotes: true, startAttention: false, openVisit: false },
+    };
+    const CAL = { from: '2026-11-20', to: '2026-11-20', dentists: [{ userId: 'd-1', name: 'Gina' }], rooms: [{ id: 'r-1', branchId: 'b-1', name: 'C1' }], windows: [], blocks: [], appointments: [{ id: 'ap-2', dentistUserId: 'd-1', roomId: 'r-1', startsAt: APPT.startsAt, endsAt: APPT.endsAt, status: 'RESERVED', statusLabel: 'Reservado', service: 'Control', patient: { id: 'p-1', name: 'Lucía Web' } }] };
+    let whatsapp = { status: 'SENT', message: 'se avisó al paciente por WhatsApp' };
+    const { called } = mockApi(base([...ADMIN, 'appointment:read', 'appointment:manage'], {
+      'GET /agenda/calendar': { json: CAL },
+      'GET /appointments/ap-2': { json: APPT },
+      'POST /appointments/ap-2/confirm': () => ({ json: { ...APPT, status: 'CONFIRMED', whatsapp } }),
+    }));
+    renderApp('/agenda?date=2026-11-20');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: /Lucía Web/ }));
+    await user.click(await screen.findByRole('button', { name: 'Confirmar' }));
+    expect(await screen.findByText('Cita confirmada. Se avisó al paciente por WhatsApp.')).toBeInTheDocument();
+    expect(called('POST', '/appointments/ap-2/confirm')[0]?.body).toEqual({ expectedVersion: 1 });
+    whatsapp = { status: 'SKIPPED', message: 'WhatsApp de la clínica no está vinculado' };
+    await user.click(screen.getByRole('button', { name: 'Confirmar' }));
+    expect(await screen.findByText('Cita confirmada. No se envió WhatsApp: WhatsApp de la clínica no está vinculado.')).toBeInTheDocument();
+  });
+
   it('un envío no confirmado avisa y no deja reenviar desde el mismo diálogo', async () => {
     const SALE = { id: 's-1', description: 'Curación', customer: { name: 'MARCO', docType: 'DNI', docNumber: '1' }, totalCents: 1000, totalText: 'S/ 10.00', lines: [], docDate: '2026-11-13', serie: 'B001', docStatus: 'SENT', docStatusLabel: 'Registrado', paymentStatus: 'CONFIRMED_REMOTE', paymentStatusLabel: 'Pagado', voidStatus: null, voidStatusLabel: null, externalDocId: '1', externalNumber: 'B001-1', failureReason: null, attemptedAt: null, createdAt: '2026-11-13T15:00:00.000Z', actions: { issue: false, verify: false, reconcile: false, pay: false, void: false } };
     const { called } = mockApi(base(ADMIN, {
