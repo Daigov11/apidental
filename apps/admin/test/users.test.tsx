@@ -89,6 +89,25 @@ describe('Usuarios', () => {
     expect(await screen.findByText(/Contraseña cambiada/)).toBeInTheDocument();
   });
 
+  it('da acceso con Apiworking a quien entraba con correo: usuario sencillo sugerido y clave 123456', async () => {
+    const { called } = mockApi(routes(ADMIN, { 'POST /users/u-2/apiworking-access': { json: { ok: true, username: 'ana.rojas' } } }) as never);
+    renderApp('/usuarios');
+    const user = userEvent.setup();
+    const row = (await screen.findByText('ana@clinica.pe')).closest('tr')!;
+    await user.click(within(row).getByRole('button', { name: 'Dar acceso con Apiworking' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Dar acceso con Apiworking' });
+    expect(within(dialog).getByLabelText(/Usuario de Apiworking/)).toHaveValue('ana.rojas');
+    expect(within(dialog).getByLabelText(/^Correo/)).toHaveValue('ana@clinica.pe');
+    expect(within(dialog).getByLabelText(/^Contraseña/)).toHaveValue('123456');
+    await user.click(within(dialog).getByRole('button', { name: 'Crear acceso' }));
+    await waitFor(() => expect(called('POST', '/users/u-2/apiworking-access')).toHaveLength(1));
+    expect(called('POST', '/users/u-2/apiworking-access')[0]?.body).toEqual({ username: 'ana.rojas', password: '123456', email: 'ana@clinica.pe' });
+    expect(await screen.findByText(/ingresa con el usuario «ana.rojas»/)).toBeInTheDocument();
+    // Las cuentas que ya entran con Apiworking no lo ofrecen.
+    const aw = screen.getByText('luis.caja').closest('tr')!;
+    expect(within(aw).queryByRole('button', { name: 'Dar acceso con Apiworking' })).not.toBeInTheDocument();
+  });
+
   it('asigna un rol a una cuenta de Apiworking sin rol', async () => {
     const { called } = mockApi(routes(ADMIN, { 'POST /assignments': { status: 201, json: { id: 'as-9' } } }) as never);
     renderApp('/usuarios');

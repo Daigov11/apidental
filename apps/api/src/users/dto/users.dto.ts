@@ -40,3 +40,11 @@ export class CreateUserDto extends GrantDto {
 export class ResetPasswordDto {
   @IsOptional() @IsString() @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' }) @MaxLength(128) password?: string;
 }
+
+/** Dar acceso con Apiworking a un usuario que hoy ingresa con correo (conserva su historial y su rol). */
+export class ApiworkingAccessDto {
+  @Transform(trim) @Matches(/^[A-Za-z0-9._-]{3,30}$/, { message: 'Usuario inválido: de 3 a 30 letras, números, punto, guion o guion bajo' }) username!: string;
+  @IsString() @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' }) @MaxLength(128) password!: string;
+  /** Correo para Apiworking; si se omite, el del usuario. */
+  @IsOptional() @Transform(trim) @IsEmail({}, { message: 'Correo inválido' }) @MaxLength(254) email?: string;
+}

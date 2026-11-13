@@ -6,7 +6,7 @@ import { PaginationQuery } from '../common/dto/pagination.dto.js';
 import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
 import { AssignmentsService } from './assignments.service.js';
 import { UserStatusChangeDto } from './dto/user-status.dto.js';
-import { CreateAssignmentDto, CreateUserDto, ResetPasswordDto } from './dto/users.dto.js';
+import { ApiworkingAccessDto, CreateAssignmentDto, CreateUserDto, ResetPasswordDto } from './dto/users.dto.js';
 import { UserAccountsService } from './user-accounts.service.js';
 import { UserStatusService } from './user-status.service.js';
 import { UsersService } from './users.service.js';
@@ -45,6 +45,19 @@ export class UsersController {
     @Meta() meta: RequestMeta,
   ) {
     return this.accounts.resetPassword(actor, id, dto, meta);
+  }
+
+  /** Clínicas con Apiworking: crea la cuenta en Apiworking para alguien que ingresaba con correo y la enlaza a la misma persona. */
+  @Post('users/:id/apiworking-access')
+  @HttpCode(200)
+  @RequirePermissions('user:manage')
+  apiworkingAccess(
+    @CurrentPrincipal() actor: AuthPrincipal,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: ApiworkingAccessDto,
+    @Meta() meta: RequestMeta,
+  ) {
+    return this.accounts.grantApiworkingAccess(actor, id, dto, meta);
   }
 
   /**

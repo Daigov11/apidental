@@ -1162,6 +1162,26 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     expect(gen.password).toMatch(/^[A-Za-z0-9]{10}$/);
   });
 
+  it('dar acceso con Apiworking a quien entraba con correo: misma persona (rol e historial), usuario sencillo y clave 123456', async () => {
+    scenario.createUser = 'ok';
+    const login = await enter();
+    const t = (await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200)).body.accessToken as string;
+    const local = await fx.user({ email: `prueba.odontologa.${randomUUID().slice(0, 6)}@clinica.pe` });
+    await fx.assign(local.id, 'DENTIST', { clinicId });
+    const r = (await ctx.http().post(`/v1/users/${local.id}/apiworking-access`).set(bearer(t)).send({ username: 'odontologa2', password: '123456' }).expect(200)).body;
+    expect(r).toEqual({ ok: true, username: 'odontologa2' });
+    expect(seen.filter((x) => x.path === '/api/User').at(-1)!.body).toEqual({ apellidos: 'Apellido', nombres: 'Nombre', usuario: 'odontologa2', email: local.email, clave: '123456' });
+    // Entra con su usuario de Apiworking y es la MISMA persona, con su rol.
+    const first = await ctx.http().post('/v1/auth/apiworking-login').send({ usuario: 'odontologa2', password: '123456' }).expect(200);
+    expect(first.body.user.id).toBe(local.id);
+    expect(first.body.pendingAccess).toBe(false);
+    // Ya enlazado, clave corta, sobre sí mismo.
+    expect((await ctx.http().post(`/v1/users/${local.id}/apiworking-access`).set(bearer(t)).send({ username: 'otro2', password: '123456' })).body.code).toBe('ALREADY_LINKED');
+    const other = await fx.user();
+    await fx.assign(other.id, 'CASHIER', { clinicId });
+    await ctx.http().post(`/v1/users/${other.id}/apiworking-access`).set(bearer(t)).send({ username: 'cajero2', password: '12345' }).expect(400);
+  });
+
   it('busca los nombres por DNI para precargar al paciente: usa lo que ya hay y solo consulta ClienteDoc si falta', async () => {
     const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
     const savedCap = appCfg.maxRealOperations;

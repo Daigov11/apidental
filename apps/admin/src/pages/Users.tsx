@@ -32,6 +32,7 @@ export function UsersPage() {
   const [resetOf, setResetOf] = useState<SystemUser | null>(null);
   const [assignOf, setAssignOf] = useState<SystemUser | null>(null);
   const [statusOf, setStatusOf] = useState<{ user: SystemUser; op: 'disable' | 'reactivate' } | null>(null);
+  const [accessOf, setAccessOf] = useState<SystemUser | null>(null);
 
   const revoke = async (u: SystemUser, a: Assignment) => {
     try { await patch(`/assignments/${a.id}/revoke`); toast.success(`Se quitó el rol ${a.role.name} a ${u.firstName}.`); }
@@ -92,6 +93,7 @@ export function UsersPage() {
                         <div className="chip-row">
                           {canAssign && u.status === 'ACTIVE' && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setAssignOf(u)}>Asignar rol</Button>}
                           {canManage && authMode !== 'apiworking' && !u.externalIdentity && u.status === 'ACTIVE' && <Button size="sm" icon={<KeyRound size={16} aria-hidden="true" />} onClick={() => setResetOf(u)}>Restablecer contraseña</Button>}
+                          {canManage && authMode === 'apiworking' && !u.externalIdentity && u.status === 'ACTIVE' && <Button size="sm" variant="primary" icon={<KeyRound size={16} aria-hidden="true" />} onClick={() => setAccessOf(u)}>Dar acceso con Apiworking</Button>}
                           {canManage && u.status === 'ACTIVE' && <Button size="sm" variant="danger" onClick={() => setStatusOf({ user: u, op: 'disable' })}>Desactivar</Button>}
                           {canManage && u.status === 'DISABLED' && <Button size="sm" onClick={() => setStatusOf({ user: u, op: 'reactivate' })}>Reactivar</Button>}
                         </div>
@@ -136,6 +138,12 @@ export function UsersPage() {
         />
       )}
       {reveal && <PasswordReveal {...reveal} onClose={() => setReveal(null)} />}
+      {accessOf && (
+        <AccessDialog
+          user={accessOf} onClose={() => setAccessOf(null)}
+          onDone={(username) => { setAccessOf(null); users.reload(); toast.success(`Listo: ${accessOf.firstName} ingresa con el usuario «${username}» de Apiworking.`); }}
+        />
+      )}
     </>
   );
 }
@@ -228,6 +236,37 @@ function AssignDialog({ user, roles, onClose, onDone }: { user: SystemUser; role
         <option value="">Elija el rol</option>
         {roles.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
       </SelectField>
+    </Dialog>
+  );
+}
+
+/** Usuario corto sugerido: nombre y primer apellido, sin tildes ni espacios (p. ej. «valeria.demo»). */
+const suggestUsername = (u: SystemUser) => {
+  const norm = (x: string) => x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return [norm(u.firstName.split(/\s+/)[0] ?? ''), norm(u.lastName.split(/\s+/)[0] ?? '')].filter(Boolean).join('.').slice(0, 30);
+};
+
+/** Da acceso con Apiworking a quien hoy entra con correo: crea su cuenta en Apiworking y la enlaza a la misma persona (conserva su historial). */
+function AccessDialog({ user, onClose, onDone }: { user: SystemUser; onClose: () => void; onDone: (username: string) => void }) {
+  const [username, setUsername] = useState(suggestUsername(user));
+  const [email, setEmail] = useState(user.email.endsWith('.invalid') ? '' : user.email);
+  const [password, setPassword] = useState('123456');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const invalid = !/^[A-Za-z0-9._-]{3,30}$/.test(username.trim()) || password.length < 6 || !/^\S+@\S+\.\S+$/.test(email.trim());
+  const submit = async () => {
+    if (invalid || busy) return;
+    setBusy(true); setError(null);
+    try { const r = await post<{ username: string }>(`/users/${user.id}/apiworking-access`, { username: username.trim(), password, email: email.trim() }); onDone(r.username); }
+    catch (e) { setError(errorText(e)); setBusy(false); }
+  };
+  return (
+    <Dialog title="Dar acceso con Apiworking" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={invalid} loading={busy} loadingText="Creando…" onClick={() => void submit()}>Crear acceso</Button></>}>
+      <p>Se crea la cuenta de Apiworking de <strong>{user.firstName} {user.lastName}</strong>. Seguirá siendo la misma persona en el sistema: conserva sus citas, atenciones y rol.</p>
+      {error && <Alert tone="danger">{error}</Alert>}
+      <TextField label="Usuario de Apiworking" help="Con este usuario ingresará. De 3 a 30 letras, números, punto o guion; sin espacios." autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))} />
+      <TextField label="Correo" help="Se registra en Apiworking." type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+      <TextField label="Contraseña" help="Mínimo 6 caracteres. Entréguesela a la persona." type="text" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
     </Dialog>
   );
 }

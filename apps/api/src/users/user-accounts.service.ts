@@ -146,6 +146,71 @@ export class UserAccountsService {
     return { user, username, ...(generated ? { password } : {}) };
   }
 
+  /**
+   * Da acceso con Apiworking a un usuario que hoy ingresa con correo: crea su cuenta en Apiworking (POST /api/User) y la enlaza a la
+   * MISMA persona (conserva citas, atenciones y roles). Mismas reglas de alcance y anti-escalada que restablecer la contraseña.
+   */
+  async grantApiworkingAccess(actor: AuthPrincipal, targetId: string, dto: { username: string; password: string; email?: string }, meta: RequestMeta) {
+    if (this.config.authMode !== 'apiworking') throw new BadRequestException('Esta clínica no usa Apiworking');
+    const tenant = this.config.apiworking.expectedDatabase;
+    if (!tenant) throw new BadRequestException('Apiworking no está configurado en esta instalación');
+    const target = await this.checkTarget(actor, targetId, meta);
+    if (target.externalIdentity) throw new ConflictException({ message: 'Ese usuario ya ingresa con Apiworking', code: 'ALREADY_LINKED' });
+    const user = await this.db.user.findUniqueOrThrow({ where: { id: targetId }, select: { email: true, firstName: true, lastName: true } });
+    const email = (dto.email ?? user.email).trim().toLowerCase();
+    if (email.endsWith('.invalid')) throw new BadRequestException('Indique un correo para la cuenta de Apiworking');
+    const username = dto.username.trim();
+    const taken = await this.db.externalIdentity.findFirst({ where: { provider: 'APIWORKING', tenant, externalUsername: username }, select: { id: true } });
+    if (taken) throw new ConflictException({ message: 'Ese usuario de Apiworking ya existe en este sistema', code: 'USERNAME_TAKEN' });
+    const session = this.externalSessions.get(actor.sessionId);
+    if (!session) throw new ConflictException({ message: 'Vuelva a iniciar sesión con su cuenta de Apiworking', code: 'APIWORKING_SESSION_REQUIRED' });
+    let data: unknown;
+    try {
+      data = await this.client.call('createUser', { token: session.token, body: { apellidos: user.lastName, nombres: user.firstName, usuario: username, email, clave: dto.password } });
+    } catch (error) {
+      if (error instanceof ApiworkingError && (error.kind === 'UNKNOWN_RESULT' || error.kind === 'BAD_RESPONSE')) {
+        throw new ConflictException({ message: 'No se pudo confirmar si Apiworking creó el usuario. Revíselo en Apiworking antes de intentarlo otra vez.', code: 'APIWORKING_UNCONFIRMED' });
+      }
+      if (error instanceof ApiworkingError) throw new UnprocessableEntityException({ message: clip(error.message) || 'Apiworking rechazó el usuario', code: 'APIWORKING_REJECTED' });
+      throw error;
+    }
+    const record = Array.isArray(data) ? data[0] : data;
+    const r = typeof record === 'object' && record !== null ? (record as Record<string, unknown>) : {};
+    const rawId = ['id_usuario', 'idUsuario', 'id'].map((k) => r[k]).find((v) => (typeof v === 'string' && v.trim()) || typeof v === 'number');
+    const externalUserId = rawId !== undefined ? String(rawId).trim().slice(0, 40) : pendingExternalId(username);
+    await this.db.$transaction(async (tx) => {
+      await tx.externalIdentity.create({ data: { userId: targetId, provider: 'APIWORKING', tenant, externalUserId, externalUsername: username, lastLoginAt: new Date(0) } });
+      await this.audit.record({ action: 'USER_APIWORKING_ACCESS_GRANTED', entity: 'User', entityId: targetId, userId: actor.user.id, clinicId: actor.context!.clinicId, branchId: actor.context!.branchId, meta, summary: { linked: rawId !== undefined } }, tx);
+    });
+    return { ok: true, username };
+  }
+
+  /** Alcance y anti-escalada para actuar sobre otra cuenta (restablecer contraseña o dar acceso). */
+  private async checkTarget(actor: AuthPrincipal, targetId: string, meta: RequestMeta) {
+    if (targetId === actor.user.id) throw new ForbiddenException('No puede hacerlo sobre su propia cuenta');
+    const ctx = actor.context!;
+    const target = await this.db.user.findUnique({
+      where: { id: targetId },
+      select: {
+        id: true,
+        externalIdentity: { select: { id: true } },
+        assignments: { where: { status: 'ACTIVE' }, select: { clinicId: true, branchId: true, role: { select: { code: true, permissions: { select: { permission: { select: { code: true } } } } } } } },
+      },
+    });
+    if (!target) throw new NotFoundException('Usuario no encontrado');
+    const inScope = (a: { clinicId: string | null; branchId: string | null }) =>
+      ctx.clinicId === null || (a.clinicId === ctx.clinicId && (!ctx.branchId || a.branchId === null || a.branchId === ctx.branchId));
+    if (ctx.clinicId !== null && !target.assignments.some(inScope)) throw new NotFoundException('Usuario no encontrado');
+    const attendance = CARE_ATTENDANCE_PERMISSIONS as readonly string[];
+    const stronger = target.assignments.some((a) => a.clinicId === null && ctx.clinicId !== null)
+      || target.assignments.some((a) => a.role.permissions.some((rp) => !actor.permissions.has(rp.permission.code) && !attendance.includes(rp.permission.code)));
+    if (stronger) {
+      await this.audit.recordSafely({ action: AuditAction.EscalationBlocked, entity: 'User', entityId: targetId, userId: actor.user.id, clinicId: ctx.clinicId, branchId: ctx.branchId, meta, summary: { reason: 'stronger_account' } });
+      throw new ForbiddenException('No puede actuar sobre una cuenta con más permisos que los suyos');
+    }
+    return target;
+  }
+
   async resetPassword(actor: AuthPrincipal, targetId: string, dto: { password?: string }, meta: RequestMeta) {
     if (targetId === actor.user.id) {
       throw new ForbiddenException('Para cambiar su propia contraseña use «¿Olvidó su contraseña?» en el ingreso');

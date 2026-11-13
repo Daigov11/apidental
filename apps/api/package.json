@@ -24,6 +24,7 @@
     "db:create-clinic": "tsx prisma/create-clinic.ts",
     "db:grant-role": "tsx prisma/grant-role.ts",
     "db:create-test-agenda": "tsx prisma/create-test-agenda.ts",
+    "db:demo-simple-logins": "tsx prisma/demo-simple-logins.ts",
     "maintenance": "node dist/maintenance/cli.js",
     "maintenance:dry-run": "node dist/maintenance/cli.js --dry-run",
     "db:demo-hoy": "tsx prisma/shift-demo-today.ts"
