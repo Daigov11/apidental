@@ -2,7 +2,7 @@ import { randomInt } from 'node:crypto';
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
-import { CARE_ATTENDANCE_PERMISSIONS } from '../auth/permissions.js';
+import { CARE_ATTENDANCE_PERMISSIONS, RETIRED_ROLE_CODES } from '../auth/permissions.js';
 import { SessionService } from '../auth/session.service.js';
 import { hashPassword } from '../common/utils/password.js';
 import type { RequestMeta } from '../common/utils/request-meta.js';
@@ -45,6 +45,7 @@ export class UserAccountsService {
   ) {
     // Mismas reglas que al asignar un rol: anti-escalada, nunca Director Clínico, dentro de la clínica y sede del administrador.
     const grant = await this.assignments.validateGrant(actor, { roleCode: dto.roleCode, clinicId: dto.clinicId, branchId: dto.branchId });
+    if (RETIRED_ROLE_CODES.includes(grant.roleCode)) throw new ForbiddenException('Ese rol ya no se usa: elija Administrador, Cajero u Odontólogo');
     const email = dto.email.trim().toLowerCase();
     if (await this.db.user.findUnique({ where: { email }, select: { id: true } })) {
       throw new ConflictException({ message: 'Ya existe un usuario con ese correo: asígnele el rol desde la lista', code: 'EMAIL_TAKEN' });

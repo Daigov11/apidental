@@ -1,5 +1,5 @@
 import { Transform, Type } from 'class-transformer';
-import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength, ValidateIf } from 'class-validator';
 import { PaginationQuery } from '../../common/dto/pagination.dto.js';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
@@ -103,7 +103,10 @@ export class CreateAppointmentDto {
   @IsUUID() branchId!: string;
   @IsUUID() serviceId!: string;
   @IsUUID() dentistUserId!: string;
-  @IsString() @MaxLength(40) startsAt!: string;
+  /// Obligatorio salvo en una cita al momento (`walkIn`), que empieza ahora.
+  @ValidateIf((o: { walkIn?: boolean }) => !o.walkIn) @IsString() @MaxLength(40) startsAt?: string;
+  /// Paciente que llega sin cita: la cita empieza ahora (redondeado a 5 min), queda confirmada y respeta el horario del odontólogo.
+  @IsOptional() @IsBoolean() walkIn?: boolean;
   /// Si se omite, el sistema elige el primer consultorio libre (el habitual del odontólogo primero).
   @IsOptional() @IsUUID() roomId?: string;
   /// Si se omite, la duración del servicio.

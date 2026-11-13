@@ -4,6 +4,7 @@ import {
   CLINICAL_PERMISSIONS,
   PATIENT_DATA_PERMISSIONS,
   PERMISSIONS,
+  RETIRED_ROLE_CODES,
   ROLE_DEFINITIONS,
 } from './permissions.js';
 
@@ -58,7 +59,7 @@ describe('catálogo RBAC', () => {
       expect(CARE_ATTENDANCE_PERMISSIONS as readonly string[]).toContain('clinical:view');
     });
 
-    it('care:assign (acto administrativo) lo tienen administración, recepción y Director; la plataforma, no', () => {
+    it('care:assign (acto administrativo) lo tienen administración, recepción y Director; la plataforma y la caja, no', () => {
       expect(holders('care:assign')).toEqual(['CLINICAL_DIRECTOR', 'CLINIC_ADMIN', 'RECEPTIONIST']);
     });
 
@@ -147,9 +148,15 @@ describe('catálogo RBAC', () => {
       }
     });
 
-    it('el cajero solo tiene lectura mínima de identificación/contacto', () => {
-      const patientPerms = perms('CASHIER').filter((p) => (PATIENT_DATA_PERMISSIONS as readonly string[]).includes(p));
-      expect(patientPerms).toEqual(['patient:read_basic']);
+    it('el cajero hace la recepción: agenda citas y registra pacientes con la vista mínima, sin consentimientos, adjuntos ni nada clínico', () => {
+      const patientPerms = perms('CASHIER').filter((p) => (PATIENT_DATA_PERMISSIONS as readonly string[]).includes(p)).sort();
+      expect(patientPerms).toEqual(['patient:read_basic', 'patient:write']);
+      expect(perms('CASHIER')).toEqual(expect.arrayContaining(['appointment:read', 'appointment:manage']));
+      expect(perms('CASHIER')).not.toContain('appointment:attend');
+    });
+
+    it('roles retirados: Recepcionista, Asistente y Director Clínico (siguen en el catálogo, no se asignan)', () => {
+      expect([...RETIRED_ROLE_CODES].sort()).toEqual(['ASSISTANT', 'CLINICAL_DIRECTOR', 'RECEPTIONIST']);
     });
 
     it('todo rol que lee la ficha completa también tiene la lectura mínima', () => {

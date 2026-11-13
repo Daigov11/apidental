@@ -151,8 +151,10 @@ export class AppointmentsService {
   async create(actor: AuthPrincipal, dto: CreateAppointmentDto, meta: RequestMeta) {
     const scope = agendaScope(actor);
     assertBranchAllowed(scope, dto.branchId);
-    const startsAt = parseInstant(dto.startsAt, 'La fecha y hora de la cita');
-    if (startsAt.getTime() < Date.now()) throw new BadRequestException('No se puede agendar en el pasado');
+    // Cita al momento: empieza ahora (redondeado hacia abajo a 5 min, la grilla de la agenda). Igual exige el horario del odontólogo.
+    const walkIn = Boolean(dto.walkIn);
+    const startsAt = walkIn ? new Date(Math.floor(Date.now() / 300_000) * 300_000) : parseInstant(dto.startsAt ?? '', 'La fecha y hora de la cita');
+    if (!walkIn && startsAt.getTime() < Date.now()) throw new BadRequestException('No se puede agendar en el pasado');
     if (dto.dentistUserId === actor.user.id) throw new ForbiddenException('No puede agendar citas a su propia agenda; lo debe hacer otra persona');
     await requirePatient(this.db, scope.clinicId, dto.patientId, { active: true });
     const branch = await this.db.branch.findFirst({ where: { id: dto.branchId, clinicId: scope.clinicId, status: 'ACTIVE' }, select: { id: true } });
@@ -174,12 +176,14 @@ export class AppointmentsService {
               data: {
                 clinicId: scope.clinicId, branchId: dto.branchId, patientId: dto.patientId, dentistUserId: dto.dentistUserId, roomId, serviceId: dto.serviceId,
                 startsAt, endsAt, notes: dto.notes || null, createdById: actor.user.id,
+                // El paciente ya está en la clínica: la cita al momento nace confirmada.
+                ...(walkIn ? { status: 'CONFIRMED' as const, confirmedById: actor.user.id, confirmedAt: new Date() } : {}),
               },
             });
             await this.occupy(tx, scope.clinicId, row.id, dto.dentistUserId, roomId, startsAt, endsAt);
             await this.audit.record({
               action: 'APPOINTMENT_CREATED', entity: 'Appointment', entityId: row.id, patientId: dto.patientId, userId: actor.user.id, clinicId: scope.clinicId, branchId: dto.branchId, meta,
-              summary: { dentistUserId: dto.dentistUserId, roomId, serviceId: dto.serviceId, startsAt: startsAt.toISOString(), durationMinutes: duration },
+              summary: { dentistUserId: dto.dentistUserId, roomId, serviceId: dto.serviceId, startsAt: startsAt.toISOString(), durationMinutes: duration, ...(walkIn ? { walkIn: true } : {}) },
             }, tx);
             return row.id;
           },

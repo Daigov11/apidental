@@ -12,7 +12,7 @@ import type { AuthPrincipal } from '../auth/auth.types.js';
 import type { RequestMeta } from '../common/utils/request-meta.js';
 import type { DbTx, PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
-import { CARE_ATTENDANCE_PERMISSIONS } from '../auth/permissions.js';
+import { CARE_ATTENDANCE_PERMISSIONS, RETIRED_ROLE_CODES } from '../auth/permissions.js';
 import { endCareRelationshipsOf } from '../clinical/care-ending.js';
 import { assignmentKey } from './assignment-key.js';
 import {
@@ -313,6 +313,10 @@ export class AssignmentsService {
       );
     }
     const validated = await this.validateGrant(actor, grant);
+    // Después de las reglas generales (plataforma, Director, anti-escalada), que dan un motivo más preciso.
+    if (RETIRED_ROLE_CODES.includes(validated.roleCode)) {
+      throw new ForbiddenException('Ese rol ya no se usa: asigne Administrador, Cajero u Odontólogo');
+    }
     const user = await this.db.user.findUnique({
       where: { id: userId },
       select: { id: true },

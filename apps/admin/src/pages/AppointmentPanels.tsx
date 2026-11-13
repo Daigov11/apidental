@@ -26,10 +26,11 @@ const CODE_TEXT: Record<string, string> = {
 export const explain = (e: unknown): string => (e instanceof ApiError && e.code && CODE_TEXT[e.code]) || errorText(e);
 
 export function NewAppointmentDrawer({
-  branchId, dentists, defaultDate, defaultDentist, defaultPatient, onClose, onCreated,
+  branchId, dentists, defaultDate, defaultDentist, defaultPatient, walkIn = false, onClose, onCreated,
 }: {
   branchId: string; dentists: { userId: string; name: string }[]; defaultDate: string; defaultDentist?: string;
-  defaultPatient?: PatientSummary; onClose: () => void; onCreated: () => void;
+  /** Paciente sin cita que se atiende ahora: sin fecha ni horario a elegir; reserva al odontólogo desde este momento. */
+  defaultPatient?: PatientSummary; walkIn?: boolean; onClose: () => void; onCreated: () => void;
 }) {
   const toast = useToast();
   const services = useServices();
@@ -43,7 +44,7 @@ export function NewAppointmentDrawer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
-  const missing = { patient: !patient, service: !serviceId, dentist: !dentistId, slot: !slot };
+  const missing = { patient: !patient, service: !serviceId, dentist: !dentistId, slot: !walkIn && !slot };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -52,8 +53,8 @@ export function NewAppointmentDrawer({
     setBusy(true);
     setError(null);
     try {
-      await post('/appointments', { patientId: patient!.id, branchId, serviceId, dentistUserId: dentistId, startsAt: slot!.startsAt, notes: notes.trim() || undefined });
-      toast.success('Cita reservada.');
+      await post('/appointments', { patientId: patient!.id, branchId, serviceId, dentistUserId: dentistId, ...(walkIn ? { walkIn: true } : { startsAt: slot!.startsAt }), notes: notes.trim() || undefined });
+      toast.success(walkIn ? 'Listo: el odontólogo ya puede iniciar la atención.' : 'Cita reservada.');
       onCreated();
     } catch (err) {
       setError(explain(err));
@@ -65,8 +66,8 @@ export function NewAppointmentDrawer({
 
   return (
     <Drawer
-      title="Nueva cita" onClose={onClose}
-      footer={<><Button onClick={onClose}>Cancelar</Button><Button type="submit" form="new-appt" variant="primary" loading={busy} loadingText="Reservando…">Reservar cita</Button></>}
+      title={walkIn ? 'Atender ahora (sin cita)' : 'Nueva cita'} onClose={onClose}
+      footer={<><Button onClick={onClose}>Cancelar</Button><Button type="submit" form="new-appt" variant="primary" loading={busy} loadingText="Reservando…">{walkIn ? 'Reservar desde ahora' : 'Reservar cita'}</Button></>}
     >
       <form id="new-appt" onSubmit={submit} noValidate>
         {error && <Alert tone="danger">{error}</Alert>}
@@ -79,9 +80,15 @@ export function NewAppointmentDrawer({
           <option value="">Seleccione…</option>
           {dentists.map((d) => <option key={d.userId} value={d.userId}>{d.name}</option>)}
         </SelectField>
-        <TextField label="Fecha" type="date" value={date} onChange={(e) => { setDate(e.target.value); setSlot(null); }} />
-        <SlotPicker branchId={branchId} serviceId={serviceId} dentistUserId={dentistId} date={date} value={slot} onChange={setSlot} reloadKey={reloadKey} />
-        {submitted && missing.slot && <p className="field-error" role="alert">Elija un horario disponible.</p>}
+        {walkIn ? (
+          <Alert tone="info">La cita empieza ahora con la duración del servicio y queda confirmada. El odontólogo debe estar en su horario de trabajo y libre en este momento.</Alert>
+        ) : (
+          <>
+            <TextField label="Fecha" type="date" value={date} onChange={(e) => { setDate(e.target.value); setSlot(null); }} />
+            <SlotPicker branchId={branchId} serviceId={serviceId} dentistUserId={dentistId} date={date} value={slot} onChange={setSlot} reloadKey={reloadKey} />
+            {submitted && missing.slot && <p className="field-error" role="alert">Elija un horario disponible.</p>}
+          </>
+        )}
         <TextAreaField label="Notas administrativas" optional help="Por ejemplo: «Llega con su mamá». No escriba datos clínicos." maxLength={300} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </form>
     </Drawer>

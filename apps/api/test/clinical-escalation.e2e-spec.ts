@@ -179,7 +179,7 @@ describe('Escalamiento de acceso clínico: invitación, segunda identidad y auto
         .http()
         .post('/v1/assignments')
         .set(bearer(w.admin.token))
-        .send({ userId: other.id, roleCode: 'ASSISTANT' })
+        .send({ userId: other.id, roleCode: 'DENTIST' })
         .expect(201);
       expect(
         (

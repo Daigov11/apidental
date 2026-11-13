@@ -14,10 +14,10 @@ export interface SystemUser {
   id: string; email: string; firstName: string; lastName: string; status: 'ACTIVE' | 'DISABLED'; lastLoginAt: string | null; createdAt: string;
   externalIdentity: { externalUsername: string } | null; assignments: Assignment[];
 }
-interface Role { code: string; name: string; scope: 'PLATFORM' | 'CLINIC' }
+interface Role { code: string; name: string; scope: 'PLATFORM' | 'CLINIC'; retired?: boolean }
 
-/** El Director Clínico solo se designa por invitación formal; los roles de plataforma no se otorgan desde una clínica. */
-const grantable = (roles: Role[] | null | undefined) => (roles ?? []).filter((r) => r.scope === 'CLINIC' && r.code !== 'CLINICAL_DIRECTOR');
+/** Solo Administrador, Cajero y Odontólogo: los roles retirados y los de plataforma no se otorgan desde una clínica. */
+const grantable = (roles: Role[] | null | undefined) => (roles ?? []).filter((r) => r.scope === 'CLINIC' && !r.retired && r.code !== 'CLINICAL_DIRECTOR');
 
 /** Usuarios del sistema: lista, alta con contraseña, restablecimiento, roles y estado. Las contraseñas no se pueden ver: se guardan cifradas. */
 export function UsersPage() {

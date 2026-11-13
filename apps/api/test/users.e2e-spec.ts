@@ -24,7 +24,7 @@ describe('Usuarios, roles y asignaciones', () => {
     it('crea el usuario con su rol; la contraseña generada se devuelve UNA vez y solo se guarda su hash', async () => {
       const t = await setup();
       const email = `${uniq('nuevo')}@test.pe`;
-      const res = await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send({ email: email.toUpperCase(), firstName: 'Ana', lastName: 'Rojas', roleCode: 'RECEPTIONIST', branchId: t.a1.id }).expect(201);
+      const res = await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send({ email: email.toUpperCase(), firstName: 'Ana', lastName: 'Rojas', roleCode: 'CASHIER', branchId: t.a1.id }).expect(201);
       expect(res.body.user).toMatchObject({ email, firstName: 'Ana', lastName: 'Rojas', status: 'ACTIVE' });
       expect(res.body.password).toMatch(/^[A-Za-z0-9]{14}$/);
       const row = await ctx.db.user.findUniqueOrThrow({ where: { email }, omit: { passwordHash: false } });
@@ -32,7 +32,7 @@ describe('Usuarios, roles y asignaciones', () => {
       expect(row.passwordHash).not.toContain(res.body.password);
       // Ingresa con esa contraseña, en la clínica y sede del administrador.
       const token = await loginInContext(ctx, email, { clinicId: t.a.id, branchId: t.a1.id }, res.body.password);
-      expect((await ctx.http().get('/v1/auth/me').set(bearer(token)).expect(200)).body.roles).toEqual(['RECEPTIONIST']);
+      expect((await ctx.http().get('/v1/auth/me').set(bearer(token)).expect(200)).body.roles).toEqual(['CASHIER']);
       // La contraseña nunca queda en la auditoría.
       const audit = await ctx.db.auditLog.findFirstOrThrow({ where: { action: 'USER_CREATED', entityId: row.id } });
       expect(JSON.stringify(audit)).not.toContain(res.body.password);

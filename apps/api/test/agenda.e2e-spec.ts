@@ -307,6 +307,31 @@ describe('Agenda y citas (4.0)', () => {
     expect((await ctx.db.appointment.findUniqueOrThrow({ where: { id: a2.id } })).status).toBe('RESERVED');
   });
 
+  it('cita al momento (sin cita previa): empieza ahora, queda confirmada y respeta el horario del odontólogo', async () => {
+    const w = await world();
+    const { date: today, minute } = utcToLima(new Date());
+    if (minute > 23 * 60) return; // la cita debe terminar el mismo día: a esta hora no se puede probar
+    // El odontólogo trabaja hoy todo el día; el segundo odontólogo no tiene horario hoy.
+    await w.post(w.admin.token, '/agenda/schedules', { branchId: w.branchA.id, dentistUserId: w.dentist.user.id, weekday: weekdayOfDate(today), start: '00:00', end: '23:55', validFrom: today }).expect(201);
+    const res = await w.post(w.reception.token, '/appointments', { patientId: w.patient, branchId: w.branchA.id, serviceId: w.service.id, dentistUserId: w.dentist.user.id, walkIn: true }).expect(201);
+    expect(res.body.status).toBe('CONFIRMED');
+    const startsAt = new Date(res.body.startsAt).getTime();
+    expect(startsAt).toBeLessThanOrEqual(Date.now());
+    expect(Date.now() - startsAt).toBeLessThan(5 * 60_000);
+    expect(startsAt % 300_000).toBe(0);
+    expect(res.body.actions).toMatchObject({ confirm: false });
+    // Sin walkIn, la fecha sigue siendo obligatoria.
+    await w.post(w.reception.token, '/appointments', { patientId: w.patient2, branchId: w.branchA.id, serviceId: w.service.id, dentistUserId: w.dentist.user.id }).expect(400);
+    // Fuera del horario del odontólogo: no se reserva.
+    const out = await w.post(w.reception.token, '/appointments', { patientId: w.patient2, branchId: w.branchA.id, serviceId: w.service.id, dentistUserId: w.d2User.id, walkIn: true });
+    expect(out.status).toBe(409);
+    expect(out.body.code).toBe('OUTSIDE_SCHEDULE');
+    // El odontólogo ya puede iniciar la atención.
+    await w.post(w.dentist.token, `/appointments/${res.body.id}/start-attention`).expect(200);
+    const audit = await ctx.db.auditLog.findFirstOrThrow({ where: { action: 'APPOINTMENT_CREATED', entityId: res.body.id } });
+    expect(audit.summary).toMatchObject({ walkIn: true });
+  });
+
   it('inicio de atención: una cita de HOY se puede iniciar aunque falten horas (y lo indica en sus acciones)', async () => {
     const w = await world();
     // Lo más tarde posible dentro del día de Lima (como mucho 3 h después): siempre es hoy, aunque se corra de noche.

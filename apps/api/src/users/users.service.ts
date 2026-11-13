@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
+import { RETIRED_ROLE_CODES } from '../auth/permissions.js';
 
 const USER_VIEW = {
   id: true,
@@ -60,6 +61,8 @@ export class UsersService {
       name: r.name,
       scope: r.scope,
       description: r.description,
+      /** Rol retirado: no se asigna ni se ofrece en el panel. */
+      retired: RETIRED_ROLE_CODES.includes(r.code),
       permissions: r.permissions.map((p) => p.permission.code).sort(),
     }));
   }

@@ -263,8 +263,10 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     code: 'CASHIER',
     name: 'Cajero',
     scope: 'CLINIC',
-    description: 'Caja, cobros y comprobantes.',
-    permissions: [...BASIC_READ, 'patient:read_basic', 'appointment:read', 'charge:read', 'charge:manage', 'billing:read', 'billing:manage', 'loyalty:read', 'loyalty:manage', 'cashbox:read', 'cashbox:write', 'cashbox:void', 'cashbox:close', 'apiworking:read', 'apiworking:sell', 'apiworking:void', 'apiworking:cash'],
+    description: 'Recepción y caja: agenda las citas, registra pacientes, cobra y emite comprobantes.',
+    // Desde que se retiró el rol Recepcionista, el cajero hace también la recepción: agenda citas y busca o registra pacientes.
+    // Sigue con la vista MÍNIMA del paciente (nombre, documento y celular) y SIN ningún acceso clínico.
+    permissions: [...BASIC_READ, 'patient:read_basic', 'patient:write', 'appointment:read', 'appointment:manage', 'charge:read', 'charge:manage', 'billing:read', 'billing:manage', 'loyalty:read', 'loyalty:manage', 'cashbox:read', 'cashbox:write', 'cashbox:void', 'cashbox:close', 'apiworking:read', 'apiworking:sell', 'apiworking:void', 'apiworking:cash'],
   },
   {
     code: 'ASSISTANT',
@@ -274,3 +276,10 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
     permissions: [...BASIC_READ, ...PATIENT_READ_ONLY, 'clinical:read_limited', 'appointment:read'],
   },
 ];
+
+/**
+ * Roles retirados: la clínica trabaja solo con Administrador, Cajero y Odontólogo. Siguen en el catálogo (hay datos y reglas que
+ * los referencian) pero ya no se asignan directamente ni se ofrecen en el panel. Las asignaciones de Recepcionista pasaron a Cajero
+ * y las de Asistente y Director Clínico se desactivaron (migración 20261112230000_retire_roles).
+ */
+export const RETIRED_ROLE_CODES: readonly string[] = ['RECEPTIONIST', 'ASSISTANT', 'CLINICAL_DIRECTOR'];

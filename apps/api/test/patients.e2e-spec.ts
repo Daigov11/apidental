@@ -554,7 +554,7 @@ describe('Pacientes', () => {
   });
 
   describe('permisos por rol', () => {
-    it('administración y recepción gestionan; odontólogo y asistente solo leen; caja solo lectura mínima', async () => {
+    it('administración, recepción y caja (hace la recepción) registran; odontólogo y asistente solo leen; caja con lectura mínima', async () => {
       const w = await world();
       const { id } = await createPatient(ctx, w.admin.token, { lastName: uniq('Matriz') });
       const body = { firstName: 'N', lastName: 'M' };
@@ -563,7 +563,7 @@ describe('Pacientes', () => {
         [w.reception, { create: 201, read: 200, update: 200, report: 200, dups: 200 }],
         [w.dentist, { create: 403, read: 200, update: 403, report: 200, dups: 200 }],
         [w.assistant, { create: 403, read: 200, update: 403, report: 200, dups: 200 }],
-        [w.cashier, { create: 403, read: 200, update: 403, report: 403, dups: 403 }],
+        [w.cashier, { create: 201, read: 200, update: 200, report: 403, dups: 403 }],
       ];
       for (const [actor, exp] of expectations) {
         const t = bearer(actor.token);

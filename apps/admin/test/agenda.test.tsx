@@ -90,6 +90,28 @@ describe('Agenda', () => {
     expect(screen.queryByRole('dialog', { name: 'Nueva cita' })).not.toBeInTheDocument();
   });
 
+  it('atender ahora (sin cita): reserva al odontólogo desde este momento, sin elegir fecha ni horario', async () => {
+    const { called } = mockApi({
+      ...base(),
+      'GET /patients': { json: [{ id: 'p-1', fullName: 'Lucía Demo Adulta', identifiers: [{ type: 'DNI', number: '90000001' }], primaryMobile: '900000001', status: 'ACTIVE' }] },
+      'GET /agenda/services': { json: [{ id: 's-1', name: 'Control (demo)', durationMinutes: 20, active: true }] },
+      'POST /appointments': { status: 201, json: { ...APPT, status: 'CONFIRMED' } },
+    });
+    renderApp('/agenda');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Atender ahora (sin cita)' }));
+    const drawer = await screen.findByRole('dialog', { name: 'Atender ahora (sin cita)' });
+    expect(within(drawer).queryByLabelText('Fecha')).not.toBeInTheDocument();
+    await user.type(within(drawer).getByLabelText('Paciente'), 'Lucía');
+    await user.click(await within(drawer).findByRole('option', { name: /Lucía Demo Adulta/ }));
+    await user.selectOptions(within(drawer).getByLabelText('Servicio'), 's-1');
+    await user.selectOptions(within(drawer).getByLabelText('Odontólogo'), 'd-1');
+    await user.click(within(drawer).getByRole('button', { name: 'Reservar desde ahora' }));
+    await waitFor(() => expect(called('POST', '/appointments')).toHaveLength(1));
+    expect(called('POST', '/appointments')[0]?.body).toEqual({ patientId: 'p-1', branchId: 'b-1', serviceId: 's-1', dentistUserId: 'd-1', walkIn: true });
+    expect(await screen.findByText('Listo: el odontólogo ya puede iniciar la atención.')).toBeInTheDocument();
+  });
+
   it('si el horario se ocupó mientras tanto, lo explica y conserva el panel abierto', async () => {
     mockApi({
       ...base(),

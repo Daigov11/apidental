@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, UserCheck } from 'lucide-react';
 import { get } from '../api/client';
 import type { Appointment, Calendar, CalendarAppointment, PatientSummary } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
@@ -22,6 +22,7 @@ export function AgendaPage() {
   const [dentistId, setDentistId] = useState('');
   const [openId, setOpenId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [walkIn, setWalkIn] = useState(false);
   const from = view === 'week' ? mondayOf(date) : date;
   const to = view === 'week' ? addDays(from, 6) : date;
   const cal = useAsync(
@@ -35,7 +36,10 @@ export function AgendaPage() {
       <div className="page-head">
         <h1>Agenda</h1>
         {can('appointment:manage') && branchId && (
-          <Button variant="primary" icon={<Plus size={18} aria-hidden="true" />} onClick={() => setCreating(true)}>Nueva cita</Button>
+          <div className="chip-row">
+            <Button icon={<UserCheck size={18} aria-hidden="true" />} onClick={() => setWalkIn(true)}>Atender ahora (sin cita)</Button>
+            <Button variant="primary" icon={<Plus size={18} aria-hidden="true" />} onClick={() => setCreating(true)}>Nueva cita</Button>
+          </div>
         )}
       </div>
 
@@ -74,6 +78,9 @@ export function AgendaPage() {
       {openId && <AppointmentDrawer id={openId} onClose={() => setOpenId(null)} onChanged={cal.reload} />}
       {creating && branchId && cal.data && (
         <NewAppointmentDrawer branchId={branchId} dentists={cal.data.dentists} defaultDate={date} defaultDentist={dentistId || undefined} onClose={() => setCreating(false)} onCreated={() => { setCreating(false); cal.reload(); }} />
+      )}
+      {walkIn && branchId && cal.data && (
+        <NewAppointmentDrawer walkIn branchId={branchId} dentists={cal.data.dentists} defaultDate={date} defaultDentist={dentistId || undefined} onClose={() => setWalkIn(false)} onCreated={() => { setWalkIn(false); cal.reload(); }} />
       )}
     </>
   );
