@@ -66,6 +66,8 @@ export class SaleDraftDto {
   @IsOptional() @IsUUID() appointmentId?: string;
   /// Venta de contingencia que se está emitiendo ahora: no puede cambiar el cliente ni el monto.
   @IsOptional() @IsUUID() pendingSaleId?: string;
+  /// Servicios de la cuenta pendiente del paciente que esta venta cobra (quedan marcados como cobrados).
+  @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID(undefined, { each: true }) visitServiceIds?: string[];
 }
 
 export class CreateSaleDto extends SaleDraftDto {
@@ -138,9 +140,12 @@ export class ContingencyDto {
   @IsUUID() categoryId!: string;
   /// Clave de idempotencia: un reenvío no duplica ni la venta ni el movimiento de caja.
   @IsUUID() requestKey!: string;
+  @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID(undefined, { each: true }) visitServiceIds?: string[];
 }
 
 export class BillingDraftQuery {
   @IsOptional() @IsUUID() appointmentId?: string;
   @IsOptional() @IsUUID() patientId?: string;
+  /// Documento del paciente (DNI, CE o pasaporte): caja busca así la cuenta pendiente.
+  @IsOptional() @Matches(/^[A-Za-z0-9]{6,15}$/, { message: 'Documento inválido' }) document?: string;
 }

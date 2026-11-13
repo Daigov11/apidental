@@ -11,6 +11,7 @@ import { TextAreaField } from '../ui/fields';
 import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
 import { ReasonDialog } from '../ui/overlays';
 import { OdontogramCanvas, useOdontogram } from './odontogram/useOdontogram';
+import { VisitServicesCard } from './VisitServices';
 import { AllergyDialog, CLOSE_BLOCKERS, ConfirmDialog, DiagnosisDialog, PasswordDialog, ProcedureDialog } from './VisitSheetParts';
 
 const SEV = { CRITICAL: { tone: 'danger', Icon: OctagonAlert, label: 'Importante' }, WARNING: { tone: 'warning', Icon: AlertTriangle, label: 'Atención' }, INFO: { tone: 'info', Icon: Info, label: 'Información' } } as const;
@@ -115,6 +116,8 @@ export function VisitSheetPage() {
             <p className="caption muted" style={{ marginTop: 'var(--space-3)' }}>{s.odontogram.formatNotice}</p>
           </section>
 
+          <VisitServicesCard patientId={id} visitId={visitId!} editable={editable && can('clinical:write')} />
+
           <section className="card" aria-labelledby="hall-h">
             <div className="card-head">
               <h2 id="hall-h" className="h3">Hallazgos</h2>
@@ -175,8 +178,9 @@ export function VisitSheetPage() {
           {editable && (
             <section className="card" aria-labelledby="cv-h">
               <h2 id="cv-h" className="h3" style={{ marginBottom: 'var(--space-4)' }}>Terminar la atención</h2>
-              {blockers.length > 0 && <Alert tone="warning" title="Aún no puede cerrar la visita">{blockers.map((b) => <p key={b}>{b}</p>)}</Alert>}
-              <Button variant="primary" disabled={!A.canCloseVisit} onClick={() => setDlg({ k: 'visit-close' })}>Cerrar la visita</Button>
+              {blockers.length > 0 && <Alert tone="warning" title="Aún no puede terminar la consulta">{blockers.map((b) => <p key={b}>{b}</p>)}</Alert>}
+              <p className="caption muted">Los servicios realizados quedan como cuenta pendiente del paciente: en caja se cobran buscándolo por su DNI.</p>
+              <Button variant="primary" disabled={!A.canCloseVisit} onClick={() => setDlg({ k: 'visit-close' })}>Terminar consulta</Button>
             </section>
           )}
         </aside>
@@ -223,9 +227,9 @@ export function VisitSheetPage() {
       )}
       {dlg?.k === 'visit-close' && (
         <ConfirmDialog
-          title="Cerrar la visita" confirmLabel="Cerrar visita" onClose={close}
-          explain="La visita se cierra y ya no se agregan diagnósticos, procedimientos ni evolución. ¿Terminó la atención?"
-          onConfirm={() => commit(() => api('POST', `${base}/visits/${visitId}/close`, { body: { expectedVersion: s.visit.version ?? 1 } }), 'Visita cerrada.')}
+          title="Terminar consulta" confirmLabel="Terminar consulta" onClose={close}
+          explain="La consulta termina: ya no se agregan servicios, diagnósticos, procedimientos ni evolución, y los servicios realizados pasan a caja como cuenta pendiente del paciente. ¿Terminó la atención?"
+          onConfirm={() => commit(() => api('POST', `${base}/visits/${visitId}/close`, { body: { expectedVersion: s.visit.version ?? 1 } }), 'Consulta terminada: la cuenta pasó a caja.')}
         />
       )}
     </>

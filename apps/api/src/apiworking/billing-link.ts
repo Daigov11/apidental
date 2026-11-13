@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { clinicScope, requirePatient } from '../patients/patient-access.js';
-import type { PrismaDb } from '../prisma/client.js';
+import type { DbTx, PrismaDb } from '../prisma/client.js';
 
 /** Estados de una venta que ocupan la cita: una sola venta vigente por cita. */
 export const LIVE_SALE_STATUSES = ['PENDING', 'SENT', 'PENDING_RECONCILIATION', 'PENDING_ISSUE'] as const;
@@ -29,4 +29,28 @@ export async function resolveBillingLink(db: PrismaDb, principal: AuthPrincipal,
     await requirePatient(db, clinicId, patientId);
   }
   return { patientId, appointmentId };
+}
+
+/**
+ * Servicios de la cuenta pendiente que se cobran en una venta: del mismo paciente, vigentes, sin cobrar y de una consulta ya
+ * terminada (visita cerrada). Cualquier otro id es un error: no se cobra algo que no corresponde.
+ */
+export async function requirePendingServices(db: PrismaDb | DbTx, clinicId: string, patientId: string | null, ids: readonly string[] | undefined): Promise<string[]> {
+  const unique = [...new Set(ids ?? [])];
+  if (unique.length === 0) return [];
+  if (!patientId) throw new BadRequestException('Para cobrar servicios de una atención indique el paciente');
+  const ok = await db.visitService.count({ where: { id: { in: unique }, clinicId, patientId, status: 'ACTIVE', saleId: null, visit: { status: 'CLOSED' } } });
+  if (ok !== unique.length) throw new ConflictException({ message: 'Algún servicio ya se cobró o no está pendiente: actualice la cuenta del paciente', code: 'SERVICES_NOT_PENDING' });
+  return unique;
+}
+
+/** Marca los servicios como cobrados por la venta (solo los que siguen pendientes). */
+export async function markServicesBilled(db: PrismaDb | DbTx, clinicId: string, saleId: string, ids: readonly string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await db.visitService.updateMany({ where: { id: { in: [...ids] }, clinicId, saleId: null, status: 'ACTIVE' }, data: { saleId } });
+}
+
+/** Una venta que finalmente no existe (rechazada o conciliada como no registrada) devuelve sus servicios a la cuenta pendiente. */
+export async function releaseServices(db: PrismaDb | DbTx, saleId: string): Promise<void> {
+  await db.visitService.updateMany({ where: { saleId }, data: { saleId: null } });
 }

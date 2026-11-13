@@ -32,13 +32,14 @@ describe('Catálogo', () => {
     const user = userEvent.setup();
     expect(await screen.findByText('Amoxicilina 500 mg')).toBeInTheDocument();
     expect(screen.getByText('Ibuprofeno 400 mg').closest('tr')!).toHaveTextContent('Inactivo');
-    await user.click(screen.getByRole('button', { name: 'Nuevo producto' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Nuevo producto' });
+    await user.click(screen.getByRole('button', { name: 'Nuevo producto o servicio' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Nuevo producto o servicio' });
+    await user.selectOptions(within(dialog).getByLabelText('Tipo'), 'PRODUCT');
     await user.type(within(dialog).getByLabelText(/^Nombre/), 'Paracetamol 500 mg');
     await user.type(within(dialog).getByLabelText(/Precio de venta/), '3.50');
     await user.click(within(dialog).getByRole('button', { name: 'Guardar' }));
     await waitFor(() => expect(called('POST', '/products')).toHaveLength(1));
-    expect(called('POST', '/products')[0]?.body).toEqual({ name: 'Paracetamol 500 mg', presentation: '', priceCents: 350 });
+    expect(called('POST', '/products')[0]?.body).toEqual({ name: 'Paracetamol 500 mg', presentation: '', priceCents: 350, kind: 'PRODUCT' });
     await user.click(within(screen.getByText('Amoxicilina 500 mg').closest('tr')!).getByRole('button', { name: 'Desactivar' }));
     await waitFor(() => expect(called('PATCH', '/products/p-1')).toHaveLength(1));
     expect(called('PATCH', '/products/p-1')[0]?.body).toEqual({ active: false });
@@ -63,9 +64,9 @@ describe('Catálogo', () => {
     await user.click(within(card).getByRole('button', { name: 'Agregar Amoxicilina a la venta' }));
     expect(screen.getByLabelText('Concepto 2')).toHaveValue('Amoxicilina 500 mg');
     expect(screen.getAllByLabelText(/Precio unitario/)[1]).toHaveValue('25.00');
-    // Sin receta: «Agregar del catálogo» (no repite lo que ya está en la venta).
-    await user.selectOptions(screen.getByLabelText('Agregar del catálogo'), 'p-1');
-    expect(screen.queryByLabelText('Concepto 3')).not.toBeInTheDocument();
+    // Buscador del catálogo: no repite lo que ya está en la venta.
+    await user.type(screen.getByLabelText(/Buscar producto o servicio/), 'amox');
+    expect(await screen.findByRole('button', { name: 'Amoxicilina 500 mg ya está en la venta' })).toBeDisabled();
   });
 
   it('quien solo vende no ve la página del catálogo en el menú', async () => {

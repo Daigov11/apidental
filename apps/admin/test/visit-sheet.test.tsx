@@ -87,16 +87,16 @@ describe('Ficha de atención editable', () => {
     renderApp('/pacientes/p-1/atencion/v-1');
     expect(await screen.findByText(/procedimientos abiertos/)).toBeInTheDocument();
     expect(screen.getByText(/evolución está en borrador/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cerrar la visita' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Terminar consulta' })).toBeDisabled();
   });
 
   it('cierra la visita cuando no hay pendientes', async () => {
     const { called } = mockApi(routes(sheet(), { 'POST /patients/p-1/clinical/visits/v-1/close': { json: {} } }));
     const user = userEvent.setup();
     renderApp('/pacientes/p-1/atencion/v-1');
-    await user.click(await screen.findByRole('button', { name: 'Cerrar la visita' }));
-    const dlg = await screen.findByRole('dialog', { name: 'Cerrar la visita' });
-    await user.click(within(dlg).getByRole('button', { name: 'Cerrar visita' }));
+    await user.click(await screen.findByRole('button', { name: 'Terminar consulta' }));
+    const dlg = await screen.findByRole('dialog', { name: 'Terminar consulta' });
+    await user.click(within(dlg).getByRole('button', { name: 'Terminar consulta' }));
     await waitFor(() => expect(called('POST', '/patients/p-1/clinical/visits/v-1/close')).toHaveLength(1));
     expect(called('POST', '/patients/p-1/clinical/visits/v-1/close')[0]?.body).toEqual({ expectedVersion: 1 });
   });
@@ -125,6 +125,6 @@ describe('Ficha de atención editable', () => {
     })));
     renderApp('/pacientes/p-1/atencion/v-1');
     expect(await screen.findByText('Texto')).toBeInTheDocument();
-    for (const name of [/Agregar/, 'Iniciar odontograma', 'Registrar evaluación', 'Guardar borrador', 'Cerrar la visita', 'Corregir evolución']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    for (const name of [/Agregar/, 'Iniciar odontograma', 'Registrar evaluación', 'Guardar borrador', 'Terminar consulta', 'Corregir evolución']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
   });
 });

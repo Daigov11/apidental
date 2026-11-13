@@ -332,6 +332,34 @@ describe('Contingencia', () => {
     expect(screen.getByLabelText(/Precio unitario/)).toHaveValue('80.00');
   });
 
+  it('caja busca por DNI: trae la cuenta pendiente (consulta + servicios del odontólogo agrupados) y la cobra', async () => {
+    const DRAFT = {
+      patient: { id: 'p-9', name: 'Marco Cuenta' }, appointment: { id: 'a-9', status: 'ATTENDED' }, description: 'Consulta', amountCents: 5000,
+      identifier: { docType: '1', docTypeLabel: 'DNI', docNumber: '45678912' }, customer: CUSTOMER, alreadyBilled: null, canBill: true, prescriptions: [],
+      account: { items: [{ productId: 'pr-1', name: 'Curación', unitPriceCents: 10000, quantity: 2, teeth: ['16', '26'], serviceIds: ['vs-1', 'vs-2'], subtotalCents: 20000 }], totalCents: 20000, serviceIds: ['vs-1', 'vs-2'] },
+    };
+    const { called } = mockApi(routes({
+      'GET /apiworking/billing-draft': { json: DRAFT },
+      'POST /apiworking/sales': { status: 201, json: { ...SALE, paymentStatus: 'CONFIRMED_REMOTE' } },
+    }));
+    renderApp('/ventas');
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/Cobrar a un paciente por DNI/), '45678912');
+    await user.click(screen.getByRole('button', { name: 'Buscar cuenta' }));
+    expect(await screen.findByText('Cuenta pendiente: S/ 200.00')).toBeInTheDocument();
+    expect(called('GET', '/apiworking/billing-draft')[0]?.query.get('document')).toBe('45678912');
+    expect(screen.getByLabelText('Concepto 1')).toHaveValue('Consulta');
+    expect(screen.getByLabelText(/^Concepto 2/)).toHaveValue('Curación (piezas 16, 26)');
+    expect(screen.getByLabelText('Subtotal del concepto 2')).toHaveTextContent('2 × S/ 100.00 = S/ 200.00');
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Efectivo' })).toHaveAttribute('aria-pressed', 'true'));
+    await user.click(screen.getByRole('button', { name: 'Cobrar S/ 250.00' }));
+    await waitFor(() => expect(called('POST', '/apiworking/sales')).toHaveLength(1));
+    expect(called('POST', '/apiworking/sales')[0]?.body).toMatchObject({
+      patientId: 'p-9', appointmentId: 'a-9', visitServiceIds: ['vs-1', 'vs-2'],
+      lines: [{ name: 'Consulta', quantity: 1, unitPriceCents: 5000 }, { name: 'Curación (piezas 16, 26)', quantity: 2, unitPriceCents: 10000 }],
+    });
+  });
+
   it('la receta del odontólogo aparece en el cobro: se agrega lo recetado con su precio o se cobra solo el servicio', async () => {
     const RX = { id: 'rx-1', number: 12, code: 'RX-000012', prescriber: 'Gina Paredes', createdAt: '2026-11-12T15:00:00.000Z', items: [
       { medication: 'Amoxicilina', dose: '500 mg', frequency: 'cada 8 horas', duration: '7 días' },

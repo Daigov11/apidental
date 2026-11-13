@@ -12,7 +12,8 @@ import { SelectField, TextField } from '../ui/fields';
 import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
 import { ReasonDialog } from '../ui/overlays';
 
-interface LineField { name: string; quantity: string; price: string }
+/** Un concepto de la venta. `serviceIds`: viene de la cuenta pendiente (lo que hizo el odontólogo) y se cobra con ella. */
+interface LineField { name: string; quantity: string; price: string; serviceIds?: string[] }
 const emptyLine = (): LineField => ({ name: '', quantity: '1', price: '' });
 const DOC_TONE = { PENDING_ISSUE: 'warning', PENDING: 'info', SENT: 'success', REJECTED: 'danger', PENDING_RECONCILIATION: 'warning' } as const;
 const PAY_TONE = { NO_EVIDENCE: 'neutral', CONFIRMED_REMOTE: 'success', CONFIRMED_RECONCILED: 'success' } as const;
@@ -28,15 +29,24 @@ export function VentasPage() {
   const [params, setParams] = useSearchParams();
   const urlAppointmentId = params.get('appointmentId') ?? undefined;
   const urlPatientId = params.get('patientId') ?? undefined;
+  const urlDocument = params.get('dni') ?? undefined;
   // Contingencia: Apiworking no responde; el cobro entra en la caja local y el documento queda por emitir.
   const [contingency, setContingency] = useState(false);
   // Venta cobrada en contingencia que se está emitiendo ahora (completa ESA fila).
   const [pendingSale, setPendingSale] = useState<AwSale | null>(null);
   const [docDate, setDocDate] = useState('');
+  const billing = useAsync(
+    () => (urlAppointmentId || urlPatientId || urlDocument ? get<AwBillingDraft>('/apiworking/billing-draft', { appointmentId: urlAppointmentId, patientId: urlPatientId, document: urlDocument }) : Promise.resolve(null)),
+    [urlAppointmentId, urlPatientId, urlDocument],
+  );
+  const fromUrl = Boolean(urlAppointmentId || urlPatientId || urlDocument);
+  const b0 = billing.data;
   const link = pendingSale
     ? { appointmentId: pendingSale.appointmentId ?? undefined, patientId: pendingSale.patientId ?? undefined }
-    : { appointmentId: urlAppointmentId, patientId: urlPatientId };
-  const billing = useAsync(() => (urlAppointmentId || urlPatientId ? get<AwBillingDraft>('/apiworking/billing-draft', { appointmentId: urlAppointmentId, patientId: urlPatientId }) : Promise.resolve(null)), [urlAppointmentId, urlPatientId]);
+    : b0
+      ? { appointmentId: b0.appointment && b0.canBill && !b0.alreadyBilled ? b0.appointment.id : undefined, patientId: b0.patient.id }
+      : { appointmentId: urlAppointmentId, patientId: urlPatientId };
+  const [dni, setDni] = useState('');
 
   // --- Cliente ---
   const [query, setQuery] = useState('');
@@ -78,12 +88,15 @@ export function VentasPage() {
   // La descripción del documento sale de los conceptos (o es la de la venta que se está emitiendo): no se pide aparte.
   const description = pendingSale ? pendingSale.description : parsed.map((l) => l.name).filter(Boolean).join(', ').slice(0, 200);
   const total = parsed.reduce((s, l) => s + (l.cents ?? 0) * (Number.isFinite(l.quantity) ? l.quantity : 0), 0);
+  // Lo que se cobra de la cuenta pendiente: solo las líneas de la atención que siguen en la venta.
+  const accountIds = pendingSale ? [] : lines.flatMap((l) => l.serviceIds ?? []);
 
   const draft: AwDraft | null = customer && idCaja && idTipoDocumento && idSerie && idMetodoPago && description.trim().length >= 3 && validLines
     ? {
       customerId: customer.id, idCaja, idTipoDocumento, idSerie, idMetodoPago, description: description.trim(), lines: parsed.map((l): AwLine => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.cents! })),
       ...(link.appointmentId ? { appointmentId: link.appointmentId } : {}), ...(link.patientId ? { patientId: link.patientId } : {}),
       ...(pendingSale ? { pendingSaleId: pendingSale.id } : {}), ...(docDate ? { docDate } : {}),
+      ...(accountIds.length ? { visitServiceIds: accountIds } : {}),
     }
     : null;
   const signature = JSON.stringify(draft);
@@ -95,7 +108,13 @@ export function VentasPage() {
     if (!b || prefilled.current === (b.appointment?.id ?? b.patient.id)) return;
     prefilled.current = b.appointment?.id ?? b.patient.id;
     if (b.customer) setCustomer(b.customer);
-    if (b.description && b.amountCents) setLines([{ name: b.description, quantity: '1', price: (b.amountCents / 100).toFixed(2) }]);
+    // Consulta (servicio de la cita) + lo que hizo el odontólogo (cuenta pendiente), agrupado: «Curación (piezas 16, 26)» × 2.
+    const next: LineField[] = [];
+    if (b.description && b.amountCents && b.appointment && b.canBill && !b.alreadyBilled) next.push({ name: b.description, quantity: '1', price: (b.amountCents / 100).toFixed(2) });
+    for (const it of b.account?.items ?? []) {
+      next.push({ name: `${it.name}${it.teeth.length ? ` (piezas ${it.teeth.join(', ')})` : ''}`.slice(0, 120), quantity: String(it.quantity), price: (it.unitPriceCents / 100).toFixed(2), serviceIds: it.serviceIds });
+    }
+    if (next.length) setLines(next.slice(0, 30));
   }, [billing.data]);
 
   // --- Venta directa: un clic registra el documento y aplica el pago ---
@@ -119,7 +138,7 @@ export function VentasPage() {
       else { setError(`Apiworking rechazó la venta: ${sale.failureReason ?? 'sin detalle'}`); return; }
       key.current = null;
       reset();
-      if (urlAppointmentId || urlPatientId) setParams({}, { replace: true });
+      if (fromUrl) setParams({}, { replace: true });
     } catch (e) { setError(errorText(e)); }
     finally { setBusy(false); sending.current = false; sales.reload(); status.reload(); }
   };
@@ -162,6 +181,18 @@ export function VentasPage() {
           {billing.data.alreadyBilled && ` Esta cita ya tiene una venta (${billing.data.alreadyBilled.docStatusLabel}).`}
         </Alert>
       )}
+      {canSell && !pendingSale && (
+        <form className="chip-row" style={{ alignItems: 'flex-end', marginBottom: 'var(--space-4)' }} onSubmit={(e) => { e.preventDefault(); const v = dni.trim(); if (v.length >= 6) { prefilled.current = null; setParams({ dni: v }, { replace: true }); } }}>
+          <div style={{ minWidth: 260 }}><TextField label="Cobrar a un paciente por DNI" help="Trae lo que le hizo el odontólogo, su receta y el cliente." inputMode="numeric" autoComplete="off" value={dni} onChange={(e) => setDni(e.target.value.replace(/[^0-9A-Za-z]/g, '').slice(0, 15))} /></div>
+          <Button type="submit" icon={<Search size={16} aria-hidden="true" />} disabled={dni.trim().length < 6}>Buscar cuenta</Button>
+        </form>
+      )}
+      {billing.data?.account && billing.data.account.items.length > 0 && !pendingSale && (
+        <Alert tone="success" title={`Cuenta pendiente: ${fmtMoney(billing.data.account.totalCents)}`}>
+          {billing.data.account.items.map((it) => `${it.name} × ${it.quantity}`).join(' · ')}. Ya está en el detalle de venta.
+        </Alert>
+      )}
+      {billing.data?.account && billing.data.account.items.length === 0 && urlDocument && <Alert tone="info">{billing.data.patient.name} no tiene servicios pendientes de pago.</Alert>}
       {billing.error != null && <ErrorState error={billing.error} onRetry={billing.reload} />}
       {pendingSale && (
         <Alert tone="warning" title="Emitiendo una venta cobrada en contingencia">
@@ -227,24 +258,20 @@ export function VentasPage() {
             <section className="card" aria-labelledby="det-h">
               <div className="card-head"><h2 id="det-h" className="h3">Detalle de venta</h2><span className="caption muted">{lines.length} {lines.length === 1 ? 'concepto' : 'conceptos'}</span></div>
               {lines.map((l, i) => (
-                <div key={i} className="chip-row" style={{ alignItems: 'flex-end', marginBottom: 'var(--space-3)' }}>
-                  <TextField label={`Concepto ${i + 1}`} value={l.name} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} maxLength={120} />
+                <div key={i} className={`chip-row${l.serviceIds ? ' sale-line-account' : ''}`} style={{ alignItems: 'flex-end', marginBottom: 'var(--space-3)', ...(l.serviceIds ? { background: 'var(--accent-soft, #e6f4f1)', borderRadius: 8, padding: 'var(--space-2)' } : {}) }}>
+                  <TextField label={`Concepto ${i + 1}`} help={l.serviceIds ? 'Realizado por el odontólogo' : undefined} value={l.name} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))} maxLength={120} />
                   <TextField label="Cantidad" inputMode="numeric" value={l.quantity} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, quantity: e.target.value } : x)))} style={{ width: '6rem' }} />
                   <TextField label="Precio unitario (S/)" help="IGV incluido" inputMode="decimal" value={l.price} onChange={(e) => setLines((all) => all.map((x, j) => (j === i ? { ...x, price: e.target.value } : x)))} style={{ width: '9rem' }} />
+                  <span className="caption tabular" style={{ minWidth: '7rem', paddingBottom: 'var(--space-2)' }} aria-label={`Subtotal del concepto ${i + 1}`}>
+                    {parsed[i] && parsed[i]!.cents !== null && Number.isInteger(parsed[i]!.quantity) ? `${parsed[i]!.quantity} × ${fmtMoney(parsed[i]!.cents!)} = ${fmtMoney(parsed[i]!.cents! * parsed[i]!.quantity)}` : ''}
+                  </span>
                   {lines.length > 1 && <Button size="sm" variant="tertiary" aria-label={`Quitar el concepto ${i + 1}`} icon={<Trash2 size={16} aria-hidden="true" />} onClick={() => setLines((all) => all.filter((_, j) => j !== i))} />}
                 </div>
               ))}
               <div className="chip-row" style={{ alignItems: 'flex-end' }}>
                 <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setLines((all) => [...all, emptyLine()])} disabled={lines.length >= 30}>Agregar concepto</Button>
-                {catalog.data && catalog.data.length > 0 && (
-                  <div style={{ minWidth: 260 }}>
-                    <SelectField label="Agregar del catálogo" value="" onChange={(e) => { const p = catalog.data!.find((x) => x.id === e.target.value); if (p) addLine(p.name, p.priceCents); }}>
-                      <option value="">Elija un producto</option>
-                      {catalog.data.map((p) => <option key={p.id} value={p.id}>{p.name} · {fmtMoney(p.priceCents)}</option>)}
-                    </SelectField>
-                  </div>
-                )}
               </div>
+              {catalog.data && catalog.data.length > 0 && <CatalogSearch products={catalog.data} inSale={(n) => lines.some((l) => l.name.trim() === n)} onAdd={(p) => addLine(p.name, p.priceCents)} />}
             </section>
 
             {billing.data?.prescriptions && billing.data.prescriptions.length > 0 && !pendingSale && (
@@ -272,7 +299,7 @@ export function VentasPage() {
               </fieldset>
             )}
             {contingency && customer && (
-              <ContingencyBlock customer={customer} description={description} lines={parsed} validLines={validLines && description.length >= 3} link={link} docDate={docDate} onDone={() => { reset(); sales.reload(); if (urlAppointmentId || urlPatientId) setParams({}, { replace: true }); }} />
+              <ContingencyBlock customer={customer} description={description} lines={parsed} validLines={validLines && description.length >= 3} link={link} docDate={docDate} serviceIds={accountIds} onDone={() => { reset(); sales.reload(); if (fromUrl) setParams({}, { replace: true }); }} />
             )}
             {!contingency && (
               <>
@@ -333,6 +360,30 @@ export function VentasPage() {
         />
       )}
     </>
+  );
+}
+
+/** Buscador del catálogo (productos y servicios): escribir para filtrar y «Agregar» suma el concepto con su precio. */
+function CatalogSearch({ products, inSale, onAdd }: { products: Product[]; inSale: (name: string) => boolean; onAdd: (p: Product) => void }) {
+  const [q, setQ] = useState('');
+  const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const term = norm(q.trim());
+  const found = term.length < 2 ? [] : products.filter((p) => norm(p.name).includes(term)).slice(0, 8);
+  return (
+    <div style={{ marginTop: 'var(--space-4)' }}>
+      <TextField label="Buscar producto o servicio" help="Por ejemplo, lo que recetó el odontólogo." autoComplete="off" value={q} onChange={(e) => setQ(e.target.value)} />
+      {term.length >= 2 && found.length === 0 && <p className="caption muted">No hay productos que coincidan en el catálogo.</p>}
+      {found.length > 0 && (
+        <ul className="context-list" aria-label="Resultados del catálogo">
+          {found.map((p) => (
+            <li key={p.id} className="chip-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+              <span><strong>{p.name}</strong>{p.presentation ? <span className="caption muted"> · {p.presentation}</span> : null} · {fmtMoney(p.priceCents)}{p.kind === 'SERVICE' ? <span className="caption muted"> · servicio</span> : null}</span>
+              <Button size="sm" variant="secondary" disabled={inSale(p.name)} aria-label={inSale(p.name) ? `${p.name} ya está en la venta` : `Agregar ${p.name} a la venta`} onClick={() => onAdd(p)}>{inSale(p.name) ? 'En la venta' : 'Agregar'}</Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -429,9 +480,9 @@ function NewCustomer({ write, initial, onCreated }: { write: boolean; initial?: 
 }
 
 /** Cobro en contingencia: se guarda la venta «por emitir» y el dinero entra en la caja LOCAL. No se llama a Apiworking. */
-function ContingencyBlock({ customer, description, lines, validLines, link, docDate, onDone }: {
+function ContingencyBlock({ customer, description, lines, validLines, link, docDate, serviceIds, onDone }: {
   customer: AwCustomer; description: string; lines: { name: string; quantity: number; cents: number | null }[]; validLines: boolean;
-  link: { appointmentId?: string; patientId?: string }; docDate: string; onDone: () => void;
+  link: { appointmentId?: string; patientId?: string }; docDate: string; serviceIds: string[]; onDone: () => void;
 }) {
   const toast = useToast();
   const cfg = useAsync(() => get<CashConfig>('/cashbox/config'), []);
@@ -454,6 +505,7 @@ function ContingencyBlock({ customer, description, lines, validLines, link, docD
         customerId: customer.id, description, accountId, categoryId, requestKey: key.current,
         lines: lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.cents! })),
         ...(link.appointmentId ? { appointmentId: link.appointmentId } : {}), ...(link.patientId ? { patientId: link.patientId } : {}), ...(docDate ? { docDate } : {}),
+        ...(serviceIds.length ? { visitServiceIds: serviceIds } : {}),
       });
       toast.success('Cobro registrado en la caja local. El documento queda por emitir en Apiworking.');
       key.current = crypto.randomUUID();

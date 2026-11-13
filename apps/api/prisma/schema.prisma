@@ -1329,6 +1329,7 @@ model ClinicalVisit {
   diagnoses     ClinicalDiagnosis[]
   procedures    ClinicalProcedure[]
   clinicalNotes ClinicalNote[]
+  services      VisitService[]
   appointment   Appointment?
 
   @@unique([patientId, visitNumber])
@@ -1610,17 +1611,60 @@ model Product {
   name         String        @db.VarChar(120)
   /// Presentación opcional (p. ej. «caja x 10», «frasco 120 ml»).
   presentation String?       @db.VarChar(80)
-  /// Precio de venta en céntimos de sol (IGV incluido).
+  /// Precio de venta en céntimos de sol (IGV incluido). En un servicio, el precio por pieza (diente) o por vez.
   priceCents   Int           @map("price_cents")
+  /// PRODUCT: medicamento o producto que se vende en caja. SERVICE: tratamiento que el odontólogo registra en la atención.
+  kind         ProductKind   @default(PRODUCT)
   status       CatalogStatus @default(ACTIVE)
   createdAt    DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt    DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
 
-  clinic Clinic @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  clinic        Clinic         @relation(fields: [clinicId], references: [id], onDelete: Restrict)
+  visitServices VisitService[]
 
   @@unique([clinicId, name])
   @@index([clinicId, status])
   @@map("products")
+}
+
+enum ProductKind {
+  PRODUCT
+  SERVICE
+}
+
+enum VisitServiceStatus {
+  ACTIVE
+  REMOVED
+}
+
+/// Servicio del catálogo realizado en una atención, con las piezas tratadas: es la cuenta que el paciente paga en caja.
+/// Nombre y precio se copian al registrarlo (un cambio posterior del catálogo no altera lo ya hecho).
+model VisitService {
+  id             String             @id @default(uuid()) @db.Char(36)
+  clinicId       String             @map("clinic_id") @db.Char(36)
+  patientId      String             @map("patient_id") @db.Char(36)
+  visitId        String             @map("visit_id") @db.Char(36)
+  productId      String             @map("product_id") @db.Char(36)
+  name           String             @db.VarChar(120)
+  unitPriceCents Int                @map("unit_price_cents")
+  /// Piezas tratadas (numeración FDI, p. ej. ["16","26"]); vacío = el servicio no es por pieza.
+  teeth          Json
+  /// Piezas tratadas, o las veces que se hizo si no es por pieza.
+  quantity       Int
+  status         VisitServiceStatus @default(ACTIVE)
+  /// Venta de Apiworking que lo cobró; nulo = pendiente de pago.
+  saleId         String?            @map("sale_id") @db.Char(36)
+  createdById    String             @map("created_by_id") @db.Char(36)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  removedAt      DateTime?          @map("removed_at") @db.DateTime(3)
+
+  visit   ClinicalVisit @relation(fields: [visitId], references: [id], onDelete: Restrict)
+  product Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([clinicId, patientId, status, saleId])
+  @@index([visitId])
+  @@index([saleId])
+  @@map("visit_services")
 }
 
 model AgendaService {

@@ -52,9 +52,9 @@ describe('Catálogo de productos', () => {
 
   it('empareja el medicamento recetado con el catálogo: con dosis primero, sin tildes ni mayúsculas', () => {
     const cat = [
-      { id: '1', name: 'Amoxicilina', presentation: null, priceCents: 1000, active: true },
-      { id: '2', name: 'AMOXICILINA 500 MG', presentation: null, priceCents: 2500, active: true },
-      { id: '3', name: 'Clorhexidina 0.12%', presentation: null, priceCents: 1500, active: true },
+      { id: '1', name: 'Amoxicilina', presentation: null, priceCents: 1000, kind: 'PRODUCT' as const, active: true },
+      { id: '2', name: 'AMOXICILINA 500 MG', presentation: null, priceCents: 2500, kind: 'PRODUCT' as const, active: true },
+      { id: '3', name: 'Clorhexidina 0.12%', presentation: null, priceCents: 1500, kind: 'PRODUCT' as const, active: true },
     ];
     expect(matchProduct(cat, 'amoxicilina', '500 mg')?.id).toBe('2');
     expect(matchProduct(cat, 'Amoxicilina', null)?.id).toBe('1');

@@ -9,7 +9,7 @@ import { AppConfig } from '../config/app-config.js';
 import { clinicScope, isUniqueViolation } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
-import { LIVE_SALE_STATUSES, resolveBillingLink } from './billing-link.js';
+import { LIVE_SALE_STATUSES, markServicesBilled, requirePendingServices, resolveBillingLink } from './billing-link.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { presentSale } from './apiworking-sales.service.js';
 import { matchProduct, ProductsService } from '../products/products.js';
@@ -41,14 +41,32 @@ export class ApiworkingContingencyService {
    * Datos para cobrar desde una cita atendida o desde un paciente: cliente por su documento, servicio y precio de referencia, y las
    * recetas que dio el odontólogo (para vender lo recetado o solo el servicio).
    */
-  async billingDraft(principal: AuthPrincipal, q: { appointmentId?: string; patientId?: string }, meta?: RequestMeta) {
+  async billingDraft(principal: AuthPrincipal, q: { appointmentId?: string; patientId?: string; document?: string }, meta?: RequestMeta) {
     const { clinicId } = clinicScope(principal);
-    if (!q.appointmentId && !q.patientId) throw new BadRequestException('Indique la cita o el paciente');
-    const appointment = q.appointmentId
-      ? await this.db.appointment.findFirst({ where: { id: q.appointmentId, clinicId }, include: { service: { select: { name: true, priceCents: true } } } })
+    if (!q.appointmentId && !q.patientId && !q.document) throw new BadRequestException('Indique la cita, el paciente o su documento');
+    // Caja busca por documento (DNI): el paciente de esta clínica con ese documento vigente.
+    let byDocument: string | null = null;
+    if (q.document && !q.appointmentId && !q.patientId) {
+      const idRow = await this.db.patientIdentifier.findFirst({ where: { clinicId, number: q.document.toUpperCase(), status: 'ACTIVE' }, select: { patientId: true } });
+      if (!idRow) throw new NotFoundException('No hay un paciente con ese documento');
+      byDocument = idRow.patientId;
+    }
+    const basePatientId = q.patientId ?? byDocument;
+    // Cuenta pendiente: lo que el odontólogo registró en consultas ya terminadas y todavía no se cobró.
+    const account = await this.pendingAccount(clinicId, q.appointmentId ? null : basePatientId);
+    // Sin cita indicada, se cobra la última cita atendida de esas consultas (su servicio y su receta), si aún no tiene venta.
+    let appointmentId = q.appointmentId ?? null;
+    if (!appointmentId && account.appointmentIds.length > 0) {
+      const live = await this.db.apiworkingSale.findMany({ where: { appointmentId: { in: account.appointmentIds }, docStatus: { in: [...LIVE_SALE_STATUSES] } }, select: { appointmentId: true } });
+      const taken = new Set(live.map((s) => s.appointmentId));
+      appointmentId = account.appointmentIds.find((id) => !taken.has(id)) ?? null;
+    }
+    const appointment = appointmentId
+      ? await this.db.appointment.findFirst({ where: { id: appointmentId, clinicId }, include: { service: { select: { name: true, priceCents: true } } } })
       : null;
     if (q.appointmentId && !appointment) throw new NotFoundException('Cita no encontrada');
-    const patientId = appointment?.patientId ?? q.patientId!;
+    const patientId = appointment?.patientId ?? basePatientId!;
+    const accountView = q.appointmentId ? await this.pendingAccount(clinicId, patientId) : account;
     const patient = await this.db.patient.findFirst({ where: { id: patientId, clinicId }, select: { id: true, firstName: true, lastName: true, secondLastName: true } });
     if (!patient) throw new NotFoundException('Paciente no encontrado');
     const identifier = await this.db.patientIdentifier.findFirst({ where: { patientId, clinicId, status: 'ACTIVE' }, select: { type: true, number: true }, orderBy: { createdAt: 'desc' } });
@@ -70,6 +88,7 @@ export class ApiworkingContingencyService {
       });
     }
     return {
+      account: { items: accountView.items, totalCents: accountView.totalCents, serviceIds: accountView.items.flatMap((i) => i.serviceIds) },
       prescriptions,
       patient: { id: patient.id, name: [patient.firstName, patient.lastName, patient.secondLastName].filter(Boolean).join(' ') },
       appointment: appointment ? { id: appointment.id, status: appointment.status } : null,
@@ -80,6 +99,34 @@ export class ApiworkingContingencyService {
       alreadyBilled: billed ? presentSale(billed) : null,
       canBill: appointment ? appointment.status === 'ATTENDED' && !billed : true,
     };
+  }
+
+  /**
+   * Cuenta pendiente del paciente: servicios registrados en consultas TERMINADAS (visita cerrada), vigentes y sin cobrar, agrupados
+   * por servicio y precio (p. ej. «Curación x2 · S/ 100 c/u = S/ 200», con las piezas tratadas). Las citas de esas consultas, de la
+   * más reciente a la más antigua, sirven para cobrar también su servicio de agenda.
+   */
+  private async pendingAccount(clinicId: string, patientId: string | null) {
+    if (!patientId) return { items: [], totalCents: 0, appointmentIds: [] as string[] };
+    const rows = await this.db.visitService.findMany({
+      where: { clinicId, patientId, status: 'ACTIVE', saleId: null, visit: { status: 'CLOSED' } },
+      include: { visit: { select: { appointmentId: true, closedAt: true } } },
+      orderBy: { createdAt: 'asc' },
+    });
+    const groups = new Map<string, { productId: string; name: string; unitPriceCents: number; quantity: number; teeth: string[]; serviceIds: string[] }>();
+    for (const r of rows) {
+      const key = `${r.productId}|${r.unitPriceCents}`;
+      const g = groups.get(key) ?? { productId: r.productId, name: r.name, unitPriceCents: r.unitPriceCents, quantity: 0, teeth: [], serviceIds: [] };
+      g.quantity += r.quantity;
+      if (Array.isArray(r.teeth)) g.teeth.push(...(r.teeth as string[]));
+      g.serviceIds.push(r.id);
+      groups.set(key, g);
+    }
+    const items = [...groups.values()].map((g) => ({ ...g, teeth: [...new Set(g.teeth)].sort(), subtotalCents: g.unitPriceCents * g.quantity }));
+    const appointmentIds = [...new Set(
+      [...rows].sort((a, b) => (b.visit.closedAt?.getTime() ?? 0) - (a.visit.closedAt?.getTime() ?? 0)).map((r) => r.visit.appointmentId).filter((x): x is string => Boolean(x)),
+    )];
+    return { items, totalCents: items.reduce((t, i) => t + i.subtotalCents, 0), appointmentIds };
   }
 
   /**
@@ -108,7 +155,7 @@ export class ApiworkingContingencyService {
         .map((u) => [u.id, `${u.firstName} ${u.lastName}`.trim()]),
     );
     // Precio del catálogo para cada medicamento (por nombre): al agregarlo a la venta, el precio sale solo.
-    const catalog = rows.length ? await this.products.list(principal) : [];
+    const catalog = rows.length ? await this.products.list(principal, false, 'PRODUCT') : [];
     return rows.map((r) => ({
       id: r.id,
       number: r.number,
@@ -132,6 +179,7 @@ export class ApiworkingContingencyService {
     const customer = await this.clients.findLocal(principal, dto.customerId);
     if (!customer) throw new BadRequestException('El cliente no está guardado en este sistema: créelo o úselo en una venta mientras Apiworking responde');
     const link = await resolveBillingLink(this.db, principal, { patientId: dto.patientId, appointmentId: dto.appointmentId });
+    const serviceIds = await requirePendingServices(this.db, clinicId, link.patientId, dto.visitServiceIds);
     const totalCents = dto.lines.reduce((sum, l) => sum + l.quantity * l.unitPriceCents, 0);
     if (totalCents < 1 || totalCents > 1_000_000_000) throw new BadRequestException('El total está fuera de rango');
     const docDate = dto.docDate ?? limaToday();
@@ -175,7 +223,8 @@ export class ApiworkingContingencyService {
           createdById: principal.user.id,
         },
       });
-      await this.audit.record({ action: AuditAction.ApiworkingContingencyRecorded, entity: 'ApiworkingSale', entityId: sale.id, userId: principal.user.id, clinicId, patientId: link.patientId, meta, summary: { totalCents, cashMovementId: movement.id } });
+      await markServicesBilled(this.db, clinicId, sale.id, serviceIds);
+      await this.audit.record({ action: AuditAction.ApiworkingContingencyRecorded, entity: 'ApiworkingSale', entityId: sale.id, userId: principal.user.id, clinicId, patientId: link.patientId, meta, summary: { totalCents, cashMovementId: movement.id, servicesBilled: serviceIds.length } });
       return presentSale(sale);
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;

@@ -1,3 +1,4 @@
+import { VisitServicesService } from './visit-services.service.js';
 import { Module } from '@nestjs/common';
 import { CareRelationshipsController } from './care-relationships.controller.js';
 import { CareRelationshipsService } from './care-relationships.service.js';
@@ -27,6 +28,7 @@ import { ClinicalController } from './clinical.controller.js';
     OdontogramController,
   ],
   providers: [
+    VisitServicesService,
     CareRelationshipsService,
     ClinicalAccessService,
     ClinicalSummaryService,

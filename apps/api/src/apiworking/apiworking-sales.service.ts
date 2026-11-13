@@ -6,7 +6,7 @@ import type { RequestMeta } from '../common/utils/request-meta.js';
 import { AppConfig } from '../config/app-config.js';
 import type { Prisma } from '../generated/prisma/client.js';
 import { clinicScope, isUniqueViolation } from '../patients/patient-access.js';
-import { resolveBillingLink } from './billing-link.js';
+import { markServicesBilled, releaseServices, requirePendingServices, resolveBillingLink } from './billing-link.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { enforceRealOperationsCap } from './real-operations.js';
@@ -205,6 +205,7 @@ export class ApiworkingSalesService {
       if (!Number.isSafeInteger(Number(id))) throw new BadRequestException('Identificador de Apiworking fuera de rango');
     }
     const link = await resolveBillingLink(this.db, principal, { patientId: draft.patientId, appointmentId: draft.appointmentId, excludeSaleId: draft.pendingSaleId });
+    const serviceIds = await requirePendingServices(this.db, clinicScope(principal).clinicId, link.patientId, draft.visitServiceIds);
     const customer = await this.clients.find(principal, draft.customerId);
     if (!customer) throw new BadRequestException('El cliente no existe (o está inactivo) en Apiworking');
 
@@ -253,7 +254,7 @@ export class ApiworkingSalesService {
     };
     // El enlace con paciente y cita también queda aprobado: cambiarlo invalida la vista previa.
     const linkSuffix = link.appointmentId || link.patientId ? `|p:${link.patientId ?? ''}|a:${link.appointmentId ?? ''}` : '';
-    return { body, idCaja, hash: sha256(JSON.stringify(body) + linkSuffix), totalCents, customer, serie: serie.serie, docDate, patientId: link.patientId, appointmentId: link.appointmentId };
+    return { body, idCaja, hash: sha256(JSON.stringify(body) + linkSuffix), totalCents, customer, serie: serie.serie, docDate, patientId: link.patientId, appointmentId: link.appointmentId, serviceIds };
   }
 
   // --- Venta: un solo envío del documento, sin reintentos, y el pago aplicado a continuación ---
@@ -360,6 +361,8 @@ export class ApiworkingSalesService {
     } catch (error) {
       updated = await this.settleFailure(sale.id, error, principal, meta);
     }
+    // Lo cobrado de la cuenta pendiente queda marcado (también con resultado dudoso: el documento pudo registrarse).
+    if (updated.docStatus === 'SENT' || updated.docStatus === 'PENDING_RECONCILIATION') await markServicesBilled(this.db, clinicId, updated.id, built.serviceIds);
     // Resultado dudoso: se busca solo el comprobante en Apiworking (lectura) en vez de pedir una conciliación manual.
     if (updated.docStatus === 'PENDING_RECONCILIATION') updated = await this.locate(updated, principal, meta);
     // Venta cobrada: el pago se aplica en el mismo paso (registro-documento no lo aplica). La de contingencia ya se cobró en la caja local.
@@ -574,6 +577,7 @@ export class ApiworkingSalesService {
     const updated = await this.settle(sale.id, dto.outcome === 'REGISTERED'
       ? { docStatus: 'SENT', externalNumber: dto.externalNumber, externalDocId: dto.externalDocId ?? null, failureReason: null }
       : { docStatus: 'REJECTED', failureReason: clip(`Conciliado: no existe en Apiworking. ${dto.note}`) });
+    if (updated.docStatus === 'REJECTED') await releaseServices(this.db, updated.id);
     await this.audit.recordSafely({ action: AuditAction.ApiworkingSaleReconciled, entity: 'ApiworkingSale', entityId: sale.id, userId: principal.user.id, clinicId: sale.clinicId, meta, summary: { outcome: dto.outcome, note: clip(dto.note) } });
     return presentSale(updated);
   }

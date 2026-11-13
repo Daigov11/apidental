@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { AppConfig } from '../src/config/app-config.js';
 import { ApiworkingClientsService } from '../src/apiworking/apiworking-clients.service.js';
 import { ApiworkingSessionStore } from '../src/apiworking/apiworking-session.store.js';
-import { bearer, createTestContext, Fixtures, type TestContext } from './helpers/app.js';
+import { assignCare, bearer, createPatient, createTestContext, Fixtures, loginInContext, type TestContext } from './helpers/app.js';
 
 const TENANT = 'prod_ti_tiendaglowsmile';
 const jwt = (exp: number) => `${Buffer.from('{"alg":"HS256"}').toString('base64url')}.${Buffer.from(JSON.stringify({ exp })).toString('base64url')}.firma`;
@@ -753,6 +753,70 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     } finally {
       appCfg.maxRealOperations = savedCap;
       scenario.cajaOpen = true;
+    }
+  });
+
+  it('cuenta pendiente: el odontólogo registra servicios por pieza, termina la consulta y caja la cobra buscando por DNI', async () => {
+    const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
+    const savedCap = appCfg.maxRealOperations;
+    appCfg.maxRealOperations = 500;
+    try {
+      const branch = await fx.branch(clinicId);
+      const admin = (await fx.userWithRole('CLINIC_ADMIN', { clinicId })).user;
+      const adminToken = await loginInContext(ctx, admin.email, { clinicId });
+      const dentist = (await fx.userWithRole('DENTIST', { clinicId, branchId: branch.id })).user;
+      const dt = await loginInContext(ctx, dentist.email, { clinicId, branchId: branch.id });
+      const dni = String(40_000_000 + Math.floor(Math.random() * 9_000_000));
+      const { id: patientId } = await createPatient(ctx, adminToken, { firstName: 'Marco', lastName: 'Cuenta', identifier: { type: 'DNI', number: dni } });
+      await assignCare(ctx, adminToken, patientId, dentist.id);
+      const curacion = await ctx.db.product.create({ data: { clinicId, name: `Curación ${dni}`, priceCents: 10_000, kind: 'SERVICE' } });
+      const limpieza = await ctx.db.product.create({ data: { clinicId, name: `Limpieza ${dni}`, priceCents: 8_000, kind: 'SERVICE' } });
+      const pastilla = await ctx.db.product.create({ data: { clinicId, name: `Pastilla ${dni}`, priceCents: 500 } });
+      const cbase = `/v1/patients/${patientId}/clinical`;
+      const visit = (await ctx.http().post(`${cbase}/visits`).set(bearer(dt)).send({}).expect(201)).body as { id: string; version?: number };
+      const vs = `${cbase}/visits/${visit.id}/services`;
+
+      // Servicios: por pieza (cantidad = piezas) y por vez; un producto no es un servicio; piezas inválidas se rechazan.
+      await ctx.http().post(vs).set(bearer(dt)).send({ productId: curacion.id, teeth: ['26', '16'] }).expect(201);
+      await ctx.http().post(vs).set(bearer(dt)).send({ productId: curacion.id, teeth: ['36'] }).expect(201);
+      const lim = await ctx.http().post(vs).set(bearer(dt)).send({ productId: limpieza.id }).expect(201);
+      await ctx.http().post(vs).set(bearer(dt)).send({ productId: pastilla.id }).expect(404);
+      await ctx.http().post(vs).set(bearer(dt)).send({ productId: curacion.id, teeth: ['19'] }).expect(400);
+      // Solo el odontólogo responsable registra servicios.
+      await ctx.http().post(vs).set(bearer(adminToken)).send({ productId: curacion.id, teeth: ['11'] }).expect(403);
+      const sheet = (await ctx.http().get(vs).set(bearer(dt)).expect(200)).body as { items: { name: string; quantity: number; subtotalCents: number }[]; totalCents: number };
+      expect(sheet.items.map((i) => [i.quantity, i.subtotalCents])).toEqual([[2, 20_000], [1, 10_000], [1, 8_000]]);
+      expect(sheet.totalCents).toBe(38_000);
+      // Se puede quitar mientras la consulta está abierta.
+      await ctx.http().post(`${vs}/${lim.body.id}/remove`).set(bearer(dt)).expect(200);
+
+      // Con la consulta abierta todavía no hay nada que cobrar.
+      const login = await enter();
+      const sel = (await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200)).body.accessToken as string;
+      const before = (await ctx.http().get(`/v1/apiworking/billing-draft?document=${dni}`).set(bearer(sel)).expect(200)).body;
+      expect(before.account).toEqual({ items: [], totalCents: 0, serviceIds: [] });
+
+      // Terminar consulta: la cuenta pasa a caja.
+      await ctx.http().post(`${cbase}/visits/${visit.id}/close`).set(bearer(dt)).send({ expectedVersion: visit.version ?? 1 }).expect(200);
+      await ctx.http().post(vs).set(bearer(dt)).send({ productId: curacion.id, teeth: ['11'] }).expect(409);
+      const d = (await ctx.http().get(`/v1/apiworking/billing-draft?document=${dni}`).set(bearer(sel)).expect(200)).body;
+      expect(d.patient).toMatchObject({ id: patientId });
+      expect(d.account.items).toEqual([expect.objectContaining({ name: `Curación ${dni}`, unitPriceCents: 10_000, quantity: 3, teeth: ['16', '26', '36'], subtotalCents: 30_000 })]);
+      expect(d.account.totalCents).toBe(30_000);
+      expect(d.account.serviceIds).toHaveLength(2);
+      await ctx.http().get('/v1/apiworking/billing-draft?document=00000001').set(bearer(sel)).expect(404);
+
+      // Cobro: la venta marca los servicios; ya no aparecen como pendientes ni se cobran dos veces.
+      const sale = await ctx.http().post('/v1/apiworking/sales').set(bearer(sel)).send({ ...draft({ description: 'Curaciones', lines: [{ name: 'Curación', quantity: 3, unitPriceCents: 10_000 }] }), patientId, visitServiceIds: d.account.serviceIds, idempotencyKey: randomUUID() }).expect(201);
+      expect(sale.body.docStatus).toBe('SENT');
+      expect(await ctx.db.visitService.count({ where: { id: { in: d.account.serviceIds }, saleId: sale.body.id } })).toBe(2);
+      const after = (await ctx.http().get(`/v1/apiworking/billing-draft?document=${dni}`).set(bearer(sel)).expect(200)).body;
+      expect(after.account.items).toEqual([]);
+      const again = await ctx.http().post('/v1/apiworking/sales').set(bearer(sel)).send({ ...draft(), patientId, visitServiceIds: d.account.serviceIds, idempotencyKey: randomUUID() });
+      expect(again.status).toBe(409);
+      expect(again.body.code).toBe('SERVICES_NOT_PENDING');
+    } finally {
+      appCfg.maxRealOperations = savedCap;
     }
   });
 

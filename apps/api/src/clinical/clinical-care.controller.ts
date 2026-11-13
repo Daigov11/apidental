@@ -24,6 +24,7 @@ import { ClinicalNotesService } from './clinical-notes.service.js';
 import { ClinicalSheetService } from './clinical-sheet.service.js';
 import { ClinicalProceduresService } from './clinical-procedures.service.js';
 import { ClinicalVisitsService } from './clinical-visits.service.js';
+import { AddVisitServiceDto, VisitServicesService } from './visit-services.service.js';
 import {
   CancelVisitDto,
   CloseNoteDto,
@@ -68,6 +69,7 @@ export class ClinicalCareController {
     private readonly procedures: ClinicalProceduresService,
     private readonly notes: ClinicalNotesService,
     private readonly sheet: ClinicalSheetService,
+    private readonly services: VisitServicesService,
   ) {}
 
   // ------------------------------------------------------------- catálogo (configuración de la clínica)
@@ -335,6 +337,27 @@ export class ClinicalCareController {
       'MARKED_IN_ERROR',
       meta,
     );
+  }
+
+  // ------------------------------------------------------------------- servicios realizados (cuenta del paciente)
+
+  @Get(`${P}/visits/:visitId/services`)
+  @RequireAnyPermission(...ANY_CLINICAL)
+  listServices(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string, @Param('visitId', uuid()) visitId: string, @Meta() meta: RequestMeta) {
+    return this.services.list(a, id, visitId, meta);
+  }
+
+  @Post(`${P}/visits/:visitId/services`)
+  @RequirePermissions('clinical:write')
+  addService(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string, @Param('visitId', uuid()) visitId: string, @Body() dto: AddVisitServiceDto, @Meta() meta: RequestMeta) {
+    return this.services.add(a, id, visitId, dto, meta);
+  }
+
+  @Post(`${P}/visits/:visitId/services/:serviceId/remove`)
+  @HttpCode(200)
+  @RequirePermissions('clinical:write')
+  removeService(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string, @Param('visitId', uuid()) visitId: string, @Param('serviceId', uuid()) serviceId: string, @Meta() meta: RequestMeta) {
+    return this.services.remove(a, id, visitId, serviceId, meta);
   }
 
   // ---------------------------------------------------------------------------------------- procedimientos

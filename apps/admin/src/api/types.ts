@@ -156,6 +156,8 @@ export interface AwDraft {
   customerId: string; idCaja: string; idTipoDocumento: string; idSerie: string; idMetodoPago: string;
   description: string; lines: AwLine[]; docDate?: string;
   patientId?: string; appointmentId?: string; pendingSaleId?: string;
+  /** Servicios de la cuenta pendiente que se cobran en esta venta. */
+  visitServiceIds?: string[];
 }
 export interface AwPreview {
   request: unknown; hash: string; totalCents: number; totalText: string; serie: string;
@@ -179,12 +181,15 @@ export interface AwBillingDraft {
   identifier: { docType: string; docTypeLabel: string; docNumber: string } | null; customer: AwCustomer | null; alreadyBilled: AwSale | null; canBill: boolean;
   /** Recetas que dio el odontólogo en la cita (o ese día), para vender lo recetado. */
   prescriptions?: AwBillingPrescription[];
+  /** Cuenta pendiente: servicios de consultas terminadas, sin cobrar, agrupados por servicio y precio. */
+  account?: { items: AwAccountItem[]; totalCents: number; serviceIds: string[] };
 }
+export interface AwAccountItem { productId: string; name: string; unitPriceCents: number; quantity: number; teeth: string[]; serviceIds: string[]; subtotalCents: number }
 export interface AwBillingPrescription {
   id: string; number: number; code: string; prescriber: string | null; createdAt: string;
   items: { medication: string; dose: string | null; frequency: string | null; duration: string | null; product?: { id: string; name: string; priceCents: number } | null }[];
 }
-export interface Product { id: string; name: string; presentation: string | null; priceCents: number; active: boolean }
+export interface Product { id: string; name: string; presentation: string | null; priceCents: number; kind?: 'PRODUCT' | 'SERVICE'; active: boolean }
 export interface AwCash {
   cajas: { id: string; name: string; branch: string; opened: boolean }[]; turnos: AwOption[]; defaultTurn: string; write: boolean;
 }

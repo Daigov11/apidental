@@ -1,6 +1,6 @@
 import { Body, ConflictException, Controller, Get, Inject, Injectable, Module, NotFoundException, BadRequestException, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { CurrentPrincipal } from '../common/decorators/current-principal.decorator.js';
@@ -15,25 +15,29 @@ const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? val
 export class CreateProductDto {
   @Transform(trim) @IsString() @MinLength(2) @MaxLength(120) name!: string;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(80) presentation?: string;
-  /** Precio de venta en céntimos (IGV incluido). */
+  /** Precio de venta en céntimos (IGV incluido). En un servicio, por pieza o por vez. */
   @IsInt() @Min(1) @Max(100_000_000) priceCents!: number;
+  /** PRODUCT (por defecto): se vende en caja. SERVICE: tratamiento que el odontólogo registra en la atención. */
+  @IsOptional() @IsIn(['PRODUCT', 'SERVICE']) kind?: 'PRODUCT' | 'SERVICE';
 }
 export class UpdateProductDto {
   @IsOptional() @Transform(trim) @IsString() @MinLength(2) @MaxLength(120) name?: string;
   @IsOptional() @Transform(trim) @IsString() @MaxLength(80) presentation?: string;
   @IsOptional() @IsInt() @Min(1) @Max(100_000_000) priceCents?: number;
   @IsOptional() @IsBoolean() active?: boolean;
+  @IsOptional() @IsIn(['PRODUCT', 'SERVICE']) kind?: 'PRODUCT' | 'SERVICE';
 }
 export class ListProductsQuery {
   /** «1»: incluye los inactivos (para administrar el catálogo). */
   @IsOptional() @IsString() all?: string;
+  @IsOptional() @IsIn(['PRODUCT', 'SERVICE']) kind?: 'PRODUCT' | 'SERVICE';
 }
 
 /** Nombre comparable: sin tildes, sin mayúsculas y con un solo espacio. */
 export const normalizeName = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
 
-export interface ProductView { id: string; name: string; presentation: string | null; priceCents: number; active: boolean }
-const view = (p: { id: string; name: string; presentation: string | null; priceCents: number; status: string }): ProductView => ({ id: p.id, name: p.name, presentation: p.presentation, priceCents: p.priceCents, active: p.status === 'ACTIVE' });
+export interface ProductView { id: string; name: string; presentation: string | null; priceCents: number; kind: 'PRODUCT' | 'SERVICE'; active: boolean }
+const view = (p: { id: string; name: string; presentation: string | null; priceCents: number; kind: 'PRODUCT' | 'SERVICE'; status: string }): ProductView => ({ id: p.id, name: p.name, presentation: p.presentation, priceCents: p.priceCents, kind: p.kind, active: p.status === 'ACTIVE' });
 
 /** Producto del catálogo para un medicamento recetado: primero «medicamento dosis», luego solo «medicamento». */
 export function matchProduct(products: ProductView[], medication: string, dose: string | null): ProductView | null {
@@ -47,9 +51,9 @@ export function matchProduct(products: ProductView[], medication: string, dose: 
 export class ProductsService {
   constructor(@Inject(PRISMA) private readonly db: PrismaDb, private readonly audit: AuditService) {}
 
-  async list(principal: AuthPrincipal, all = false): Promise<ProductView[]> {
+  async list(principal: AuthPrincipal, all = false, kind?: 'PRODUCT' | 'SERVICE'): Promise<ProductView[]> {
     const { clinicId } = clinicScope(principal);
-    const rows = await this.db.product.findMany({ where: { clinicId, ...(all ? {} : { status: 'ACTIVE' }) }, orderBy: { name: 'asc' } });
+    const rows = await this.db.product.findMany({ where: { clinicId, ...(all ? {} : { status: 'ACTIVE' }), ...(kind ? { kind } : {}) }, orderBy: { name: 'asc' } });
     return rows.map(view);
   }
 
@@ -57,8 +61,8 @@ export class ProductsService {
     const { clinicId, branchId } = clinicScope(principal);
     try {
       return await this.db.$transaction(async (tx) => {
-        const row = await tx.product.create({ data: { clinicId, name: dto.name, presentation: dto.presentation || null, priceCents: dto.priceCents } });
-        await this.audit.record({ action: 'PRODUCT_CREATED', entity: 'Product', entityId: row.id, userId: principal.user.id, clinicId, branchId, meta, summary: { name: row.name, priceCents: row.priceCents } }, tx);
+        const row = await tx.product.create({ data: { clinicId, name: dto.name, presentation: dto.presentation || null, priceCents: dto.priceCents, kind: dto.kind ?? 'PRODUCT' } });
+        await this.audit.record({ action: 'PRODUCT_CREATED', entity: 'Product', entityId: row.id, userId: principal.user.id, clinicId, branchId, meta, summary: { name: row.name, priceCents: row.priceCents, kind: row.kind } }, tx);
         return view(row);
       });
     } catch (e) {
@@ -71,7 +75,8 @@ export class ProductsService {
     const { clinicId, branchId } = clinicScope(principal);
     const cur = await this.db.product.findFirst({ where: { id, clinicId } });
     if (!cur) throw new NotFoundException('Producto no encontrado');
-    const data: { name?: string; presentation?: string | null; priceCents?: number; status?: 'ACTIVE' | 'INACTIVE' } = {};
+    const data: { name?: string; presentation?: string | null; priceCents?: number; status?: 'ACTIVE' | 'INACTIVE'; kind?: 'PRODUCT' | 'SERVICE' } = {};
+    if (dto.kind !== undefined && dto.kind !== cur.kind) data.kind = dto.kind;
     if (dto.name !== undefined && dto.name !== cur.name) data.name = dto.name;
     if (dto.presentation !== undefined && (dto.presentation || null) !== cur.presentation) data.presentation = dto.presentation || null;
     if (dto.priceCents !== undefined && dto.priceCents !== cur.priceCents) data.priceCents = dto.priceCents;
@@ -100,7 +105,7 @@ export class ProductsController {
   @Get()
   @RequireAnyPermission(...READ)
   list(@CurrentPrincipal() a: AuthPrincipal, @Query() q: ListProductsQuery) {
-    return this.products.list(a, q.all === '1');
+    return this.products.list(a, q.all === '1', q.kind);
   }
 
   @Post()

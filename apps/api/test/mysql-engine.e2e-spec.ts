@@ -95,7 +95,7 @@ describe('Motor MySQL 8.4 y esquema real', () => {
         'attachments', 'audit_logs', 'auth_sessions', 'branches', 'clinical_access_grants', 'clinical_alerts', 'clinical_allergy_assessments', 'clinical_diagnoses', 'clinical_history_entries', 'clinical_notes', 'clinical_odontograms', 'clinical_procedures', 'clinical_visits', 'clinics', 'guardians', 'invitations',
         'cash_accounts', 'cash_categories', 'cash_movements', 'cash_registers', 'cash_session_accounts', 'cash_sessions', 'password_recoveries', 'prescription_items', 'prescriptions', 'patient_care_relationships', 'patient_consents', 'patient_contacts', 'patient_guardians', 'patient_identifiers', 'patients',
         'permissions', 'procedure_definitions', 'products', 'provisioning_records', 'reauth_proofs', 'refresh_tokens', 'role_permissions', 'roles',
-        'user_assignments', 'users',
+        'user_assignments', 'users', 'visit_services',
       ].sort(),
     );
     for (const t of tables) {
