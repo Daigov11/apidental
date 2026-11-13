@@ -608,6 +608,47 @@ export class ApiworkingSalesService {
     return { body, filename: `ventas_${period}.pdf`, type: 'application/pdf' };
   }
 
+  /**
+   * Datos para imprimir la venta (A4 o ticket): la venta, la clínica (nombre, razón social, RUC), la sede y los nombres de las formas
+   * de pago. La impresión es una representación interna; la representación oficial (con QR) es el PDF de Apiworking.
+   */
+  async printData(principal: AuthPrincipal, id: string) {
+    const sale = await this.load(principal, id);
+    const { branchId } = clinicScope(principal);
+    const [clinic, branch, user, names] = await Promise.all([
+      this.db.clinic.findUnique({ where: { id: sale.clinicId }, select: { name: true, legalName: true, ruc: true, brandDisplayName: true } }),
+      branchId ? this.db.branch.findUnique({ where: { id: branchId }, select: { name: true, address: true } }) : Promise.resolve(null),
+      this.db.user.findUnique({ where: { id: sale.createdById }, select: { firstName: true, lastName: true } }),
+      this.methodNames(principal),
+    ]);
+    const letter = (sale.serie ?? '').trim().charAt(0).toUpperCase();
+    const documentLabel = sale.contingency && sale.docStatus === 'PENDING_ISSUE' ? 'Comprobante interno (por emitir)' : letter === 'F' ? 'Factura electrónica' : letter === 'B' ? 'Boleta de venta electrónica' : 'Nota de venta';
+    // Precios con IGV incluido (aplicaIGV = 1): op. gravada = total / 1.18.
+    const taxable = Math.round(sale.totalCents / 1.18);
+    return {
+      sale: presentSale(sale),
+      documentLabel,
+      clinic: { name: clinic?.brandDisplayName || clinic?.name || '', legalName: clinic?.legalName ?? null, ruc: clinic?.ruc ?? null },
+      branch: branch ? { name: branch.name, address: branch.address } : null,
+      cashier: user ? `${user.firstName} ${user.lastName}`.trim() : null,
+      payments: paymentsOf(sale).map((p) => ({ name: p.idMetodoPago ? (names.get(p.idMetodoPago) ?? `Forma de pago ${p.idMetodoPago}`) : 'Caja local', amountCents: p.amountCents })),
+      grossCents: sale.totalCents + sale.discountCents,
+      taxableCents: taxable,
+      igvCents: sale.totalCents - taxable,
+    };
+  }
+
+  /** URL del PDF oficial del comprobante en Apiworking (urlComprobante). Solo para ventas registradas con su id de documento. */
+  async officialUrl(principal: AuthPrincipal, id: string) {
+    const sale = await this.load(principal, id);
+    if (sale.docStatus !== 'SENT' || !sale.externalDocId) throw new ConflictException({ message: 'La venta aún no tiene un comprobante registrado en Apiworking', code: 'NO_DOCUMENT' });
+    const session = this.clients.requireSession(principal);
+    const data = await this.client.call('urlComprobante', { token: session.token, query: { bd: this.config.apiworking.expectedDatabase!, idDocumento: sale.externalDocId } });
+    const url = typeof data === 'string' ? data.trim() : '';
+    if (!/^https:\/\/[^\s]+$/i.test(url)) throw new ServiceUnavailableException({ message: 'Apiworking no devolvió el enlace del comprobante', code: 'NO_URL' });
+    return { url };
+  }
+
   private async load(principal: AuthPrincipal, id: string): Promise<SaleRow> {
     const { clinicId } = clinicScope(principal);
     const sale = await this.db.apiworkingSale.findFirst({ where: { id, clinicId } });

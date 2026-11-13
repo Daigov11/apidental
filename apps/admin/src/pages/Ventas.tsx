@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Banknote, CreditCard, Landmark, Plus, RefreshCw, Search, Smartphone, Trash2, Wallet } from 'lucide-react';
+import { Banknote, CreditCard, Landmark, Plus, Printer, RefreshCw, Search, Smartphone, Trash2, Wallet } from 'lucide-react';
 import { get, post } from '../api/client';
 import type { AwBillingDraft, AwBillingPrescription, Product, AwCustomerPreview, AwCustomerResult, AwContext, AwCustomer, AwDraft, AwLine, AwSale, AwStatus, CashConfig, CashSummary } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
 import { fmtDateTime } from '../lib/format';
 import { fmtMoney, parseSoles } from '../lib/money';
 import { useAsync } from '../lib/useAsync';
+import { openOfficialPdf, printSale, readPrintPref, writePrintPref, type PrintFormat } from '../lib/printSale';
 import { Button } from '../ui/Button';
 import { SelectField, TextField } from '../ui/fields';
 import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
@@ -129,6 +130,12 @@ export function VentasPage() {
     if (next.length) setLines(next.slice(0, 30));
   }, [billing.data]);
 
+  // --- Impresión del documento de venta ---
+  const [printPref, setPrintPref] = useState<PrintFormat | 'none'>(readPrintPref);
+  const [lastSale, setLastSale] = useState<AwSale | null>(null);
+  const doPrint = (id: string, f: PrintFormat) => { printSale(id, f).catch((e: unknown) => toast.error(`No se pudo imprimir: ${errorText(e)}`)); };
+  const doOfficial = (id: string) => { openOfficialPdf(id).catch((e: unknown) => toast.error(errorText(e))); };
+
   // --- Venta directa: un clic registra el documento y aplica el pago ---
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,6 +150,11 @@ export function VentasPage() {
     if (key.current?.signature !== signature) key.current = { signature, key: crypto.randomUUID() };
     try {
       const sale = await post<AwSale>('/apiworking/sales', { ...draft, idempotencyKey: key.current.key });
+      // Impresión al cobrar (formato recordado en este navegador): el documento sale apenas se registra la venta.
+      if (sale.docStatus !== 'REJECTED') {
+        setLastSale(sale);
+        if (printPref !== 'none') printSale(sale.id, printPref).catch((e: unknown) => toast.error(`No se pudo imprimir: ${errorText(e)}`));
+      }
       const num = sale.externalNumber ? ` ${sale.externalNumber}` : '';
       if (sale.docStatus === 'SENT' && sale.paymentStatus !== 'NO_EVIDENCE') toast.success(`Venta${num} registrada y pagada en Apiworking.`);
       else if (sale.docStatus === 'SENT') toast.error(`Venta${num} registrada en Apiworking, pero el pago no se aplicó${sale.failureReason ? `: ${sale.failureReason.replace(/^Pago no aplicado en Apiworking: /, '')}` : ''}.`);
@@ -349,12 +361,27 @@ export function VentasPage() {
                 {error && <Alert tone="danger">{error}</Alert>}
                 <Button variant="primary" disabled={!draft || readOnly || c?.opened === false} loading={busy} loadingText="Registrando venta…" onClick={() => void sell()}>Cobrar {fmtMoney(discountOk ? net : total)}</Button>
                 <Button variant="tertiary" onClick={reset}>Limpiar venta</Button>
+                <SelectField label="Imprimir al cobrar" value={printPref} onChange={(e) => { const v = e.target.value as PrintFormat | 'none'; setPrintPref(v); writePrintPref(v); }}>
+                  <option value="none">No imprimir</option><option value="ticket">Ticket (80 mm)</option><option value="a4">Hoja A4</option>
+                </SelectField>
               </>
             )}
           </aside>
         </div>
 
         </>
+      )}
+
+      {lastSale && (
+        <section className="card" aria-labelledby="last-h" style={{ marginTop: 'var(--space-5)' }}>
+          <div className="card-head"><h2 id="last-h" className="h3">Última venta{lastSale.externalNumber ? ` · ${lastSale.externalNumber}` : ''}</h2><Button size="sm" variant="tertiary" onClick={() => setLastSale(null)}>Cerrar</Button></div>
+          <p>{lastSale.customer.name} · <strong>{lastSale.totalText}</strong> · {lastSale.docStatusLabel}</p>
+          <div className="chip-row">
+            <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} onClick={() => doPrint(lastSale.id, 'ticket')}>Imprimir ticket</Button>
+            <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} onClick={() => doPrint(lastSale.id, 'a4')}>Imprimir A4</Button>
+            {lastSale.docStatus === 'SENT' && lastSale.externalDocId && <Button size="sm" variant="tertiary" onClick={() => doOfficial(lastSale.id)}>Comprobante oficial (PDF)</Button>}
+          </div>
+        </section>
       )}
 
       <section aria-labelledby="sales-h" style={{ marginTop: 'var(--space-8)' }}>
@@ -383,6 +410,8 @@ export function VentasPage() {
                     <td data-label="Acciones">
                       <div className="chip-row">
                         {s.actions.issue && canSell && !readOnly && <Button size="sm" variant="primary" onClick={() => startIssue(s)}>Emitir en Apiworking</Button>}
+                        {s.docStatus !== 'REJECTED' && <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} aria-label={`Imprimir ticket de ${s.externalNumber ?? s.description}`} onClick={() => doPrint(s.id, 'ticket')}>Ticket</Button>}
+                        {s.docStatus !== 'REJECTED' && <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} aria-label={`Imprimir A4 de ${s.externalNumber ?? s.description}`} onClick={() => doPrint(s.id, 'a4')}>A4</Button>}
                         {s.actions.void && can('apiworking:void') && !readOnly && <Button size="sm" variant="danger" onClick={() => setVoidOf(s)}>Anular</Button>}
                       </div>
                     </td>

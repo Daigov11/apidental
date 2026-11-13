@@ -80,6 +80,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
         if (scenario.registrarPago === 'reject') return { status: 200, body: { codResponse: 0, message: 'El documento ya está pagado' } };
         return { status: 200, body: ok({ result: 1, idComprobante: 201900000123, error: null, duplicado: null }) };
       case 'POST /api/Facturacion/anular': return { status: 200, body: ok({ result: 1 }) };
+      case 'GET /api/Facturacion/urlComprobante': return { status: 200, body: ok(`https://tiendaglowsmile.apiworking.co/ventas/facturacion/comprobante/${req.query.get('idDocumento')}`) };
       default: return { status: 404 };
     }
   }
@@ -927,6 +928,30 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       appCfg.maxRealOperations = savedCap;
       scenario.cajaOpen = true;
       scenario.movimiento = 'ok';
+    }
+  });
+
+  it('imprimir: datos del documento (clínica, totales con IGV, pagos) y enlace al PDF oficial de Apiworking', async () => {
+    const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
+    const savedCap = appCfg.maxRealOperations;
+    appCfg.maxRealOperations = 500;
+    scenario.registro = 'ok';
+    scenario.registrarPago = 'ok';
+    try {
+      await ctx.db.clinic.update({ where: { id: clinicId }, data: { legalName: 'GLOW SMILE S.A.C.' } });
+      const login = await enter();
+      const t = (await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200)).body.accessToken as string;
+      const sale = await ctx.http().post('/v1/apiworking/sales').set(bearer(t)).send({ ...draft({ description: 'Para imprimir', lines: [{ name: 'Curación', quantity: 1, unitPriceCents: 11_800 }] }), idempotencyKey: randomUUID() }).expect(201);
+      const d = (await ctx.http().get(`/v1/apiworking/sales/${sale.body.id}/print`).set(bearer(t)).expect(200)).body;
+      expect(d).toMatchObject({ documentLabel: 'Boleta de venta electrónica', clinic: { legalName: 'GLOW SMILE S.A.C.' }, grossCents: 11_800, taxableCents: 10_000, igvCents: 1_800, payments: [{ name: 'Efectivo', amountCents: 11_800 }] });
+      expect(d.sale).toMatchObject({ id: sale.body.id, externalNumber: 'B001-00000123' });
+      const u = (await ctx.http().get(`/v1/apiworking/sales/${sale.body.id}/official-url`).set(bearer(t)).expect(200)).body;
+      expect(u.url).toBe('https://tiendaglowsmile.apiworking.co/ventas/facturacion/comprobante/201900000123');
+      const call = seen.filter((x) => x.path === '/api/Facturacion/urlComprobante').at(-1)!;
+      expect([call.query.get('bd'), call.query.get('idDocumento')]).toEqual([TENANT, '201900000123']);
+      await ctx.http().get(`/v1/apiworking/sales/${randomUUID()}/print`).set(bearer(t)).expect(404);
+    } finally {
+      appCfg.maxRealOperations = savedCap;
     }
   });
 

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Download, FileSpreadsheet, RefreshCw, Search } from 'lucide-react';
+import { Download, FileSpreadsheet, Printer, RefreshCw, Search } from 'lucide-react';
 import { get } from '../api/client';
 import type { AwSale } from '../api/types';
 import { downloadFile } from '../lib/download';
 import { fmtDateTime } from '../lib/format';
 import { fmtMoney } from '../lib/money';
 import { useAsync } from '../lib/useAsync';
+import { openOfficialPdf, printSale } from '../lib/printSale';
 import { Button } from '../ui/Button';
 import { TextField } from '../ui/fields';
 import { Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
@@ -68,7 +69,7 @@ export function SalesHistoryPage() {
           <div className="table-wrap table-cards">
             <table>
               <caption className="sr-only">Historial de ventas</caption>
-              <thead><tr><th scope="col">Fecha</th><th scope="col">Comprobante</th><th scope="col">Cliente</th><th scope="col">Detalle</th><th scope="col" className="num">Descuento</th><th scope="col" className="num">Total</th><th scope="col">Estado</th><th scope="col">Cobro</th></tr></thead>
+              <thead><tr><th scope="col">Fecha</th><th scope="col">Comprobante</th><th scope="col">Cliente</th><th scope="col">Detalle</th><th scope="col" className="num">Descuento</th><th scope="col" className="num">Total</th><th scope="col">Estado</th><th scope="col">Cobro</th><th scope="col">Imprimir</th></tr></thead>
               <tbody>
                 {items.map((s) => (
                   <tr key={s.id}>
@@ -80,6 +81,15 @@ export function SalesHistoryPage() {
                     <td data-label="Total" className="num">{s.totalText}</td>
                     <td data-label="Estado"><Badge tone={DOC_TONE[s.docStatus]}>{s.docStatusLabel}</Badge>{s.voidStatusLabel && <><br /><Badge tone="neutral">{s.voidStatusLabel}</Badge></>}</td>
                     <td data-label="Cobro">{s.paymentStatusLabel}</td>
+                    <td data-label="Imprimir">
+                      {s.docStatus !== 'REJECTED' && (
+                        <div className="chip-row">
+                          <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} aria-label={`Imprimir ticket de ${s.externalNumber ?? s.description}`} onClick={() => printSale(s.id, 'ticket').catch((e: unknown) => toast.error(errorText(e)))}>Ticket</Button>
+                          <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} aria-label={`Imprimir A4 de ${s.externalNumber ?? s.description}`} onClick={() => printSale(s.id, 'a4').catch((e: unknown) => toast.error(errorText(e)))}>A4</Button>
+                          {s.docStatus === 'SENT' && s.externalDocId && <Button size="sm" variant="tertiary" aria-label={`Comprobante oficial de ${s.externalNumber ?? s.description}`} onClick={() => openOfficialPdf(s.id).catch((e: unknown) => toast.error(errorText(e)))}>PDF oficial</Button>}
+                        </div>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

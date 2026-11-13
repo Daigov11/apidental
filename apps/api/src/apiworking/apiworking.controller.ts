@@ -195,6 +195,18 @@ export class ApiworkingController {
     return this.sales.summary(a, q.date);
   }
 
+  @Get('sales/:id/print')
+  @RequirePermissions('apiworking:read')
+  salePrint(@CurrentPrincipal() a: AuthPrincipal, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.sales.printData(a, id);
+  }
+
+  @Get('sales/:id/official-url')
+  @RequirePermissions('apiworking:read')
+  saleOfficialUrl(@CurrentPrincipal() a: AuthPrincipal, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.sales.officialUrl(a, id);
+  }
+
   @Get('sales/:id')
   @RequirePermissions('apiworking:read')
   get(@CurrentPrincipal() a: AuthPrincipal, @Param('id', uuid()) id: string) {
