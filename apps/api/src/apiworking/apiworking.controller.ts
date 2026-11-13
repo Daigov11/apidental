@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Res, StreamableFile } from '@nestjs/common';
 import type { Response } from 'express';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { refreshCookieOptions } from '../auth/cookies.js';
@@ -12,7 +12,7 @@ import { ApiworkingContingencyService } from './apiworking-contingency.service.j
 import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
-import { ApiworkingLoginDto, BillingDraftQuery, CashCloseDraftDto, CashCloseDto, ContingencyDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, SalesSummaryQuery, VoidSaleDto } from './dto/apiworking.dto.js';
+import { ApiworkingLoginDto, BillingDraftQuery, CashCloseDraftDto, CashCloseDto, ContingencyDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ExportSalesQuery, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, SalesSummaryQuery, VoidSaleDto } from './dto/apiworking.dto.js';
 
 const uuid = () => new ParseUUIDPipe();
 
@@ -169,6 +169,16 @@ export class ApiworkingController {
   @RequirePermissions('apiworking:read')
   list(@CurrentPrincipal() a: AuthPrincipal, @Query() q: ListSalesQuery, @Meta() m: RequestMeta) {
     return this.sales.list(a, q, m);
+  }
+
+  /** Historial de ventas en Excel (xlsx) o PDF, con los filtros de la lista. */
+  @Get('sales/export')
+  @RequirePermissions('apiworking:read')
+  async exportSales(@CurrentPrincipal() a: AuthPrincipal, @Query() q: ExportSalesQuery, @Meta() m: RequestMeta, @Res({ passthrough: true }) res: Response) {
+    const out = await this.sales.exportHistory(a, q, m);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return new StreamableFile(out.body, { type: out.type, disposition: `attachment; filename="${out.filename}"`, length: out.body.length });
   }
 
   @Get('sales/summary')

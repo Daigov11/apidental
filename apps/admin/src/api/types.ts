@@ -158,6 +158,10 @@ export interface AwDraft {
   patientId?: string; appointmentId?: string; pendingSaleId?: string;
   /** Servicios de la cuenta pendiente que se cobran en esta venta. */
   visitServiceIds?: string[];
+  /** Descuento sobre la suma de las líneas (céntimos). */
+  discountCents?: number;
+  /** Pago con varios medios (2 a 4); suman el total con descuento. */
+  payments?: { idMetodoPago: string; amountCents: number }[];
 }
 export interface AwPreview {
   request: unknown; hash: string; totalCents: number; totalText: string; serie: string;

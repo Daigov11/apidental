@@ -2109,7 +2109,12 @@ model ApiworkingSale {
   description        String                  @db.VarChar(200)
   /// Líneas tal como se enviaron: [{ name, quantity, unitPriceCents }].
   lines              Json
+  /// Total COBRADO (ya con el descuento).
   totalCents         Int                     @map("total_cents")
+  /// Descuento sobre la suma de las líneas (0 = sin descuento).
+  discountCents      Int                     @default(0) @map("discount_cents")
+  /// Pago con varios medios: [{ idMetodoPago, amountCents }]. Nulo = un solo medio (paymentMethodId) por el total.
+  payments           Json?
   docDate            DateTime                @map("doc_date") @db.Date
   docStatus          ApiworkingDocStatus     @default(PENDING) @map("doc_status")
   paymentStatus      ApiworkingPaymentStatus @default(NO_EVIDENCE) @map("payment_status")

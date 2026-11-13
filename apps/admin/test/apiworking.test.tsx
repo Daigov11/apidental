@@ -145,6 +145,38 @@ describe('Ventas Apiworking', () => {
     expect(await screen.findByText('Venta B001-00000123 registrada y pagada en Apiworking.')).toBeInTheDocument();
   });
 
+  it('descuento y pago con varios medios: el total a cobrar baja y los montos deben cuadrar', async () => {
+    const { called } = mockApi(routes({
+      'GET /apiworking/sales/context': { json: { ...CTX, paymentMethods: [{ id: '1', name: 'Efectivo' }, { id: '6', name: 'Yape' }] } },
+      'POST /apiworking/sales': { status: 201, json: { ...SALE, paymentStatus: 'CONFIRMED_REMOTE' } },
+    }));
+    renderApp('/ventas');
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText('Buscar cliente'), 'robert');
+    await user.click(await screen.findByRole('button', { name: /ROBERTO CARLOS/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Efectivo' })).toHaveAttribute('aria-pressed', 'true'));
+    await user.type(screen.getByLabelText('Concepto 1'), 'Curación');
+    await user.type(screen.getByLabelText(/Precio unitario/), '250');
+    await user.type(screen.getByLabelText(/Descuento \(S\/\)/), '25');
+    expect(screen.getByRole('button', { name: 'Cobrar S/ 225.00' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: 'Pagar con varios medios' }));
+    const cobrar = screen.getByRole('button', { name: 'Cobrar S/ 225.00' });
+    expect(cobrar).toBeDisabled();
+    const montos = screen.getAllByLabelText('Monto (S/)');
+    await user.clear(montos[0]!);
+    await user.type(montos[0]!, '125');
+    expect(screen.getByText('Falta asignar S/ 100.00.')).toBeInTheDocument();
+    await user.type(montos[1]!, '100');
+    expect(screen.getByText('Los montos cuadran con el total.')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Cobrar S/ 225.00' }));
+    await waitFor(() => expect(called('POST', '/apiworking/sales')).toHaveLength(1));
+    expect(called('POST', '/apiworking/sales')[0]?.body).toMatchObject({
+      idMetodoPago: '1', discountCents: 2500, lines: [{ name: 'Curación', quantity: 1, unitPriceCents: 25000 }],
+      payments: [{ idMetodoPago: '1', amountCents: 12500 }, { idMetodoPago: '6', amountCents: 10000 }],
+    });
+  });
+
   it('en modo de solo lectura no se puede cobrar', async () => {
     mockApi(routes({ 'GET /apiworking/status': { json: { ...STATUS, write: false } } }));
     renderApp('/ventas');

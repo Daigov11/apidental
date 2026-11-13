@@ -10,6 +10,8 @@ import { markServicesBilled, releaseServices, requirePendingServices, resolveBil
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { enforceRealOperationsCap } from './real-operations.js';
+import { buildXlsx } from '../common/utils/xlsx.js';
+import { renderSalesPdf } from './sales-pdf.js';
 import { ApiworkingClient, ApiworkingError, asResult, asRows, cajaId, cajaName, allowed, clip, isNoData, moneyToCents, optText, reqId, reqIdAny } from './apiworking.client.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import type { ExternalSession } from './apiworking-session.store.js';
@@ -31,6 +33,25 @@ const WINDOW_MS = 24 * 60 * 60 * 1000;
 /** Nombre legible de una fila: el contrato no lo fija, se usa el primer campo conocido que exista. */
 const label = (r: Record<string, unknown>, keys: string[], fallback: string) => keys.map((k) => optText(r, k)).find(Boolean) ?? fallback;
 const money = (cents: number) => `S/ ${(cents / 100).toFixed(2)}`;
+/** Partes del pago de una venta: las guardadas (varios medios) o un solo medio por el total. */
+export const paymentsOf = (s: { payments: unknown; paymentMethodId: string; totalCents: number }): { idMetodoPago: string; amountCents: number }[] =>
+  Array.isArray(s.payments) && s.payments.length > 0 ? (s.payments as { idMetodoPago: string; amountCents: number }[]) : [{ idMetodoPago: s.paymentMethodId, amountCents: s.totalCents }];
+/**
+ * Reparte el descuento entre las líneas en proporción a su importe, en céntimos exactos (la suma da el descuento): el resto del
+ * redondeo va a las líneas de mayor importe.
+ */
+export function splitDiscount(lineTotals: number[], discount: number): number[] {
+  const gross = lineTotals.reduce((a, b) => a + b, 0);
+  if (discount <= 0 || gross <= 0) return lineTotals.map(() => 0);
+  const parts = lineTotals.map((t) => Math.floor((discount * t) / gross));
+  let rest = discount - parts.reduce((a, b) => a + b, 0);
+  const order = lineTotals.map((t, i) => [t, i] as const).sort((a, b) => b[0] - a[0]).map(([, i]) => i);
+  for (let k = 0; rest > 0; k = (k + 1) % order.length) {
+    const i = order[k]!;
+    if (parts[i]! < lineTotals[i]!) { parts[i]! += 1; rest -= 1; }
+  }
+  return parts;
+}
 const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
 const limaToday = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date());
 /** 2026-08-20 -> 20-08-2026 (formato de fechas de Apiworking, sin zona horaria). */
@@ -44,6 +65,8 @@ export function presentSale(s: SaleRow) {
     customer: { name: s.customerName, docType: s.customerDocType, docNumber: s.customerDocNumber },
     totalCents: s.totalCents,
     totalText: money(s.totalCents),
+    discountCents: s.discountCents,
+    payments: paymentsOf(s),
     lines: s.lines,
     docDate: s.docDate.toISOString().slice(0, 10),
     contingency: s.contingency,
@@ -215,10 +238,22 @@ export class ApiworkingSalesService {
     if (!(await this.documentTypes(session, idCaja)).some((t) => t.id === draft.idTipoDocumento)) throw new BadRequestException('El tipo de documento no corresponde a la caja');
     const serie = (await this.seriesOf(session, idCaja, draft.idTipoDocumento)).find((s) => s.id === draft.idSerie);
     if (!serie) throw new BadRequestException('La serie no corresponde a la caja y al tipo de documento');
-    if (!(await this.paymentMethods(session, movement)).some((m) => m.id === draft.idMetodoPago)) throw new BadRequestException('La forma de pago no está disponible en la apertura de caja');
+    const methods = await this.paymentMethods(session, movement);
+    if (!methods.some((m) => m.id === draft.idMetodoPago)) throw new BadRequestException('La forma de pago no está disponible en la apertura de caja');
 
-    const totalCents = draft.lines.reduce((sum, l) => sum + l.quantity * l.unitPriceCents, 0);
-    if (totalCents < 1 || totalCents > 1_000_000_000) throw new BadRequestException('El total de la venta está fuera de rango');
+    const lineTotals = draft.lines.map((l) => l.quantity * l.unitPriceCents);
+    const grossCents = lineTotals.reduce((sum, t) => sum + t, 0);
+    const discountCents = draft.discountCents ?? 0;
+    if (discountCents >= grossCents) throw new BadRequestException('El descuento no puede ser igual o mayor que el total');
+    const totalCents = grossCents - discountCents;
+    if (totalCents < 1 || grossCents > 1_000_000_000) throw new BadRequestException('El total de la venta está fuera de rango');
+    const lineDiscounts = splitDiscount(lineTotals, discountCents);
+    // Pago: un solo medio por el total, o varios medios que suman exactamente el total con descuento.
+    const payments = draft.payments?.length ? draft.payments.map((p) => ({ idMetodoPago: p.idMetodoPago, amountCents: p.amountCents })) : [{ idMetodoPago: draft.idMetodoPago, amountCents: totalCents }];
+    if (payments.reduce((t, p) => t + p.amountCents, 0) !== totalCents) throw new BadRequestException('La suma de los pagos debe ser igual al total a cobrar');
+    if (new Set(payments.map((p) => p.idMetodoPago)).size !== payments.length) throw new BadRequestException('Cada forma de pago se indica una sola vez');
+    for (const p of payments) if (!methods.some((m) => m.id === p.idMetodoPago)) throw new BadRequestException('Una forma de pago no está disponible en la apertura de caja');
+    if (draft.payments?.length && payments[0]!.idMetodoPago !== draft.idMetodoPago) throw new BadRequestException('La primera forma de pago debe ser la forma de pago principal');
     const docDate = draft.docDate ?? limaToday();
     if (Number.isNaN(Date.parse(`${docDate}T00:00:00Z`))) throw new BadRequestException('Fecha inválida');
 
@@ -241,12 +276,13 @@ export class ApiworkingSalesService {
         detalleItem: '',
         idUnidadMedida: unit,
         isc: 0,
-        descuento: 0,
-        descuentoImporte: 0,
+        // Descuento de la línea: porcentaje y monto (céntimos exactos repartidos con splitDiscount).
+        descuento: lineDiscounts[i] ? Number(((lineDiscounts[i]! * 100) / lineTotals[i]!).toFixed(2)) : 0,
+        descuentoImporte: lineDiscounts[i] ? Number((lineDiscounts[i]! / 100).toFixed(2)) : 0,
         idDetalle: '',
         cadenaLotes: '',
       })),
-      cadenaPago: `${draft.idMetodoPago}^${(totalCents / 100).toFixed(2)}^0~`,
+      cadenaPago: payments.map((p) => `${p.idMetodoPago}^${(p.amountCents / 100).toFixed(2)}^0~`).join(''),
       fechaDoc: docDate,
       aplicaIGV: '1',
       // El total lo calcula Apiworking; el total local se muestra y se guarda aparte.
@@ -254,7 +290,7 @@ export class ApiworkingSalesService {
     };
     // El enlace con paciente y cita también queda aprobado: cambiarlo invalida la vista previa.
     const linkSuffix = link.appointmentId || link.patientId ? `|p:${link.patientId ?? ''}|a:${link.appointmentId ?? ''}` : '';
-    return { body, idCaja, hash: sha256(JSON.stringify(body) + linkSuffix), totalCents, customer, serie: serie.serie, docDate, patientId: link.patientId, appointmentId: link.appointmentId, serviceIds };
+    return { body, idCaja, hash: sha256(JSON.stringify(body) + linkSuffix), totalCents, discountCents, payments, customer, serie: serie.serie, docDate, patientId: link.patientId, appointmentId: link.appointmentId, serviceIds };
   }
 
   // --- Venta: un solo envío del documento, sin reintentos, y el pago aplicado a continuación ---
@@ -330,6 +366,8 @@ export class ApiworkingSalesService {
               description: dto.description,
               lines: dto.lines.map((l) => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.unitPriceCents })),
               totalCents: built.totalCents,
+              discountCents: built.discountCents,
+              ...(built.payments.length > 1 ? { payments: built.payments } : {}),
               docDate: new Date(`${built.docDate}T00:00:00Z`),
               attemptedAt: new Date(),
               createdById: principal.user.id,
@@ -463,11 +501,25 @@ export class ApiworkingSalesService {
 
   // --- Consulta, verificación y conciliación ---
 
-  async list(principal: AuthPrincipal, q: { limit: number; offset: number }, meta?: RequestMeta) {
+  /** Filtro del historial: días de Lima (ambos incluidos) y texto en cliente, documento, comprobante o detalle. */
+  private historyWhere(clinicId: string, q: { from?: string; to?: string; search?: string }): Prisma.ApiworkingSaleWhereInput {
+    const createdAt: { gte?: Date; lt?: Date } = {};
+    if (q.from) createdAt.gte = new Date(`${q.from}T00:00:00-05:00`);
+    if (q.to) createdAt.lt = new Date(new Date(`${q.to}T00:00:00-05:00`).getTime() + 86_400_000);
+    const s = q.search?.trim();
+    return {
+      clinicId,
+      ...(q.from || q.to ? { createdAt } : {}),
+      ...(s ? { OR: [{ customerName: { contains: s } }, { customerDocNumber: { contains: s } }, { externalNumber: { contains: s } }, { description: { contains: s } }] } : {}),
+    };
+  }
+
+  async list(principal: AuthPrincipal, q: { limit: number; offset: number; from?: string; to?: string; search?: string }, meta?: RequestMeta) {
     const { clinicId } = clinicScope(principal);
+    const where = this.historyWhere(clinicId, q);
     const [rows, total] = await Promise.all([
-      this.db.apiworkingSale.findMany({ where: { clinicId }, orderBy: { createdAt: 'desc' }, take: q.limit, skip: q.offset }),
-      this.db.apiworkingSale.count({ where: { clinicId } }),
+      this.db.apiworkingSale.findMany({ where, orderBy: { createdAt: 'desc' }, take: q.limit, skip: q.offset }),
+      this.db.apiworkingSale.count({ where }),
     ]);
     // Las ventas con número por confirmar se buscan solas en Apiworking (como mucho 3 por listado y cada 2 minutos).
     if (meta && this.config.apiworking.read && this.clients.hasSession(principal)) {
@@ -488,8 +540,25 @@ export class ApiworkingSalesService {
     const to = new Date(from.getTime() + 24 * 3600 * 1000);
     const rows = await this.db.apiworkingSale.findMany({
       where: { clinicId, createdAt: { gte: from, lt: to }, docStatus: { not: 'REJECTED' }, voidStatus: null },
-      select: { paymentMethodId: true, totalCents: true, docStatus: true, contingency: true },
+      select: { paymentMethodId: true, totalCents: true, payments: true, docStatus: true, contingency: true },
     });
+    const names = await this.methodNames(principal);
+    const by = new Map<string, { methodId: string; name: string; count: number; totalCents: number }>();
+    // Una venta pagada con varios medios suma cada parte a su medio (y cuenta como venta en cada uno).
+    for (const r of rows) {
+      for (const p of paymentsOf(r)) {
+        const cur = by.get(p.idMetodoPago) ?? { methodId: p.idMetodoPago, name: names.get(p.idMetodoPago) ?? `Forma de pago ${p.idMetodoPago}`, count: 0, totalCents: 0 };
+        cur.count += 1; cur.totalCents += p.amountCents;
+        by.set(p.idMetodoPago, cur);
+      }
+    }
+    const methods = [...by.values()].sort((a, b) => b.totalCents - a.totalCents).map((m) => ({ ...m, totalText: money(m.totalCents) }));
+    const totalCents = rows.reduce((t, r) => t + r.totalCents, 0);
+    return { date, count: rows.length, totalCents, totalText: money(totalCents), methods };
+  }
+
+  /** Nombres de las formas de pago (de las cajas abiertas), si Apiworking responde; si no, se muestra el id. */
+  private async methodNames(principal: AuthPrincipal): Promise<Map<string, string>> {
     const names = new Map<string, string>();
     try {
       const session = this.clients.requireSession(principal);
@@ -499,15 +568,44 @@ export class ApiworkingSalesService {
         if (opened) for (const m of await this.paymentMethods(session, opened)) names.set(m.id, m.name);
       }
     } catch { /* sin nombres: se muestra el id */ }
-    const by = new Map<string, { methodId: string; name: string; count: number; totalCents: number }>();
-    for (const r of rows) {
-      const cur = by.get(r.paymentMethodId) ?? { methodId: r.paymentMethodId, name: names.get(r.paymentMethodId) ?? `Forma de pago ${r.paymentMethodId}`, count: 0, totalCents: 0 };
-      cur.count += 1; cur.totalCents += r.totalCents;
-      by.set(r.paymentMethodId, cur);
+    return names;
+  }
+
+  /**
+   * Historial de ventas exportable (Excel o PDF) con los mismos filtros de la lista. Como máximo 5000 ventas por archivo. Se audita
+   * la exportación (filtros y cantidad), nunca su contenido.
+   */
+  async exportHistory(principal: AuthPrincipal, q: { from?: string; to?: string; search?: string; format: 'xlsx' | 'pdf' }, meta: RequestMeta) {
+    const { clinicId, branchId } = clinicScope(principal);
+    const rows = await this.db.apiworkingSale.findMany({ where: this.historyWhere(clinicId, q), orderBy: { createdAt: 'asc' }, take: 5000 });
+    const names = rows.length ? await this.methodNames(principal) : new Map<string, string>();
+    const methodLabel = (id: string) => (id ? (names.get(id) ?? `Forma de pago ${id}`) : 'Contingencia (caja local)');
+    const when = (d: Date) => new Intl.DateTimeFormat('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+    const header = ['Fecha', 'Comprobante', 'Cliente', 'Documento', 'Detalle', 'Forma de pago', 'Descuento (S/)', 'Total (S/)', 'Estado', 'Cobro', 'Anulación'];
+    const table = rows.map((r) => [
+      when(r.createdAt),
+      r.externalNumber ?? '',
+      r.customerName,
+      `${r.customerDocType} ${r.customerDocNumber}`.trim(),
+      r.description,
+      paymentsOf(r).map((p) => `${methodLabel(p.idMetodoPago)} ${money(p.amountCents)}`).join(' + '),
+      r.discountCents / 100,
+      r.totalCents / 100,
+      DOC_LABELS[r.docStatus],
+      PAYMENT_LABELS[r.paymentStatus],
+      r.voidStatus ? VOID_LABELS[r.voidStatus] : '',
+    ]);
+    // El total del período: solo lo vendido de verdad (sin rechazadas ni anuladas).
+    const counted = rows.filter((r) => r.docStatus !== 'REJECTED' && r.voidStatus === null);
+    const totalCents = counted.reduce((t, r) => t + r.totalCents, 0);
+    const period = `${q.from ?? 'inicio'}_${q.to ?? limaToday()}`;
+    await this.audit.recordSafely({ action: 'APIWORKING_SALES_EXPORTED', entity: 'ApiworkingSale', userId: principal.user.id, clinicId, branchId, meta, summary: { format: q.format, from: q.from ?? null, to: q.to ?? null, search: Boolean(q.search), count: rows.length } });
+    if (q.format === 'xlsx') {
+      const body = buildXlsx('Ventas', header, [...table, [], ['Total vendido', '', '', '', `${counted.length} ventas`, '', '', totalCents / 100, '', '', '']]);
+      return { body, filename: `ventas_${period}.xlsx`, type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };
     }
-    const methods = [...by.values()].sort((a, b) => b.totalCents - a.totalCents).map((m) => ({ ...m, totalText: money(m.totalCents) }));
-    const totalCents = rows.reduce((t, r) => t + r.totalCents, 0);
-    return { date, count: rows.length, totalCents, totalText: money(totalCents), methods };
+    const body = await renderSalesPdf({ title: 'Historial de ventas', period: `${q.from ?? 'Desde el inicio'} — ${q.to ?? limaToday()}`, header, rows: table.map((r) => r.map((c, i) => (i === 6 || i === 7 ? money(Math.round(Number(c) * 100)) : String(c)))), total: `${counted.length} ventas · Total vendido ${money(totalCents)}` });
+    return { body, filename: `ventas_${period}.pdf`, type: 'application/pdf' };
   }
 
   private async load(principal: AuthPrincipal, id: string): Promise<SaleRow> {
@@ -608,7 +706,8 @@ export class ApiworkingSalesService {
     const session = this.clients.requireSession(principal);
     if (!auto) await enforceRealOperationsCap(this.db, this.config);
 
-    const body = { idDocumentoPago: Number(sale.externalDocId), cadenaPago: [{ idMetodoPago: sale.paymentMethodId, importePago: sale.totalCents / 100 }], vuelto: 0 };
+    // registrar-pago acepta una lista: con varios medios va una entrada por medio (la guía no lo da por probado).
+    const body = { idDocumentoPago: Number(sale.externalDocId), cadenaPago: paymentsOf(sale).map((p) => ({ idMetodoPago: p.idMetodoPago, importePago: p.amountCents / 100 })), vuelto: 0 };
     if (!Number.isSafeInteger(body.idDocumentoPago)) throw new ConflictException('El id del documento en Apiworking no es numérico');
     const log = (action: string, extra: Record<string, unknown>) =>
       this.audit.recordSafely({ action, entity: 'ApiworkingSale', entityId: sale.id, userId: principal.user.id, clinicId: sale.clinicId, patientId: sale.patientId, meta, summary: { totalCents: sale.totalCents, ...extra } });

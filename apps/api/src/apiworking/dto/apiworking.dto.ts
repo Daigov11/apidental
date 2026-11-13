@@ -41,6 +41,12 @@ export class SalesSummaryQuery {
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'date debe tener el formato YYYY-MM-DD' }) date?: string;
 }
 
+/// Una parte del pago (pago con varios medios).
+export class SalePaymentDto {
+  @Matches(EXT_ID) idMetodoPago!: string;
+  @IsInt() @Min(1) @Max(1_000_000_000) amountCents!: number;
+}
+
 export class SaleLineDto {
   @Transform(trim) @IsString() @MinLength(2) @MaxLength(120) name!: string;
   @IsInt() @Min(1) @Max(999) quantity!: number;
@@ -68,6 +74,10 @@ export class SaleDraftDto {
   @IsOptional() @IsUUID() pendingSaleId?: string;
   /// Servicios de la cuenta pendiente del paciente que esta venta cobra (quedan marcados como cobrados).
   @IsOptional() @IsArray() @ArrayMaxSize(100) @IsUUID(undefined, { each: true }) visitServiceIds?: string[];
+  /// Descuento sobre la suma de las líneas, en céntimos (se reparte entre las líneas como descuento de Apiworking).
+  @IsOptional() @IsInt() @Min(0) @Max(1_000_000_000) discountCents?: number;
+  /// Pago con varios medios (2 a 4): la suma debe ser el total con descuento. Sin esto, todo va con idMetodoPago.
+  @IsOptional() @IsArray() @ArrayMinSize(2) @ArrayMaxSize(4) @ValidateNested({ each: true }) @Type(() => SalePaymentDto) payments?: SalePaymentDto[];
 }
 
 export class CreateSaleDto extends SaleDraftDto {
@@ -77,7 +87,19 @@ export class CreateSaleDto extends SaleDraftDto {
   @IsUUID() idempotencyKey!: string;
 }
 
-export class ListSalesQuery extends PaginationQuery {}
+export class ListSalesQuery extends PaginationQuery {
+  /// Desde / hasta (AAAA-MM-DD, días de Lima, ambos incluidos).
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string;
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) to?: string;
+  /// Cliente, documento, número de comprobante o detalle.
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(80) search?: string;
+}
+export class ExportSalesQuery {
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) from?: string;
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) to?: string;
+  @IsOptional() @Transform(trim) @IsString() @MaxLength(80) search?: string;
+  @Matches(/^(xlsx|pdf)$/, { message: 'format debe ser xlsx o pdf' }) format!: 'xlsx' | 'pdf';
+}
 
 export class ReconcileSaleDto {
   /// REGISTERED: la persona verificó en Apiworking que el documento existe. NOT_REGISTERED: verificó que no existe.

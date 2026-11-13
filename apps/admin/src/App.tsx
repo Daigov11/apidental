@@ -17,6 +17,7 @@ import { RequestsPage } from './pages/Requests';
 import { UsersPage } from './pages/Users';
 import { CatalogPage } from './pages/Catalog';
 import { SchedulesPage } from './pages/Schedules';
+import { SalesHistoryPage } from './pages/SalesHistory';
 import { VentasPage } from './pages/Ventas';
 import { VisitSheetPage } from './pages/VisitSheet';
 import { Loading } from './ui/feedback';
@@ -45,6 +46,7 @@ export function App() {
         <Route path="usuarios" element={<UsersPage />} />
         <Route path="catalogo" element={<CatalogPage />} />
         <Route path="horarios" element={<SchedulesPage />} />
+        <Route path="historial-ventas" element={<SalesHistoryPage />} />
         <Route path="pacientes" element={<PatientsPage />} />
         <Route path="pacientes/:id" element={<PatientDetailPage />} />
         <Route path="pacientes/:id/atencion/:visitId" element={<VisitSheetPage />} />

@@ -19,7 +19,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
   const seen: Seen[] = [];
   const saved: Record<string, string | undefined> = {};
   /** Escenarios que la prueba activa en el servidor simulado. */
-  const scenario = { facturacion: null as null | Record<string, unknown>[], registro: 'ok' as 'ok' | 'list' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject', clientes: 'ok' as 'ok' | 'boom', registrarPago: 'ok' as 'ok' | 'reject' | 'boom' };
+  const scenario = { twoMethods: false, facturacion: null as null | Record<string, unknown>[], registro: 'ok' as 'ok' | 'list' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject', clientes: 'ok' as 'ok' | 'boom', registrarPago: 'ok' as 'ok' | 'reject' | 'boom' };
 
   const customers = [
     { total: 3, id_cliente: 202600000038, id_persona: 202600000049, nombrecompleto: 'ROBERTO CARLOS ESPINAR VICHARRA', email: '', tipoDoc: 'D.N.I.', numerodocumento: '74908568', telefono: '', tipo_persona: 'N', estado: 'A', limite_credito: '0.00', saldo: 0, whatsapp: '', saldo_restante: '0.00' },
@@ -57,7 +57,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       case 'GET /api/CajaChica/turnos': return { status: 200, body: ok([{ idTurno: 1, turno: 'Mañana' }, { idTurno: 2, turno: 'Tarde' }]) };
       case 'GET /api/Caja/tipo-documentos': return { status: 200, body: ok([{ id_tipo_documento: 2, tipo_documento: 'Boleta' }, { id_tipo_documento: 9, tipo_documento: 'No autorizado' }]) };
       case 'GET /api/Facturacion/series': return { status: 200, body: ok([{ id_serie: 11, serie: 'B001' }, { id_serie: 12, serie: 'B002' }]) };
-      case 'GET /api/CajaChica/formas-pago': return { status: 200, body: ok([{ id_metodo_pago: 1, metodoPago: 'Efectivo' }]) };
+      case 'GET /api/CajaChica/formas-pago': return { status: 200, body: ok([{ id_metodo_pago: 1, metodoPago: 'Efectivo' }, ...(scenario.twoMethods ? [{ id_metodo_pago: 6, metodoPago: 'Yape' }] : [])]) };
       case 'GET /api/Cliente/clientes': return scenario.clientes === 'boom' ? { status: 500, body: { error: 'x' } } : { status: 200, body: ok(customers) };
       case 'POST /api/Facturacion/registro-documento':
         if (scenario.registro === 'boom') return { status: 500, body: { error: 'x' } };
@@ -820,6 +820,58 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     }
   });
 
+  it('descuento y pago con varios medios: el descuento se reparte en el detalle y cada medio va en el registro y en el pago', async () => {
+    const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
+    const savedCap = appCfg.maxRealOperations;
+    appCfg.maxRealOperations = 500;
+    scenario.twoMethods = true;
+    scenario.registro = 'ok';
+    scenario.registrarPago = 'ok';
+    try {
+      const login = await enter();
+      const t = (await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200)).body.accessToken as string;
+      const lines = [{ name: 'Curación', quantity: 2, unitPriceCents: 10_000 }, { name: 'Pasta', quantity: 1, unitPriceCents: 5_000 }];
+      const base = { ...draft({ description: 'Con descuento', lines }), idempotencyKey: randomUUID() };
+
+      // Validaciones: la suma de los medios debe ser el total con descuento; cada medio una vez; descuento menor al total.
+      await ctx.http().post('/v1/apiworking/sales').set(bearer(t)).send({ ...base, discountCents: 2_500, payments: [{ idMetodoPago: '1', amountCents: 10_000 }, { idMetodoPago: '6', amountCents: 10_000 }] }).expect(400);
+      await ctx.http().post('/v1/apiworking/sales').set(bearer(t)).send({ ...base, payments: [{ idMetodoPago: '1', amountCents: 12_500 }, { idMetodoPago: '1', amountCents: 12_500 }] }).expect(400);
+      await ctx.http().post('/v1/apiworking/sales').set(bearer(t)).send({ ...base, discountCents: 25_000 }).expect(400);
+
+      const before = seen.filter((x) => x.path === '/api/Facturacion/registrar-pago').length;
+      const sale = await ctx.http().post('/v1/apiworking/sales').set(bearer(t)).send({ ...base, discountCents: 2_500, payments: [{ idMetodoPago: '1', amountCents: 12_500 }, { idMetodoPago: '6', amountCents: 10_000 }] }).expect(201);
+      expect(sale.body).toMatchObject({ docStatus: 'SENT', paymentStatus: 'CONFIRMED_REMOTE', totalCents: 22_500, discountCents: 2_500, payments: [{ idMetodoPago: '1', amountCents: 12_500 }, { idMetodoPago: '6', amountCents: 10_000 }] });
+      const reg = seen.filter((x) => x.path === '/api/Facturacion/registro-documento').at(-1)!.body as { detalle: { descuento: number; descuentoImporte: number; precioVenta: number }[]; cadenaPago: string };
+      // 2 500 repartidos en proporción: 20 000 -> 2 000 y 5 000 -> 500.
+      expect(reg.detalle.map((d) => [d.precioVenta, d.descuento, d.descuentoImporte])).toEqual([[100, 10, 20], [50, 10, 5]]);
+      expect(reg.cadenaPago).toBe('1^125.00^0~6^100.00^0~');
+      const pay = seen.filter((x) => x.path === '/api/Facturacion/registrar-pago');
+      expect(pay.length).toBe(before + 1);
+      expect((pay.at(-1)!.body as { cadenaPago: unknown }).cadenaPago).toEqual([{ idMetodoPago: '1', importePago: 125 }, { idMetodoPago: '6', importePago: 100 }]);
+
+      // El resumen del día suma cada parte a su medio.
+      const sum = (await ctx.http().get('/v1/apiworking/sales/summary').set(bearer(t)).expect(200)).body as { methods: { methodId: string; totalCents: number }[] };
+      expect(sum.methods.find((m) => m.methodId === '6')?.totalCents).toBeGreaterThanOrEqual(10_000);
+
+      // Historial: filtro por texto y exportación (Excel y PDF), auditada.
+      const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Lima' }).format(new Date());
+      const found = (await ctx.http().get(`/v1/apiworking/sales?from=${today}&to=${today}&search=${encodeURIComponent('Con descuento')}`).set(bearer(t)).expect(200)).body;
+      expect(found.items.map((x: { id: string }) => x.id)).toContain(sale.body.id);
+      expect((await ctx.http().get(`/v1/apiworking/sales?from=2000-01-01&to=2000-01-02`).set(bearer(t)).expect(200)).body.total).toBe(0);
+      const xlsx = await ctx.http().get(`/v1/apiworking/sales/export?format=xlsx&from=${today}&to=${today}`).set(bearer(t)).buffer(true).parse((res, cb) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); }).expect(200);
+      expect(xlsx.headers['content-type']).toContain('spreadsheetml');
+      expect(xlsx.headers['content-disposition']).toContain(`ventas_${today}_${today}.xlsx`);
+      expect((xlsx.body as Buffer).subarray(0, 2).toString()).toBe('PK');
+      const pdf = await ctx.http().get(`/v1/apiworking/sales/export?format=pdf&from=${today}&to=${today}`).set(bearer(t)).buffer(true).parse((res, cb) => { const c: Buffer[] = []; res.on('data', (d: Buffer) => c.push(d)); res.on('end', () => cb(null, Buffer.concat(c))); }).expect(200);
+      expect((pdf.body as Buffer).subarray(0, 4).toString()).toBe('%PDF');
+      await ctx.http().get('/v1/apiworking/sales/export?format=csv').set(bearer(t)).expect(400);
+      expect(await ctx.db.auditLog.count({ where: { action: 'APIWORKING_SALES_EXPORTED' } })).toBeGreaterThanOrEqual(2);
+    } finally {
+      appCfg.maxRealOperations = savedCap;
+      scenario.twoMethods = false;
+    }
+  });
+
   it('busca los nombres por DNI para precargar al paciente: usa lo que ya hay y solo consulta ClienteDoc si falta', async () => {
     const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
     const savedCap = appCfg.maxRealOperations;
@@ -863,7 +915,8 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     const t = await ctx.http().get('/v1/apiworking/sales/summary').set(bearer(token)).expect(200);
     expect(t.body.date).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(t.body.count).toBeGreaterThan(0);
-    expect(t.body.methods.reduce((n: number, m: { count: number }) => n + m.count, 0)).toBe(t.body.count);
+    // Una venta pagada con varios medios cuenta en cada medio; los importes sí cuadran con el total.
+    expect(t.body.methods.reduce((n: number, m: { count: number }) => n + m.count, 0)).toBeGreaterThanOrEqual(t.body.count);
     expect(t.body.methods.reduce((n: number, m: { totalCents: number }) => n + m.totalCents, 0)).toBe(t.body.totalCents);
     const empty = await ctx.http().get('/v1/apiworking/sales/summary').query({ date: '2020-01-01' }).set(bearer(token)).expect(200);
     expect(empty.body).toMatchObject({ count: 0, totalCents: 0, methods: [] });

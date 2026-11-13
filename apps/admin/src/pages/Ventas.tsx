@@ -88,12 +88,24 @@ export function VentasPage() {
   // La descripción del documento sale de los conceptos (o es la de la venta que se está emitiendo): no se pide aparte.
   const description = pendingSale ? pendingSale.description : parsed.map((l) => l.name).filter(Boolean).join(', ').slice(0, 200);
   const total = parsed.reduce((s, l) => s + (l.cents ?? 0) * (Number.isFinite(l.quantity) ? l.quantity : 0), 0);
+  // Descuento (S/) sobre el total y pago con varios medios.
+  const [discount, setDiscount] = useState('');
+  const discountCents = discount.trim() ? parseSoles(discount) : 0;
+  const net = total - (discountCents ?? 0);
+  const discountOk = discountCents !== null && discountCents >= 0 && discountCents < total;
+  const [split, setSplit] = useState<{ id: string; amount: string }[] | null>(null);
+  const splitParts = split?.map((p) => ({ idMetodoPago: p.id, amountCents: parseSoles(p.amount) })) ?? [];
+  const splitSum = splitParts.reduce((t, p) => t + (p.amountCents ?? 0), 0);
+  const splitOk = !split || (split.length >= 2 && splitParts.every((p) => p.idMetodoPago && p.amountCents !== null && p.amountCents > 0) && new Set(split.map((p) => p.id)).size === split.length && splitSum === net);
   // Lo que se cobra de la cuenta pendiente: solo las líneas de la atención que siguen en la venta.
   const accountIds = pendingSale ? [] : lines.flatMap((l) => l.serviceIds ?? []);
 
-  const draft: AwDraft | null = customer && idCaja && idTipoDocumento && idSerie && idMetodoPago && description.trim().length >= 3 && validLines
+  const mainMethod = split ? (split[0]?.id ?? '') : idMetodoPago;
+  const draft: AwDraft | null = customer && idCaja && idTipoDocumento && idSerie && mainMethod && description.trim().length >= 3 && validLines && discountOk && splitOk
     ? {
-      customerId: customer.id, idCaja, idTipoDocumento, idSerie, idMetodoPago, description: description.trim(), lines: parsed.map((l): AwLine => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.cents! })),
+      customerId: customer.id, idCaja, idTipoDocumento, idSerie, idMetodoPago: mainMethod, description: description.trim(),
+      ...(discountCents ? { discountCents } : {}),
+      ...(split ? { payments: splitParts.map((p) => ({ idMetodoPago: p.idMetodoPago, amountCents: p.amountCents! })) } : {}), lines: parsed.map((l): AwLine => ({ name: l.name, quantity: l.quantity, unitPriceCents: l.cents! })),
       ...(link.appointmentId ? { appointmentId: link.appointmentId } : {}), ...(link.patientId ? { patientId: link.patientId } : {}),
       ...(pendingSale ? { pendingSaleId: pendingSale.id } : {}), ...(docDate ? { docDate } : {}),
       ...(accountIds.length ? { visitServiceIds: accountIds } : {}),
@@ -120,7 +132,7 @@ export function VentasPage() {
   // --- Venta directa: un clic registra el documento y aplica el pago ---
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const reset = () => { setPendingSale(null); setDocDate(''); setCustomer(null); setQuery(''); setLines([emptyLine()]); setIdSerie(''); setIdMetodoPago(''); setError(null); };
+  const reset = () => { setPendingSale(null); setDocDate(''); setCustomer(null); setQuery(''); setLines([emptyLine()]); setIdSerie(''); setIdMetodoPago(''); setError(null); setDiscount(''); setSplit(null); };
   // Una sola clave por venta: un doble clic o un reintento de red no registra dos veces la misma venta.
   const key = useRef<{ signature: string; key: string } | null>(null);
   const sending = useRef(false);
@@ -285,10 +297,16 @@ export function VentasPage() {
 
           <aside className="card sale-side" aria-labelledby="sum-h">
             <h2 id="sum-h" className="h3">Resumen de venta</h2>
-            <p className="muted" style={{ margin: 'var(--space-4) 0 0' }}>Importe total</p>
-            <p className="money sale-total">{fmtMoney(total)}</p>
-            <p className="caption muted">IGV incluido</p>
-            {!contingency && idTipoDocumento && c?.paymentMethods && (
+            {!contingency && !pendingSale && (
+              <div style={{ marginTop: 'var(--space-4)' }}>
+                <p className="caption muted tabular" style={{ margin: 0 }}>Subtotal {fmtMoney(total)}</p>
+                <TextField label="Descuento (S/)" optional inputMode="decimal" autoComplete="off" value={discount} onChange={(e) => setDiscount(e.target.value)} error={discount.trim() && !discountOk ? 'El descuento debe ser menor que el total.' : null} />
+              </div>
+            )}
+            <p className="muted" style={{ margin: 'var(--space-4) 0 0' }}>{discountCents ? 'Total a cobrar' : 'Importe total'}</p>
+            <p className="money sale-total">{fmtMoney(discountOk ? net : total)}</p>
+            <p className="caption muted">IGV incluido{discountCents && discountOk ? ` · descuento ${fmtMoney(discountCents)}` : ''}</p>
+            {!contingency && idTipoDocumento && c?.paymentMethods && !split && (
               <fieldset className="pay-options">
                 <legend className="h3">Forma de pago</legend>
                 {c.paymentMethods.map((m) => (
@@ -296,6 +314,31 @@ export function VentasPage() {
                     <PayIcon name={m.name} /> <span>{m.name}</span>
                   </button>
                 ))}
+                {c.paymentMethods.length > 1 && !pendingSale && (
+                  <Button size="sm" variant="tertiary" onClick={() => setSplit([{ id: idMetodoPago || c.paymentMethods![0]!.id, amount: '' }, { id: c.paymentMethods!.find((m) => m.id !== (idMetodoPago || c.paymentMethods![0]!.id))!.id, amount: '' }])}>Pagar con varios medios</Button>
+                )}
+              </fieldset>
+            )}
+            {!contingency && c?.paymentMethods && split && (
+              <fieldset className="pay-options" aria-label="Pago con varios medios">
+                <legend className="h3">Pago con varios medios</legend>
+                {split.map((p, i) => (
+                  <div key={i} className="chip-row" style={{ alignItems: 'flex-end' }}>
+                    <SelectField label={`Medio ${i + 1}`} value={p.id} onChange={(e) => setSplit((all) => all!.map((x, j) => (j === i ? { ...x, id: e.target.value } : x)))}>
+                      {c.paymentMethods!.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+                    </SelectField>
+                    <TextField label="Monto (S/)" inputMode="decimal" autoComplete="off" value={p.amount} onChange={(e) => setSplit((all) => all!.map((x, j) => (j === i ? { ...x, amount: e.target.value } : x)))} style={{ width: '7rem' }} />
+                    {split.length > 2 && <Button size="sm" variant="tertiary" aria-label={`Quitar el medio ${i + 1}`} icon={<Trash2 size={16} aria-hidden="true" />} onClick={() => setSplit((all) => all!.filter((_, j) => j !== i))} />}
+                  </div>
+                ))}
+                <p className={`caption tabular${splitSum === net ? '' : ' muted'}`} role="status">
+                  {splitSum === net ? 'Los montos cuadran con el total.' : splitSum < net ? `Falta asignar ${fmtMoney(net - splitSum)}.` : `Sobran ${fmtMoney(splitSum - net)}.`}
+                </p>
+                {new Set(split.map((p) => p.id)).size !== split.length && <p className="field-error" role="alert">Use cada medio una sola vez.</p>}
+                <div className="chip-row">
+                  {split.length < 4 && split.length < c.paymentMethods.length && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setSplit((all) => [...all!, { id: c.paymentMethods!.find((m) => !all!.some((x) => x.id === m.id))!.id, amount: '' }])}>Agregar medio</Button>}
+                  <Button size="sm" variant="tertiary" onClick={() => setSplit(null)}>Un solo medio</Button>
+                </div>
               </fieldset>
             )}
             {contingency && customer && (
@@ -304,7 +347,7 @@ export function VentasPage() {
             {!contingency && (
               <>
                 {error && <Alert tone="danger">{error}</Alert>}
-                <Button variant="primary" disabled={!draft || readOnly || c?.opened === false} loading={busy} loadingText="Registrando venta…" onClick={() => void sell()}>Cobrar {fmtMoney(total)}</Button>
+                <Button variant="primary" disabled={!draft || readOnly || c?.opened === false} loading={busy} loadingText="Registrando venta…" onClick={() => void sell()}>Cobrar {fmtMoney(discountOk ? net : total)}</Button>
                 <Button variant="tertiary" onClick={reset}>Limpiar venta</Button>
               </>
             )}
