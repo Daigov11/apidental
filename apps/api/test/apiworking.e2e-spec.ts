@@ -19,7 +19,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
   const seen: Seen[] = [];
   const saved: Record<string, string | undefined> = {};
   /** Escenarios que la prueba activa en el servidor simulado. */
-  const scenario = { wa: 'none' as 'none' | 'qr' | 'connected', waSend: 'ok' as 'ok' | 'fail' | 'boom' | 'html403', movimiento: 'ok' as 'ok' | 'boom' | 'reject', twoMethods: false, facturacion: null as null | Record<string, unknown>[], registro: 'ok' as 'ok' | 'list' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject', clientes: 'ok' as 'ok' | 'boom', registrarPago: 'ok' as 'ok' | 'reject' | 'boom' };
+  const scenario = { awUsers: {} as Record<string, { id: number; clave: string; nombre: string }>, createUser: 'ok' as 'ok' | 'reject' | 'boom', wa: 'none' as 'none' | 'qr' | 'connected', waSend: 'ok' as 'ok' | 'fail' | 'boom' | 'html403', movimiento: 'ok' as 'ok' | 'boom' | 'reject', twoMethods: false, facturacion: null as null | Record<string, unknown>[], registro: 'ok' as 'ok' | 'list' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject', clientes: 'ok' as 'ok' | 'boom', registrarPago: 'ok' as 'ok' | 'reject' | 'boom' };
 
   const customers = [
     { total: 3, id_cliente: 202600000038, id_persona: 202600000049, nombrecompleto: 'ROBERTO CARLOS ESPINAR VICHARRA', email: '', tipoDoc: 'D.N.I.', numerodocumento: '74908568', telefono: '', tipo_persona: 'N', estado: 'A', limite_credito: '0.00', saldo: 0, whatsapp: '', saldo_restante: '0.00' },
@@ -40,6 +40,13 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       scenario.cajaOpen = false;
       const cadena = String((req.body as { cadenaCierre?: string } | undefined)?.cadenaCierre ?? '');
       return { status: 200, body: ok([{ result: 1, duplicado: 0, msjDocumentos: '', msjCuadroPerfecto: cadena ? `CUADRE: diferencia S/ ${cadena.split('^')[1]}` : '', idAuditoria: '1' }]) };
+    }
+    if (req.method === 'POST' && req.path === '/api/User') {
+      const b = (req.body ?? {}) as Record<string, string>;
+      if (scenario.createUser === 'boom') return { status: 500, body: { error: 'x' } };
+      if (scenario.createUser === 'reject' || scenario.awUsers[b['usuario']!]) return { status: 200, body: { codResponse: 0, message: 'El usuario ya existe' } };
+      scenario.awUsers[b['usuario']!] = { id: 500 + Object.keys(scenario.awUsers).length, clave: b['clave']!, nombre: `${b['nombres']} ${b['apellidos']}` };
+      return { status: 200, body: ok({ result: 1 }) };
     }
     // WhatsApp (Wasapaso por el centralizador): sobre con mayúsculas en sesión y estado; el envío responde «crudo».
     if (req.method === 'GET' && req.path === '/api/Whatsapp/sessions/status') {
@@ -73,6 +80,12 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     switch (`${req.method} ${req.path}`) {
       case 'POST /api/User/login': {
         const b = req.body ?? {};
+        // Cuentas creadas con POST /api/User: ingresan con su propia clave y tienen su propio id_usuario.
+        const made = scenario.awUsers[String(b['usuario'])];
+        if (made) {
+          if (b['password'] !== made.clave) return { status: 200, body: { codResponse: 0, message: 'Usuario o contraseña incorrectos' } };
+          return { status: 200, body: ok({ token: EXTERNAL_TOKEN, id_usuario: made.id, id_persona: made.id, usuario: b['usuario'], nombrecompleto: made.nombre, id_sucursal: 1, roles: ['CAJERO'], empresa: { base_datos: scenario.tenant } }) };
+        }
         if (b['password'] !== 'clave-correcta') return { status: 200, body: { codResponse: 0, message: 'Usuario o contraseña incorrectos' } };
         return { status: 200, body: ok({ token: EXTERNAL_TOKEN, id_usuario: 77, id_persona: 201900000001, usuario: b['usuario'], nombrecompleto: 'GINA PAREDES YAURI', id_sucursal: 1, roles: ['ADMIN'], empresa: { base_datos: scenario.tenant } }) };
       }
@@ -131,6 +144,8 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       APIWORKING_AUTHORIZED_SERIES: '11',
       APIWORKING_WAREHOUSE_ID: '1',
       APIWORKING_UNIT_ID: '15',
+      // Las pruebas crean usuarios locales con fixtures y entran con correo: aquí se reabre (salida de emergencia).
+      LOCAL_LOGIN_FALLBACK: 'true',
     };
     for (const [k, v] of Object.entries(env)) {
       saved[k] = process.env[k];
@@ -1096,6 +1111,55 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     const a3 = await mkAppt('987333444', 5);
     const r3 = (await ctx.http().post(`/v1/appointments/${a3.id}/confirm`).set(bearer(t)).send({ expectedVersion: 1 }).expect(200)).body;
     expect(r3).toMatchObject({ status: 'CONFIRMED', whatsapp: { status: 'SKIPPED', message: 'WhatsApp de la clínica no está vinculado' } });
+  });
+
+  it('ingreso solo con Apiworking: el correo queda cerrado; se crean usuarios en Apiworking (clave de 6) que entran ya con su rol', async () => {
+    const cfg = ctx.app.get(AppConfig) as unknown as { localLoginFallback: boolean };
+    cfg.localLoginFallback = false;
+    try {
+      const local = await ctx.http().post('/v1/auth/login').send({ email: 'alguien@test.pe', password: 'Clave-De-Prueba-123' });
+      expect(local.status).toBe(401);
+      expect(local.body.code).toBe('APIWORKING_LOGIN_REQUIRED');
+    } finally {
+      cfg.localLoginFallback = true;
+    }
+
+    const login = await enter();
+    const t = (await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200)).body.accessToken as string;
+    const body = { firstName: 'Nora', lastName: 'Caja Nueva', email: 'nora@glow.pe', username: 'nora.caja', password: 'abc123', roleCode: 'CASHIER' };
+    // Validaciones: usuario obligatorio, clave mínima de 6.
+    await ctx.http().post('/v1/users').set(bearer(t)).send({ ...body, username: undefined }).expect(400);
+    await ctx.http().post('/v1/users').set(bearer(t)).send({ ...body, password: '12345' }).expect(400);
+
+    const created = (await ctx.http().post('/v1/users').set(bearer(t)).send(body).expect(201)).body;
+    expect(created).toMatchObject({ username: 'nora.caja', user: { firstName: 'Nora', lastName: 'Caja Nueva' } });
+    expect(created.password).toBeUndefined();
+    expect(seen.filter((x) => x.path === '/api/User').at(-1)!.body).toEqual({ apellidos: 'Caja Nueva', nombres: 'Nora', usuario: 'nora.caja', email: 'nora@glow.pe', clave: 'abc123' });
+    const identity = await ctx.db.externalIdentity.findFirstOrThrow({ where: { externalUsername: 'nora.caja' } });
+    expect(identity.externalUserId).toBe('pending:nora.caja');
+    // La clave NO queda en este sistema (ni en la auditoría).
+    expect(JSON.stringify(await ctx.db.auditLog.findMany({ where: { entityId: identity.userId } }))).not.toContain('abc123');
+
+    // Primer ingreso con su usuario de Apiworking: queda vinculada y ya tiene su rol (no «acceso pendiente»).
+    const first = await ctx.http().post('/v1/auth/apiworking-login').send({ usuario: 'nora.caja', password: 'abc123' }).expect(200);
+    expect(first.body.pendingAccess).toBe(false);
+    expect(first.body.user.id).toBe(identity.userId);
+    expect((await ctx.db.externalIdentity.findUniqueOrThrow({ where: { id: identity.id } })).externalUserId).toBe('500');
+
+    // Repetido, rechazo de Apiworking y resultado dudoso.
+    const dup = await ctx.http().post('/v1/users').set(bearer(t)).send(body);
+    expect(dup.status).toBe(409);
+    expect(dup.body.code).toBe('USERNAME_TAKEN');
+    scenario.createUser = 'reject';
+    const rej = await ctx.http().post('/v1/users').set(bearer(t)).send({ ...body, username: 'otro.user' });
+    expect(rej.status).toBe(422);
+    expect(rej.body.message).toBe('El usuario ya existe');
+    scenario.createUser = 'boom';
+    expect((await ctx.http().post('/v1/users').set(bearer(t)).send({ ...body, username: 'tercero.user' })).body.code).toBe('APIWORKING_UNCONFIRMED');
+    scenario.createUser = 'ok';
+    // Sin clave: el sistema la genera (10 caracteres) y la muestra una sola vez.
+    const gen = (await ctx.http().post('/v1/users').set(bearer(t)).send({ ...body, username: 'cuarto.user', password: undefined }).expect(201)).body;
+    expect(gen.password).toMatch(/^[A-Za-z0-9]{10}$/);
   });
 
   it('busca los nombres por DNI para precargar al paciente: usa lo que ya hay y solo consulta ClienteDoc si falta', async () => {

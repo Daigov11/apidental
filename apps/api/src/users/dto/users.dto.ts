@@ -31,10 +31,12 @@ export class CreateUserDto extends GrantDto {
   @Transform(trim) @IsString() @MinLength(1) @MaxLength(100) firstName!: string;
   @Transform(trim) @IsString() @MinLength(1) @MaxLength(100) lastName!: string;
   /** Opcional: sin contraseña, el sistema genera una y la devuelve UNA sola vez. */
-  @IsOptional() @IsString() @MinLength(12, { message: 'La contraseña debe tener al menos 12 caracteres' }) @MaxLength(128) password?: string;
+  @IsOptional() @IsString() @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' }) @MaxLength(128) password?: string;
+  /** Usuario de Apiworking (clínicas con Apiworking: obligatorio; la cuenta se crea en Apiworking). */
+  @IsOptional() @Transform(trim) @Matches(/^[A-Za-z0-9._-]{3,30}$/, { message: 'Usuario inválido: de 3 a 30 letras, números, punto, guion o guion bajo' }) username?: string;
 }
 
 /** Nueva contraseña para otro usuario. Sin contraseña, el sistema genera una y la devuelve UNA sola vez. */
 export class ResetPasswordDto {
-  @IsOptional() @IsString() @MinLength(12, { message: 'La contraseña debe tener al menos 12 caracteres' }) @MaxLength(128) password?: string;
+  @IsOptional() @IsString() @MinLength(6, { message: 'La contraseña debe tener al menos 6 caracteres' }) @MaxLength(128) password?: string;
 }

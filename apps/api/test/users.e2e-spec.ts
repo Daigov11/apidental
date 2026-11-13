@@ -26,7 +26,7 @@ describe('Usuarios, roles y asignaciones', () => {
       const email = `${uniq('nuevo')}@test.pe`;
       const res = await ctx.http().post('/v1/users').set(bearer(t.tokenA)).send({ email: email.toUpperCase(), firstName: 'Ana', lastName: 'Rojas', roleCode: 'CASHIER', branchId: t.a1.id }).expect(201);
       expect(res.body.user).toMatchObject({ email, firstName: 'Ana', lastName: 'Rojas', status: 'ACTIVE' });
-      expect(res.body.password).toMatch(/^[A-Za-z0-9]{14}$/);
+      expect(res.body.password).toMatch(/^[A-Za-z0-9]{10}$/);
       const row = await ctx.db.user.findUniqueOrThrow({ where: { email }, omit: { passwordHash: false } });
       expect(row.passwordHash.startsWith('$argon2id$')).toBe(true);
       expect(row.passwordHash).not.toContain(res.body.password);
@@ -75,7 +75,7 @@ describe('Usuarios, roles y asignaciones', () => {
       const dentist = (await fx.userWithRole('DENTIST', { clinicId: t.a.id })).user;
       const oldToken = await loginInContext(ctx, dentist.email, { clinicId: t.a.id });
       const res = await ctx.http().post(`/v1/users/${dentist.id}/password`).set(bearer(t.tokenA)).send({}).expect(200);
-      expect(res.body.password).toMatch(/^[A-Za-z0-9]{14}$/);
+      expect(res.body.password).toMatch(/^[A-Za-z0-9]{10}$/);
       await ctx.http().get('/v1/auth/me').set(bearer(oldToken)).expect(401);
       await ctx.http().post('/v1/auth/login').send({ email: dentist.email, password: PASSWORD }).expect(401);
       await loginInContext(ctx, dentist.email, { clinicId: t.a.id }, res.body.password);

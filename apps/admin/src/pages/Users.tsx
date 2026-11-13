@@ -49,8 +49,9 @@ export function UsersPage() {
         </div>
       </div>
       <Alert tone="info" title="Contraseñas">
-        Las contraseñas se guardan cifradas y nadie puede verlas, ni siquiera el administrador. Al crear un usuario o restablecer su contraseña, la nueva se muestra <strong>una sola vez</strong>: cópiela y entréguela a la persona.
-        {authMode === 'apiworking' && ' Las cuentas de Apiworking ingresan con su usuario y contraseña de Apiworking (se cambian en Apiworking); los usuarios creados aquí ingresan con su correo en «Ingresar con correo».'}
+        {authMode === 'apiworking'
+          ? <>Se ingresa con el <strong>usuario y contraseña de Apiworking</strong>. «Nuevo usuario» crea la cuenta en Apiworking (contraseña de al menos 6 caracteres) con su rol aquí. Las contraseñas no se pueden ver: si el sistema la genera, se muestra <strong>una sola vez</strong>. Para cambiar una contraseña, hágalo en Apiworking.</>
+          : <>Las contraseñas se guardan cifradas y nadie puede verlas, ni siquiera el administrador. Al crear un usuario o restablecer su contraseña, la nueva se muestra <strong>una sola vez</strong>: cópiela y entréguela a la persona.</>}
       </Alert>
 
       {users.loading && !users.data && <Loading rows={4} />}
@@ -90,7 +91,7 @@ export function UsersPage() {
                       {!self && (
                         <div className="chip-row">
                           {canAssign && u.status === 'ACTIVE' && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setAssignOf(u)}>Asignar rol</Button>}
-                          {canManage && !u.externalIdentity && u.status === 'ACTIVE' && <Button size="sm" icon={<KeyRound size={16} aria-hidden="true" />} onClick={() => setResetOf(u)}>Restablecer contraseña</Button>}
+                          {canManage && authMode !== 'apiworking' && !u.externalIdentity && u.status === 'ACTIVE' && <Button size="sm" icon={<KeyRound size={16} aria-hidden="true" />} onClick={() => setResetOf(u)}>Restablecer contraseña</Button>}
                           {canManage && u.status === 'ACTIVE' && <Button size="sm" variant="danger" onClick={() => setStatusOf({ user: u, op: 'disable' })}>Desactivar</Button>}
                           {canManage && u.status === 'DISABLED' && <Button size="sm" onClick={() => setStatusOf({ user: u, op: 'reactivate' })}>Reactivar</Button>}
                         </div>
@@ -106,10 +107,10 @@ export function UsersPage() {
 
       {creating && (
         <NewUserDialog
-          roles={grantable(roles.data)} onClose={() => setCreating(false)}
+          apiworking={authMode === 'apiworking'} roles={grantable(roles.data)} onClose={() => setCreating(false)}
           onCreated={(r, email, typed) => {
             setCreating(false); users.reload();
-            if (r.password) setReveal({ title: 'Usuario creado', login: email, password: r.password });
+            if (r.password) setReveal({ title: 'Usuario creado', login: r.username ?? email, password: r.password });
             else toast.success(typed ? 'Usuario creado con la contraseña que escribió.' : 'Usuario creado.');
           }}
         />
@@ -146,12 +147,13 @@ function PasswordChoice({ mode, setMode, password, setPassword }: { mode: 'auto'
         <option value="auto">Generarla automáticamente (se muestra una vez)</option>
         <option value="typed">Escribirla yo</option>
       </SelectField>
-      {mode === 'typed' && <TextField label="Nueva contraseña" help="Mínimo 12 caracteres." type="text" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
+      {mode === 'typed' && <TextField label="Nueva contraseña" help="Mínimo 6 caracteres." type="text" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />}
     </>
   );
 }
 
-function NewUserDialog({ roles, onClose, onCreated }: { roles: Role[]; onClose: () => void; onCreated: (r: { password?: string }, email: string, typed: boolean) => void }) {
+function NewUserDialog({ apiworking, roles, onClose, onCreated }: { apiworking: boolean; roles: Role[]; onClose: () => void; onCreated: (r: { password?: string; username?: string }, email: string, typed: boolean) => void }) {
+  const [username, setUsername] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -160,12 +162,12 @@ function NewUserDialog({ roles, onClose, onCreated }: { roles: Role[]; onClose: 
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const invalid = !firstName.trim() || !lastName.trim() || !/^\S+@\S+\.\S+$/.test(email.trim()) || !roleCode || (mode === 'typed' && password.length < 12);
+  const invalid = !firstName.trim() || !lastName.trim() || !/^\S+@\S+\.\S+$/.test(email.trim()) || !roleCode || (mode === 'typed' && password.length < 6) || (apiworking && !/^[A-Za-z0-9._-]{3,30}$/.test(username.trim()));
   const submit = async () => {
     if (invalid || busy) return;
     setBusy(true); setError(null);
     try {
-      const r = await post<{ password?: string }>('/users', { firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(), roleCode, ...(mode === 'typed' ? { password } : {}) });
+      const r = await post<{ password?: string; username?: string }>('/users', { firstName: firstName.trim(), lastName: lastName.trim(), email: email.trim(), roleCode, ...(apiworking ? { username: username.trim() } : {}), ...(mode === 'typed' ? { password } : {}) });
       onCreated(r, email.trim().toLowerCase(), mode === 'typed');
     } catch (e) { setError(errorText(e)); setBusy(false); }
   };
@@ -176,7 +178,8 @@ function NewUserDialog({ roles, onClose, onCreated }: { roles: Role[]; onClose: 
         <TextField label="Nombres" value={firstName} autoComplete="off" onChange={(e) => setFirstName(e.target.value)} />
         <TextField label="Apellidos" value={lastName} autoComplete="off" onChange={(e) => setLastName(e.target.value)} />
       </div>
-      <TextField label="Correo" help="Con este correo ingresará al sistema." type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+      {apiworking && <TextField label="Usuario de Apiworking" help="Con este usuario ingresará. De 3 a 30 letras, números, punto o guion; sin espacios." autoComplete="off" value={username} onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))} />}
+      <TextField label="Correo" help={apiworking ? 'Se registra en Apiworking.' : 'Con este correo ingresará al sistema.'} type="email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
       <SelectField label="Rol" value={roleCode} onChange={(e) => setRoleCode(e.target.value)}>
         <option value="">Elija el rol</option>
         {roles.map((r) => <option key={r.code} value={r.code}>{r.name}</option>)}
@@ -191,7 +194,7 @@ function ResetDialog({ user, onClose, onDone }: { user: SystemUser; onClose: () 
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const invalid = mode === 'typed' && password.length < 12;
+  const invalid = mode === 'typed' && password.length < 6;
   const submit = async () => {
     if (invalid || busy) return;
     setBusy(true); setError(null);

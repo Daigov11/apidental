@@ -41,7 +41,7 @@ const routes = (over: Routes = {}): Routes => ({
 });
 
 describe('Acceso con Apiworking', () => {
-  it('con AUTH_MODE=apiworking el ingreso principal es el usuario de Apiworking y el administrador local sigue disponible', async () => {
+  it('con AUTH_MODE=apiworking se ingresa SOLO con el usuario de Apiworking (sin ingreso con correo)', async () => {
     const { called } = mockApi({
       'POST /auth/refresh': { status: 401, json: {} },
       'GET /auth/config': { json: { mode: 'apiworking' } },
@@ -58,9 +58,8 @@ describe('Acceso con Apiworking', () => {
     expect(called('POST', '/auth/apiworking-login')[0]?.body).toEqual({ usuario: 'gina', password: 'clave-apiworking' });
     expect(called('POST', '/auth/login')).toHaveLength(0);
 
-    await user.click(screen.getByRole('button', { name: 'Ingresar con correo' }));
-    expect(screen.getByLabelText('Correo')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Usuario de Apiworking')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Ingresar con correo' })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Correo')).not.toBeInTheDocument();
   });
 
   it('credenciales de Apiworking incorrectas: mensaje genérico', async () => {

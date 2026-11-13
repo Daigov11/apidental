@@ -78,6 +78,16 @@ export class ApiworkingAuthService {
       await this.db.externalIdentity.update({ where: { id: existing.id }, data: info });
       return existing.user;
     }
+    // Cuenta creada desde «Usuarios» (POST /api/User) que aún no había ingresado: se vincula por su usuario y conserva su rol.
+    const pending = await this.db.externalIdentity.findUnique({
+      where: { provider_tenant_externalUserId: { provider: PROVIDER, tenant: login.tenant, externalUserId: pendingExternalId(login.username) } },
+      include: { user: true },
+    });
+    if (pending) {
+      await this.db.externalIdentity.update({ where: { id: pending.id }, data: { ...info, externalUserId: login.userId } });
+      await this.audit.recordSafely({ action: AuditAction.ApiworkingIdentityLinked, entity: 'User', entityId: pending.userId, userId: pending.userId, meta, summary: { provider: PROVIDER, pending: true } });
+      return pending.user;
+    }
 
     const [first, ...rest] = (login.fullName || login.username).split(/\s+/).filter(Boolean);
     // Sin contraseña local: se guarda el hash de un secreto aleatorio que nadie conoce (el acceso es por Apiworking).
@@ -120,3 +130,6 @@ function toJson(v: unknown): Prisma.InputJsonValue | undefined {
   const text = JSON.stringify(v);
   return text.length <= 2000 ? (JSON.parse(text) as Prisma.InputJsonValue) : undefined;
 }
+
+/** Id provisional de una cuenta creada aquí que todavía no ingresó: se reemplaza por su id_usuario en el primer ingreso. */
+export const pendingExternalId = (username: string) => `pending:${username.trim().toLowerCase()}`.slice(0, 40);

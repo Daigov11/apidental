@@ -41,6 +41,8 @@ export class AppConfig {
   readonly integrations: { mode: 'off' | 'mock'; workerIntervalMs: number };
   /** Inicio de sesión del panel: local o con la cuenta de Apiworking. */
   readonly authMode: 'local' | 'apiworking';
+  /** Con AUTH_MODE=apiworking: reabre el ingreso con correo (emergencia). */
+  readonly localLoginFallback: boolean;
   /** Apiworking real. `configured` = hay tenant y sistema; `read`/`write` son los interruptores de operaciones reales. */
   readonly apiworking: {
     configured: boolean;
@@ -125,6 +127,7 @@ export class AppConfig {
     this.integrations = { mode: env.INTEGRATIONS_MODE as 'off' | 'mock', workerIntervalMs: env.INTEGRATIONS_WORKER_INTERVAL_MS };
     const list = (v?: string) => (v ?? '').split(',').map((x) => x.trim()).filter(Boolean);
     this.authMode = env.AUTH_MODE as 'local' | 'apiworking';
+    this.localLoginFallback = env.LOCAL_LOGIN_FALLBACK === 'true';
     this.apiworking = {
       configured: Boolean(env.APIWORKING_SYSTEM_ID && env.APIWORKING_AUTHZ_EXPECTED_DATABASE),
       baseUrl: env.APIWORKING_BASE_URL.replace(/\/+$/, ''),

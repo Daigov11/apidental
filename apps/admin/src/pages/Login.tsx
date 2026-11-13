@@ -10,9 +10,8 @@ import mascota from '../assets/brand/mascota.png';
 
 export function LoginPage() {
   const { login, loginApiworking, authMode, notice } = useAuth();
-  // Con Apiworking activo, el acceso principal es la cuenta de Apiworking; el local queda para el administrador de la clínica.
-  const [localAccess, setLocalAccess] = useState(false);
-  const external = authMode === 'apiworking' && !localAccess;
+  // Con Apiworking activo se ingresa SOLO con el usuario de Apiworking (el servidor cierra el ingreso con correo).
+  const external = authMode === 'apiworking';
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
@@ -70,13 +69,6 @@ export function LoginPage() {
             Ingresar
           </Button>
         </form>
-        {authMode === 'apiworking' && (
-          <p style={{ marginTop: 'var(--space-4)' }}>
-            <button type="button" className="btn btn-tertiary btn-sm" onClick={() => { setLocalAccess((v) => !v); setError(null); setTouched(false); setEmail(''); }}>
-              {localAccess ? 'Ingresar con mi cuenta de Apiworking' : 'Ingresar con correo'}
-            </button>
-          </p>
-        )}
         <p className="caption muted" style={{ marginTop: 'var(--space-5)' }}>Los datos de esta pantalla son de uso exclusivo del personal autorizado de la clínica.</p>
       </div>
     </main>

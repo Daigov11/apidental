@@ -1,3 +1,4 @@
+import { AppConfig } from '../config/app-config.js';
 import { ForbiddenException, Inject, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
 import { ApiworkingSessionStore } from '../apiworking/apiworking-session.store.js';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
@@ -29,6 +30,7 @@ export class AuthService {
     private readonly audit: AuditService,
     private readonly attempts: LoginAttemptsService,
     private readonly sessions: SessionService,
+    private readonly config: AppConfig,
     @Optional() private readonly externalSessions?: ApiworkingSessionStore,
   ) {}
 
@@ -37,6 +39,11 @@ export class AuthService {
    * SOLO por cookie HttpOnly). Están separados a propósito para que el token no se filtre al cuerpo.
    */
   async login(dto: LoginDto, meta: RequestMeta) {
+    // Clínicas con Apiworking: se ingresa SOLO con el usuario de Apiworking (salvo la salida de emergencia LOCAL_LOGIN_FALLBACK).
+    if (this.config.authMode === 'apiworking' && !this.config.localLoginFallback) {
+      await this.audit.recordSafely({ action: AuditAction.LoginFailed, entity: 'User', meta, summary: { reason: 'local_login_disabled' } });
+      throw new UnauthorizedException({ message: 'Ingrese con su usuario de Apiworking', code: 'APIWORKING_LOGIN_REQUIRED' });
+    }
     const user = await this.db.user.findUnique({
       where: { email: dto.email },
       omit: { passwordHash: false },

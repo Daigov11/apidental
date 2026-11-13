@@ -27,6 +27,8 @@ export const ROUTES = {
   /** El tenant va en la ruta (…/AperturaCajaChica/{base_datos}): siempre es el esperado de esta instalación, nunca un dato libre. */
   aperturaCaja: { method: 'POST', path: '/api/CajaChica/AperturaCajaChica', kind: 'write', tenantInPath: true },
   cierreCaja: { method: 'POST', path: '/api/CajaChica/PostCierreCajaChica', kind: 'write', tenantInPath: true },
+  /** Crea un usuario en Apiworking (apellidos, nombres, usuario, email, clave). Sin respuesta de ejemplo en la guía. */
+  createUser: { method: 'POST', path: '/api/User', kind: 'write' },
   /** URL del PDF oficial del comprobante (con QR). bd = tenant de la instalación; nunca un dato libre. */
   urlComprobante: { method: 'GET', path: '/api/Facturacion/urlComprobante', kind: 'read' },
   /** Ingreso (I) o egreso (E) manual en el movimiento de caja abierto. Respuesta no documentada: basta codResponse 1. */
@@ -61,6 +63,7 @@ const QUERY_PARAMS: Record<RouteName, readonly string[]> = {
   cierreCaja: [],
   ingresoEgreso: [],
   urlComprobante: ['bd', 'idDocumento'],
+  createUser: [],
   waSession: [],
   waStatus: ['phone_label'],
   waSend: [],

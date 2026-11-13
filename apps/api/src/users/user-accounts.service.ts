@@ -1,5 +1,5 @@
-import { randomInt } from 'node:crypto';
-import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { randomBytes, randomInt } from 'node:crypto';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { AuditAction, AuditService } from '../audit/audit.service.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { CARE_ATTENDANCE_PERMISSIONS, RETIRED_ROLE_CODES } from '../auth/permissions.js';
@@ -10,13 +10,17 @@ import { isUniqueViolation } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import { AssignmentsService } from './assignments.service.js';
+import { AppConfig } from '../config/app-config.js';
+import { ApiworkingClient, ApiworkingError, clip } from '../apiworking/apiworking.client.js';
+import { ApiworkingSessionStore } from '../apiworking/apiworking-session.store.js';
+import { pendingExternalId } from '../apiworking/apiworking-auth.service.js';
 
 /** Sin caracteres que se confunden al dictarlos o copiarlos a mano (0/O, 1/l/I). */
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
 const GROUPS = ['ABCDEFGHJKLMNPQRSTUVWXYZ', 'abcdefghijkmnpqrstuvwxyz', '23456789'];
 
-/** Contraseña aleatoria de 14 caracteres (al menos una mayúscula, una minúscula y un número). */
-export function generatePassword(length = 14): string {
+/** Contraseña aleatoria de 10 caracteres (al menos una mayúscula, una minúscula y un número). */
+export function generatePassword(length = 10): string {
   for (;;) {
     const p = Array.from({ length }, () => ALPHABET[randomInt(ALPHABET.length)]).join('');
     if (GROUPS.every((g) => p.split('').some((ch) => g.includes(ch)))) return p;
@@ -36,13 +40,17 @@ export class UserAccountsService {
     private readonly audit: AuditService,
     private readonly assignments: AssignmentsService,
     private readonly sessions: SessionService,
+    private readonly config: AppConfig,
+    private readonly client: ApiworkingClient,
+    private readonly externalSessions: ApiworkingSessionStore,
   ) {}
 
   async create(
     actor: AuthPrincipal,
-    dto: { email: string; firstName: string; lastName: string; roleCode: string; clinicId?: string; branchId?: string; password?: string },
+    dto: { email: string; firstName: string; lastName: string; roleCode: string; clinicId?: string; branchId?: string; password?: string; username?: string },
     meta: RequestMeta,
   ) {
+    if (this.config.authMode === 'apiworking') return this.createInApiworking(actor, dto, meta);
     // Mismas reglas que al asignar un rol: anti-escalada, nunca Director Clínico, dentro de la clínica y sede del administrador.
     const grant = await this.assignments.validateGrant(actor, { roleCode: dto.roleCode, clinicId: dto.clinicId, branchId: dto.branchId });
     if (RETIRED_ROLE_CODES.includes(grant.roleCode)) throw new ForbiddenException('Ese rol ya no se usa: elija Administrador, Cajero u Odontólogo');
@@ -80,6 +88,62 @@ export class UserAccountsService {
       if (isUniqueViolation(error)) throw new ConflictException({ message: 'Ya existe un usuario con ese correo', code: 'EMAIL_TAKEN' });
       throw error;
     }
+  }
+
+  /**
+   * Clínicas con Apiworking: la cuenta se crea en Apiworking (POST /api/User, con la sesión de quien la crea) y aquí queda el usuario
+   * local con su rol, vinculado por su usuario hasta que ingrese por primera vez. La contraseña es la de Apiworking: se devuelve una
+   * sola vez si la generó el sistema y nunca se guarda (ni su hash) en este sistema.
+   */
+  private async createInApiworking(
+    actor: AuthPrincipal,
+    dto: { email: string; firstName: string; lastName: string; roleCode: string; clinicId?: string; branchId?: string; password?: string; username?: string },
+    meta: RequestMeta,
+  ) {
+    if (!dto.username) throw new BadRequestException('Indique el usuario de Apiworking');
+    const grant = await this.assignments.validateGrant(actor, { roleCode: dto.roleCode, clinicId: dto.clinicId, branchId: dto.branchId });
+    if (RETIRED_ROLE_CODES.includes(grant.roleCode)) throw new ForbiddenException('Ese rol ya no se usa: elija Administrador, Cajero u Odontólogo');
+    const tenant = this.config.apiworking.expectedDatabase;
+    if (!tenant) throw new BadRequestException('Apiworking no está configurado en esta instalación');
+    const session = this.externalSessions.get(actor.sessionId);
+    if (!session) throw new ConflictException({ message: 'Vuelva a iniciar sesión con su cuenta de Apiworking para crear usuarios', code: 'APIWORKING_SESSION_REQUIRED' });
+    const username = dto.username.trim();
+    const taken = await this.db.externalIdentity.findFirst({ where: { provider: 'APIWORKING', tenant, externalUsername: username }, select: { id: true } });
+    if (taken) throw new ConflictException({ message: 'Ese usuario de Apiworking ya existe en este sistema: asígnele el rol desde la lista', code: 'USERNAME_TAKEN' });
+
+    const generated = !dto.password;
+    const password = dto.password ?? generatePassword();
+    let data: unknown;
+    try {
+      data = await this.client.call('createUser', { token: session.token, body: { apellidos: dto.lastName.trim(), nombres: dto.firstName.trim(), usuario: username, email: dto.email.trim().toLowerCase(), clave: password } });
+    } catch (error) {
+      if (error instanceof ApiworkingError && (error.kind === 'UNKNOWN_RESULT' || error.kind === 'BAD_RESPONSE')) {
+        throw new ConflictException({ message: 'No se pudo confirmar si Apiworking creó el usuario. Revíselo en Apiworking antes de intentarlo otra vez; si existe, la persona puede ingresar y usted le asigna el rol.', code: 'APIWORKING_UNCONFIRMED' });
+      }
+      if (error instanceof ApiworkingError) throw new UnprocessableEntityException({ message: clip(error.message) || 'Apiworking rechazó el usuario', code: 'APIWORKING_REJECTED' });
+      throw error;
+    }
+    // La guía no tiene ejemplo de respuesta: si trae el id del usuario se usa; si no, se vincula en su primer ingreso por el usuario.
+    const record = Array.isArray(data) ? data[0] : data;
+    const r = typeof record === 'object' && record !== null ? (record as Record<string, unknown>) : {};
+    const rawId = ['id_usuario', 'idUsuario', 'id'].map((k) => r[k]).find((v) => (typeof v === 'string' && v.trim()) || typeof v === 'number');
+    const externalUserId = rawId !== undefined ? String(rawId).trim().slice(0, 40) : pendingExternalId(username);
+    // Sin contraseña local utilizable: se ingresa por Apiworking.
+    const unusable = await hashPassword(randomBytes(32).toString('base64'));
+    const user = await this.db.$transaction(async (tx) => {
+      const u = await tx.user.create({
+        data: { email: `aw-${externalUserId.replace(/[^A-Za-z0-9._-]/g, '-')}@apiworking.invalid`, firstName: dto.firstName.trim(), lastName: dto.lastName.trim(), passwordHash: unusable },
+        select: { id: true, email: true, firstName: true, lastName: true, status: true, createdAt: true },
+      });
+      await tx.externalIdentity.create({ data: { userId: u.id, provider: 'APIWORKING', tenant, externalUserId, externalUsername: username, lastLoginAt: new Date(0) } });
+      await this.assignments.persist(actor.user.id, u.id, grant, meta, tx);
+      await this.audit.record(
+        { action: AuditAction.UserCreated, entity: 'User', entityId: u.id, userId: actor.user.id, clinicId: grant.clinicId, branchId: grant.branchId, meta, summary: { via: 'apiworking', roleCode: grant.roleCode, passwordGenerated: generated, linked: rawId !== undefined } },
+        tx,
+      );
+      return u;
+    });
+    return { user, username, ...(generated ? { password } : {}) };
   }
 
   async resetPassword(actor: AuthPrincipal, targetId: string, dto: { password?: string }, meta: RequestMeta) {

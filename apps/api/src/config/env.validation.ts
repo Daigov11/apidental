@@ -254,6 +254,13 @@ export class EnvironmentVariables {
   @Max(60000)
   APIWORKING_TIMEOUT_MS: number = 15000;
 
+  /**
+   * Con AUTH_MODE=apiworking el ingreso es SOLO con usuario de Apiworking. «true» reabre el ingreso con correo como salida de
+   * emergencia (p. ej. si Apiworking no responde). Por defecto, cerrado.
+   */
+  @IsOptional() @IsIn(['true', 'false'])
+  LOCAL_LOGIN_FALLBACK?: string;
+
   /** WhatsApp por el centralizador de Apiworking (Wasapaso). «false» lo apaga; por defecto, encendido si Apiworking está configurado. */
   @IsOptional() @IsIn(['true', 'false'])
   APIWORKING_WHATSAPP?: string;

@@ -30,8 +30,8 @@ export class UsersController {
   @Post('users')
   @RequirePermissions('user:manage', 'assignment:manage')
   create(@CurrentPrincipal() actor: AuthPrincipal, @Body() dto: CreateUserDto, @Meta() meta: RequestMeta) {
-    const { email, firstName, lastName, password, ...grant } = dto;
-    return this.accounts.create(actor, { email, firstName, lastName, password, ...grant }, meta);
+    const { email, firstName, lastName, password, username, ...grant } = dto;
+    return this.accounts.create(actor, { email, firstName, lastName, password, username, ...grant }, meta);
   }
 
   /** Nueva contraseña para otro usuario: cierra sus sesiones. La generada se devuelve una sola vez. */
