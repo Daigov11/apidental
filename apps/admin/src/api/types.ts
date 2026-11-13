@@ -194,12 +194,19 @@ export interface AwBillingPrescription {
   items: { medication: string; dose: string | null; frequency: string | null; duration: string | null; product?: { id: string; name: string; priceCents: number } | null }[];
 }
 export interface Product { id: string; name: string; presentation: string | null; priceCents: number; kind?: 'PRODUCT' | 'SERVICE'; active: boolean }
+export interface AwCashSummary {
+  movementId: string; openedAt: string | null; turn: string | null; openingCents: number | null; incomeCents: number | null; voidedIncomeCents: number | null;
+  expenseCents: number | null; voidedExpenseCents: number | null; balanceCents: number | null;
+}
 export interface AwCash {
-  cajas: { id: string; name: string; branch: string; opened: boolean }[]; turnos: AwOption[]; defaultTurn: string; write: boolean;
+  cajas: { id: string; name: string; branch: string; opened: boolean; summary?: AwCashSummary; methods?: { id: string; name: string; amountCents: number }[] }[];
+  turnos: AwOption[]; defaultTurn: string; write: boolean;
+  /** Tipos de operación de ingresos (I) y egresos (E) manuales. */
+  operationTypes?: { code: string; flow: 'I' | 'E'; name: string }[];
 }
 export interface AwCashPreview { hash: string; caja: string; turn: string; openingCents: number; openingText: string; alreadyOpen: boolean; write: boolean }
 export interface AwCashClosePreview { hash: string; caja: string; turn: string; isOpen: boolean; write: boolean }
-export interface AwCashResult { status: 'OPENED' | 'CLOSED' | 'UNKNOWN' | 'UNCONFIRMED'; message: string; movementId?: string; note?: string }
+export interface AwCashResult { status: 'OPENED' | 'CLOSED' | 'REGISTERED' | 'UNKNOWN' | 'UNCONFIRMED'; message: string; movementId?: string; note?: string; differenceCents?: number | null }
 export interface AwSalesSummary { date: string; count: number; totalCents: number; totalText: string; methods: { methodId: string; name: string; count: number; totalCents: number; totalText: string }[] }
 export interface AwDiscovery {
   cajas: { id: string; name: string; branch: string; authorized: boolean }[]; write: boolean; warehouseId: string | null; unitId: string | null;

@@ -137,6 +137,21 @@ export class CustomerCreateDto extends CustomerDraftDto {
 export class CashCloseDraftDto {
   @Matches(EXT_ID) idCaja!: string;
   @IsOptional() @Matches(EXT_ID) idTurno?: string;
+  /// Efectivo contado al cerrar (céntimos). Con él se envía el cuadre: diferencia = contado − saldo de la caja. Sin él, cierre simple.
+  @IsOptional() @IsInt() @Min(0) @Max(1_000_000_000) countedCents?: number;
+}
+
+/// Ingreso o egreso manual de caja (taxi, compras, reposición…), en el movimiento abierto de la caja.
+export class CashMovementDto {
+  @Matches(EXT_ID) idCaja!: string;
+  @Matches(/^[IE]$/) type!: 'I' | 'E';
+  @Matches(/^\d{1,6}$/) operationType!: string;
+  @IsInt() @Min(1) @Max(100_000_000) amountCents!: number;
+  @Transform(trim) @IsString() @MinLength(3) @MaxLength(200) description!: string;
+  /// Comprobante del gasto (opcional): tipo, serie y número.
+  @IsOptional() @Matches(/^\d{1,3}$/) docType?: string;
+  @IsOptional() @Transform(trim) @Matches(/^[A-Za-z0-9]{1,6}$/) serie?: string;
+  @IsOptional() @Transform(trim) @Matches(/^\d{1,10}$/) number?: string;
 }
 
 export class CashCloseDto extends CashCloseDraftDto {

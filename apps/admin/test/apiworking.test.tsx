@@ -256,6 +256,42 @@ describe('Apertura y cierre de caja', () => {
     expect(called('POST', '/apiworking/cash/close-preview')).toHaveLength(0);
   });
 
+  it('caja abierta: resumen, acumulado por forma de pago, registrar un egreso y cerrar con el efectivo contado', async () => {
+    const OPEN = { ...CASH, operationTypes: [{ code: '1', flow: 'I', name: 'Reposición de caja' }, { code: '2', flow: 'E', name: 'Movilidad' }, { code: '5', flow: 'E', name: 'Compras' }], cajas: [{
+      id: '5', name: 'Caja Glow', branch: 'Principal', opened: true,
+      summary: { movementId: '9001', openedAt: '13-11-2026 08:00 AM', turn: 'TURNO COMPLETO', openingCents: 10000, incomeCents: 125050, voidedIncomeCents: 0, expenseCents: 3000, voidedExpenseCents: 0, balanceCents: 132050 },
+      methods: [{ id: '1', name: 'Efectivo', amountCents: 110050 }, { id: '6', name: 'Yape', amountCents: 15000 }],
+    }] };
+    const { called } = mockApi(routes({
+      ...sessionRoutes([...PERMS, 'apiworking:cash', 'cashbox:read'], ['CLINIC_ADMIN']),
+      'GET /apiworking/cash': { json: OPEN },
+      'POST /apiworking/cash/movements': { json: { status: 'REGISTERED', message: 'Egreso registrado en la caja' } },
+      'POST /apiworking/cash/close': { json: { status: 'CLOSED', message: 'Caja cerrada. CUADRE: diferencia S/ -0.50', differenceCents: -50 } },
+    } as never));
+    renderApp('/caja-chica');
+    const user = userEvent.setup();
+    const card = (await screen.findByRole('heading', { name: 'Caja de Apiworking' })).closest('section')!;
+    const resumen = await within(card).findByLabelText('Resumen de la caja Caja Glow');
+    expect(within(resumen).getByText(/S\/ 1.?320\.50/)).toBeInTheDocument();
+    expect(within(card).getByText('Yape').closest('tr')!).toHaveTextContent('S/ 150.00');
+
+    await user.click(within(card).getByRole('button', { name: 'Registrar egreso' }));
+    const dlg = await screen.findByRole('dialog', { name: 'Registrar egreso' });
+    expect(within(within(dlg).getByLabelText('Tipo de operación')).queryByRole('option', { name: 'Reposición de caja' })).not.toBeInTheDocument();
+    await user.selectOptions(within(dlg).getByLabelText('Tipo de operación'), '5');
+    await user.type(within(dlg).getByLabelText('Monto (S/)'), '80');
+    await user.type(within(dlg).getByLabelText(/Descripción/), 'Compra de guantes');
+    await user.click(within(dlg).getByRole('button', { name: 'Registrar egreso' }));
+    await waitFor(() => expect(called('POST', '/apiworking/cash/movements')).toHaveLength(1));
+    expect(called('POST', '/apiworking/cash/movements')[0]?.body).toEqual({ idCaja: '5', type: 'E', operationType: '5', amountCents: 8000, description: 'Compra de guantes' });
+
+    await user.type(within(card).getByLabelText(/Efectivo contado/), '1320');
+    expect(within(card).getByText('Faltante: S/ 0.50.')).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Cerrar caja' }));
+    await waitFor(() => expect(called('POST', '/apiworking/cash/close')).toHaveLength(1));
+    expect(called('POST', '/apiworking/cash/close')[0]?.body).toEqual({ idCaja: '5', countedCents: 132000 });
+  });
+
   it('sin el permiso apiworking:cash se ve el estado pero no se ofrece abrir ni cerrar', async () => {
     mockApi(routes(sessionRoutes([...PERMS, 'cashbox:read'], ['CLINIC_ADMIN']) as never));
     renderApp('/caja-chica');

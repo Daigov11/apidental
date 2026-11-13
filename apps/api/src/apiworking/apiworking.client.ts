@@ -27,6 +27,8 @@ export const ROUTES = {
   /** El tenant va en la ruta (…/AperturaCajaChica/{base_datos}): siempre es el esperado de esta instalación, nunca un dato libre. */
   aperturaCaja: { method: 'POST', path: '/api/CajaChica/AperturaCajaChica', kind: 'write', tenantInPath: true },
   cierreCaja: { method: 'POST', path: '/api/CajaChica/PostCierreCajaChica', kind: 'write', tenantInPath: true },
+  /** Ingreso (I) o egreso (E) manual en el movimiento de caja abierto. Respuesta no documentada: basta codResponse 1. */
+  ingresoEgreso: { method: 'POST', path: '/api/CajaChica/ingreso-egreso', kind: 'write' },
 } as const;
 
 export type RouteName = keyof typeof ROUTES;
@@ -49,6 +51,7 @@ const QUERY_PARAMS: Record<RouteName, readonly string[]> = {
   turnos: [],
   aperturaCaja: [],
   cierreCaja: [],
+  ingresoEgreso: [],
 };
 
 export type ApiworkingErrorKind =

@@ -56,6 +56,8 @@ export class AppConfig {
     authorizedSeries: string[];
     warehouseId: string | null;
     unitId: string | null;
+    /** Tipos de operación de ingresos y egresos manuales de caja (código del tenant, flujo y nombre). */
+    cashOperationTypes: { code: string; flow: 'I' | 'E'; name: string }[];
   };
   /** Web pública de solicitudes de cita: clínica a la que pertenece; null = apagada (rutas públicas 404). */
   readonly publicBooking: { clinicId: string | null };
@@ -135,6 +137,7 @@ export class AppConfig {
       authorizedSeries: list(env.APIWORKING_AUTHORIZED_SERIES),
       warehouseId: env.APIWORKING_WAREHOUSE_ID ?? null,
       unitId: env.APIWORKING_UNIT_ID ?? null,
+      cashOperationTypes: parseCashOperationTypes(env.APIWORKING_CASH_OPERATION_TYPES),
     };
     this.publicBooking = { clinicId: env.PUBLIC_BOOKING_CLINIC_ID ?? null };
     this.corsOrigins = env.CORS_ORIGINS.split(',')
@@ -147,4 +150,24 @@ export class AppConfig {
       loginPerMinute: env.LOGIN_RATE_LIMIT_PER_MINUTE,
     };
   }
+}
+
+/**
+ * Tipos de operación de ingreso-egreso (no hay endpoint para listarlos: los da el responsable del tenant). Por defecto, los de la
+ * guía de integración: 1 reposición de caja (ingreso); 2 movilidad, 3 viáticos, 4 servicio público y 5 compras (egresos).
+ */
+export function parseCashOperationTypes(raw: string | undefined): { code: string; flow: 'I' | 'E'; name: string }[] {
+  if (!raw?.trim()) {
+    return [
+      { code: '1', flow: 'I', name: 'Reposición de caja' },
+      { code: '2', flow: 'E', name: 'Movilidad' },
+      { code: '3', flow: 'E', name: 'Viáticos' },
+      { code: '4', flow: 'E', name: 'Servicio público' },
+      { code: '5', flow: 'E', name: 'Compras' },
+    ];
+  }
+  return raw.split(',').map((part) => {
+    const [code, flow, ...name] = part.split(':');
+    return { code: code!.trim(), flow: flow!.trim() as 'I' | 'E', name: name.join(':').trim() };
+  });
 }

@@ -12,7 +12,7 @@ import { ApiworkingContingencyService } from './apiworking-contingency.service.j
 import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
-import { ApiworkingLoginDto, BillingDraftQuery, CashCloseDraftDto, CashCloseDto, ContingencyDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ExportSalesQuery, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, SalesSummaryQuery, VoidSaleDto } from './dto/apiworking.dto.js';
+import { ApiworkingLoginDto, BillingDraftQuery, CashCloseDraftDto, CashCloseDto, CashMovementDto, ContingencyDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ExportSalesQuery, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, SalesSummaryQuery, VoidSaleDto } from './dto/apiworking.dto.js';
 
 const uuid = () => new ParseUUIDPipe();
 
@@ -136,6 +136,14 @@ export class ApiworkingController {
   @RequirePermissions('apiworking:cash')
   cashOpen(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CashOpenDto, @Meta() m: RequestMeta) {
     return this.cash.open(a, dto, m);
+  }
+
+  /** Ingreso o egreso manual en la caja abierta (ingreso-egreso de Apiworking). */
+  @Post('cash/movements')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:cash')
+  cashMovement(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: CashMovementDto, @Meta() m: RequestMeta) {
+    return this.cash.movement(a, dto, m);
   }
 
   @Post('cash/close-preview')

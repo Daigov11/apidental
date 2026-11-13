@@ -1,18 +1,6 @@
 import { isAbsolute } from 'node:path';
 import { plainToInstance, Transform } from 'class-transformer';
-import {
-  IsEnum,
-  IsIn,
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  IsUUID,
-  Max,
-  Min,
-  MinLength,
-  validateSync,
-} from 'class-validator';
+import { IsEnum, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, Min, MinLength, validateSync } from 'class-validator';
 
 export enum NodeEnv {
   Development = 'development',
@@ -279,6 +267,9 @@ export class EnvironmentVariables {
   APIWORKING_WAREHOUSE_ID?: string;
   @IsOptional() @IsString()
   APIWORKING_UNIT_ID?: string;
+  /** Tipos de operación de ingreso-egreso del tenant: "1:I:Reposición de caja,2:E:Movilidad,…". Sin valor, los de la guía. */
+  @IsOptional() @IsString() @Matches(/^\d{1,6}:[IE]:[^,:]{2,60}(,\d{1,6}:[IE]:[^,:]{2,60})*$/, { message: 'APIWORKING_CASH_OPERATION_TYPES: formato código:I|E:Nombre separado por comas' })
+  APIWORKING_CASH_OPERATION_TYPES?: string;
 
   /** Clínica a la que pertenece la web pública (landing y solicitudes de cita). Sin valor, las rutas públicas responden 404. */
   @IsOptional() @IsUUID()
