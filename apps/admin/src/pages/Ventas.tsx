@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Banknote, CreditCard, Landmark, Plus, Printer, RefreshCw, Search, Smartphone, Trash2, Wallet } from 'lucide-react';
+import { Banknote, CreditCard, Landmark, MessageCircle, Plus, Printer, RefreshCw, Search, Smartphone, Trash2, Wallet } from 'lucide-react';
 import { get, post } from '../api/client';
 import type { AwBillingDraft, AwBillingPrescription, Product, AwCustomerPreview, AwCustomerResult, AwContext, AwCustomer, AwDraft, AwLine, AwSale, AwStatus, CashConfig, CashSummary } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
@@ -8,6 +8,7 @@ import { fmtDateTime } from '../lib/format';
 import { fmtMoney, parseSoles } from '../lib/money';
 import { useAsync } from '../lib/useAsync';
 import { openOfficialPdf, printSale, readPrintPref, writePrintPref, type PrintFormat } from '../lib/printSale';
+import { SendWhatsappDialog } from './Whatsapp';
 import { Button } from '../ui/Button';
 import { SelectField, TextField } from '../ui/fields';
 import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
@@ -133,6 +134,7 @@ export function VentasPage() {
   // --- Impresión del documento de venta ---
   const [printPref, setPrintPref] = useState<PrintFormat | 'none'>(readPrintPref);
   const [lastSale, setLastSale] = useState<AwSale | null>(null);
+  const [waSale, setWaSale] = useState<string | null>(null);
   const doPrint = (id: string, f: PrintFormat) => { printSale(id, f).catch((e: unknown) => toast.error(`No se pudo imprimir: ${errorText(e)}`)); };
   const doOfficial = (id: string) => { openOfficialPdf(id).catch((e: unknown) => toast.error(errorText(e))); };
 
@@ -380,6 +382,7 @@ export function VentasPage() {
             <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} onClick={() => doPrint(lastSale.id, 'ticket')}>Imprimir ticket</Button>
             <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} onClick={() => doPrint(lastSale.id, 'a4')}>Imprimir A4</Button>
             {lastSale.docStatus === 'SENT' && lastSale.externalDocId && <Button size="sm" variant="tertiary" onClick={() => doOfficial(lastSale.id)}>Comprobante oficial (PDF)</Button>}
+            <Button size="sm" icon={<MessageCircle size={16} aria-hidden="true" />} onClick={() => setWaSale(lastSale.id)}>Enviar por WhatsApp</Button>
           </div>
         </section>
       )}
@@ -412,6 +415,7 @@ export function VentasPage() {
                         {s.actions.issue && canSell && !readOnly && <Button size="sm" variant="primary" onClick={() => startIssue(s)}>Emitir en Apiworking</Button>}
                         {s.docStatus !== 'REJECTED' && <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} aria-label={`Imprimir ticket de ${s.externalNumber ?? s.description}`} onClick={() => doPrint(s.id, 'ticket')}>Ticket</Button>}
                         {s.docStatus !== 'REJECTED' && <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} aria-label={`Imprimir A4 de ${s.externalNumber ?? s.description}`} onClick={() => doPrint(s.id, 'a4')}>A4</Button>}
+                        {s.docStatus !== 'REJECTED' && canSell && <Button size="sm" icon={<MessageCircle size={16} aria-hidden="true" />} aria-label={`Enviar por WhatsApp ${s.externalNumber ?? s.description}`} onClick={() => setWaSale(s.id)}>WhatsApp</Button>}
                         {s.actions.void && can('apiworking:void') && !readOnly && <Button size="sm" variant="danger" onClick={() => setVoidOf(s)}>Anular</Button>}
                       </div>
                     </td>
@@ -423,6 +427,7 @@ export function VentasPage() {
         )}
       </section>
 
+      {waSale && <SendWhatsappDialog saleId={waSale} onClose={() => setWaSale(null)} />}
       {voidOf && (
         <ReasonDialog
           title="Anular venta en Apiworking" danger confirmLabel="Anular venta" example="Error en el monto"

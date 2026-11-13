@@ -9,6 +9,7 @@ import { ApiworkingCashService } from './apiworking-cash.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
 import { ApiworkingSessionStore } from './apiworking-session.store.js';
+import { ApiworkingWhatsappService } from './apiworking-whatsapp.service.js';
 
 /**
  * Apiworking REAL (login, clientes y ventas por registro-documento). Convive con los simuladores de `integrations/`
@@ -19,7 +20,7 @@ import { ApiworkingSessionStore } from './apiworking-session.store.js';
 @Module({
   imports: [CashboxModule, ProductsModule],
   controllers: [ApiworkingAuthController, ApiworkingController],
-  providers: [ApiworkingClient, ApiworkingSessionStore, ApiworkingAuthService, ApiworkingClientsService, ApiworkingSalesService, ApiworkingCashService, ApiworkingContingencyService],
+  providers: [ApiworkingClient, ApiworkingSessionStore, ApiworkingAuthService, ApiworkingClientsService, ApiworkingSalesService, ApiworkingCashService, ApiworkingContingencyService, ApiworkingWhatsappService],
   exports: [ApiworkingSessionStore, ApiworkingClient],
 })
 export class ApiworkingModule {}

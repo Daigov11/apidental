@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ClipboardList, Stethoscope } from 'lucide-react';
+import { ClipboardList, MessageCircle, Stethoscope } from 'lucide-react';
+import { SendWhatsappDialog } from './Whatsapp';
 import { ApiError, get, post } from '../api/client';
 import type { Appointment, PatientSummary, Slot } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
@@ -102,6 +103,7 @@ export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onCl
   const toast = useToast();
   const appt = useAsync(() => get<Appointment>(`/appointments/${id}`), [id]);
   const [dialog, setDialog] = useState<'cancel' | 'noShow' | null>(null);
+  const [wa, setWa] = useState(false);
   const [resched, setResched] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const a = appt.data;
@@ -172,11 +174,13 @@ export function AppointmentDrawer({ id, onClose, onChanged }: { id: string; onCl
               {a.actions.cancel && <Button variant="danger" onClick={() => setDialog('cancel')}>Cancelar cita</Button>}
               {mode === 'mock' && a.status === 'ATTENDED' && can('charge:manage') && <Button variant="primary" loading={busy === 'charge'} loadingText="Abriendo…" onClick={() => void charge()}>Registrar cobro</Button>}
               {authMode === 'apiworking' && a.status === 'ATTENDED' && can('apiworking:sell') && <Button variant="primary" onClick={() => navigate(`/ventas?appointmentId=${id}`)}>Cobrar en Apiworking</Button>}
+              {authMode === 'apiworking' && can('apiworking:sell') && ['RESERVED', 'CONFIRMED'].includes(a.status) && <Button icon={<MessageCircle size={18} aria-hidden="true" />} onClick={() => setWa(true)}>Enviar por WhatsApp</Button>}
               {can('patient:read_basic') && <Button variant="tertiary" onClick={() => navigate(`/pacientes/${a.patient.id}`)}>Ver paciente</Button>}
             </div>
           </>
         )}
       </Drawer>
+      {wa && <SendWhatsappDialog appointmentId={id} onClose={() => setWa(false)} />}
       {dialog === 'cancel' && a && (
         <ReasonDialog title="Cancelar la cita" explain="La cita quedará cancelada y el horario se liberará. El registro se conserva." confirmLabel="Cancelar cita" danger onClose={() => setDialog(null)}
           onConfirm={async (reason) => { await post(`/appointments/${id}/cancel`, { expectedVersion: a.version, reason }); setDialog(null); toast.success('Cita cancelada.'); appt.reload(); onChanged(); }} />

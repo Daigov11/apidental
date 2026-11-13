@@ -4,12 +4,13 @@ import type { AuthPrincipal } from '../auth/auth.types.js';
 import { refreshCookieOptions } from '../auth/cookies.js';
 import { CurrentPrincipal } from '../common/decorators/current-principal.decorator.js';
 import { Public } from '../common/decorators/public.decorator.js';
-import { RequirePermissions } from '../common/decorators/permissions.decorator.js';
+import { RequireAnyPermission, RequirePermissions } from '../common/decorators/permissions.decorator.js';
 import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
 import { AppConfig } from '../config/app-config.js';
 import { ApiworkingAuthService } from './apiworking-auth.service.js';
 import { ApiworkingContingencyService } from './apiworking-contingency.service.js';
 import { ApiworkingCashService } from './apiworking-cash.service.js';
+import { ApiworkingWhatsappService, WhatsappDraftQuery, WhatsappSendDto } from './apiworking-whatsapp.service.js';
 import { ApiworkingClientsService } from './apiworking-clients.service.js';
 import { ApiworkingSalesService } from './apiworking-sales.service.js';
 import { ApiworkingLoginDto, BillingDraftQuery, CashCloseDraftDto, CashCloseDto, CashMovementDto, ContingencyDto, CustomerCreateDto, CustomerDraftDto, CashOpenDraftDto, CashOpenDto, CreateSaleDto, ExportSalesQuery, ListExternalClientsQuery, ListSalesQuery, ReconcileSaleDto, SaleDraftDto, SalesContextQuery, SalesSummaryQuery, VoidSaleDto } from './dto/apiworking.dto.js';
@@ -45,6 +46,7 @@ export class ApiworkingController {
     private readonly clients: ApiworkingClientsService,
     private readonly sales: ApiworkingSalesService,
     private readonly cash: ApiworkingCashService,
+    private readonly whatsapp: ApiworkingWhatsappService,
     private readonly contingency: ApiworkingContingencyService,
     private readonly config: AppConfig,
   ) {}
@@ -116,6 +118,41 @@ export class ApiworkingController {
   @RequirePermissions('apiworking:configure')
   discovery(@CurrentPrincipal() a: AuthPrincipal, @Query() q: SalesContextQuery) {
     return this.sales.discovery(a, q.idCaja, q.idTipoDocumento);
+  }
+
+  // ------------------------------------------------------------------ WhatsApp (Wasapaso por el centralizador)
+
+  @Get('whatsapp/status')
+  @RequireAnyPermission('apiworking:sell', 'apiworking:configure')
+  whatsappStatus(@CurrentPrincipal() a: AuthPrincipal) {
+    return this.whatsapp.status(a);
+  }
+
+  /** Vincular el teléfono de la clínica: crea o reutiliza la sesión y devuelve el QR. Solo administración. */
+  @Post('whatsapp/link')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:configure')
+  whatsappLink(@CurrentPrincipal() a: AuthPrincipal, @Meta() m: RequestMeta) {
+    return this.whatsapp.link(a, m);
+  }
+
+  @Get('whatsapp/draft')
+  @RequirePermissions('apiworking:sell')
+  whatsappDraft(@CurrentPrincipal() a: AuthPrincipal, @Query() q: WhatsappDraftQuery) {
+    return this.whatsapp.draft(a, q);
+  }
+
+  @Post('whatsapp/send')
+  @HttpCode(200)
+  @RequirePermissions('apiworking:sell')
+  whatsappSend(@CurrentPrincipal() a: AuthPrincipal, @Body() dto: WhatsappSendDto, @Meta() m: RequestMeta) {
+    return this.whatsapp.send(a, dto, m);
+  }
+
+  @Get('whatsapp/messages/:messageId')
+  @RequirePermissions('apiworking:sell')
+  whatsappMessage(@CurrentPrincipal() a: AuthPrincipal, @Param('messageId') messageId: string) {
+    return this.whatsapp.message(a, messageId);
   }
 
   @Get('cash')

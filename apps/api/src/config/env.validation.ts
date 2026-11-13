@@ -254,6 +254,10 @@ export class EnvironmentVariables {
   @Max(60000)
   APIWORKING_TIMEOUT_MS: number = 15000;
 
+  /** WhatsApp por el centralizador de Apiworking (Wasapaso). «false» lo apaga; por defecto, encendido si Apiworking está configurado. */
+  @IsOptional() @IsIn(['true', 'false'])
+  APIWORKING_WHATSAPP?: string;
+
   /** Listas cerradas (ids separados por coma) de lo que esta instalación puede usar para escribir. Vacío = nada. */
   @IsOptional() @IsString()
   APIWORKING_AUTHORIZED_CASH_REGISTERS?: string;

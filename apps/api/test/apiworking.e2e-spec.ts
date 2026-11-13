@@ -19,7 +19,7 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
   const seen: Seen[] = [];
   const saved: Record<string, string | undefined> = {};
   /** Escenarios que la prueba activa en el servidor simulado. */
-  const scenario = { movimiento: 'ok' as 'ok' | 'boom' | 'reject', twoMethods: false, facturacion: null as null | Record<string, unknown>[], registro: 'ok' as 'ok' | 'list' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject', clientes: 'ok' as 'ok' | 'boom', registrarPago: 'ok' as 'ok' | 'reject' | 'boom' };
+  const scenario = { wa: 'none' as 'none' | 'qr' | 'connected', waSend: 'ok' as 'ok' | 'fail' | 'boom' | 'html403', movimiento: 'ok' as 'ok' | 'boom' | 'reject', twoMethods: false, facturacion: null as null | Record<string, unknown>[], registro: 'ok' as 'ok' | 'list' | 'reject' | 'boom' | 'incomplete', pagos: 'none' as 'none' | 'paid', tenant: TENANT, cajaOpen: true, apertura: 'ok' as 'ok' | 'boom' | 'reject', clientes: 'ok' as 'ok' | 'boom', registrarPago: 'ok' as 'ok' | 'reject' | 'boom' };
 
   const customers = [
     { total: 3, id_cliente: 202600000038, id_persona: 202600000049, nombrecompleto: 'ROBERTO CARLOS ESPINAR VICHARRA', email: '', tipoDoc: 'D.N.I.', numerodocumento: '74908568', telefono: '', tipo_persona: 'N', estado: 'A', limite_credito: '0.00', saldo: 0, whatsapp: '', saldo_restante: '0.00' },
@@ -40,6 +40,24 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       scenario.cajaOpen = false;
       const cadena = String((req.body as { cadenaCierre?: string } | undefined)?.cadenaCierre ?? '');
       return { status: 200, body: ok([{ result: 1, duplicado: 0, msjDocumentos: '', msjCuadroPerfecto: cadena ? `CUADRE: diferencia S/ ${cadena.split('^')[1]}` : '', idAuditoria: '1' }]) };
+    }
+    // WhatsApp (Wasapaso por el centralizador): sobre con mayúsculas en sesión y estado; el envío responde «crudo».
+    if (req.method === 'GET' && req.path === '/api/Whatsapp/sessions/status') {
+      const status = scenario.wa === 'connected' ? 'connected' : scenario.wa === 'qr' ? 'qr_pending' : 'disconnected';
+      return { status: 200, body: { CodResponse: '1', Message: scenario.wa === 'none' ? 'La sesion no existe' : '', Data: { phone_label: req.query.get('phone_label'), status, phone_number: status === 'connected' ? '+51999888777' : null } } };
+    }
+    if (req.method === 'POST' && req.path === '/api/Whatsapp/sessions') {
+      scenario.wa = 'qr';
+      return { status: 200, body: { CodResponse: '1', Message: 'ok', Data: { phone_label: (req.body as { phone_label?: string })?.phone_label, status: 'qr_pending', phone_number: null, qr: '2@AbCdEf==' } } };
+    }
+    if (req.method === 'POST' && req.path === '/api/Whatsapp/messages/send') {
+      if (scenario.waSend === 'boom') return { status: 502, body: { error: 'x' } };
+      if (scenario.waSend === 'html403') return { status: 403, body: '<html>Forbidden</html>' };
+      if (scenario.waSend === 'fail') return { status: 200, body: { success: false, error: { code: 'bad_request', message: 'recipient is invalid' } } };
+      return { status: 200, body: { success: true, message_id: 'wamid.ABC123' } };
+    }
+    if (req.method === 'GET' && req.path.startsWith('/api/Whatsapp/messages/')) {
+      return { status: 200, body: { success: true, data: { id: req.path.split('/').pop(), status: 'delivered' } } };
     }
     if (req.method === 'POST' && req.path === '/api/CajaChica/ingreso-egreso') {
       if (scenario.movimiento === 'boom') return { status: 500, body: { error: 'x' } };
@@ -794,6 +812,13 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
       const sheet = (await ctx.http().get(vs).set(bearer(dt)).expect(200)).body as { items: { name: string; quantity: number; subtotalCents: number }[]; totalCents: number };
       expect(sheet.items.map((i) => [i.quantity, i.subtotalCents])).toEqual([[2, 20_000], [1, 10_000], [1, 8_000]]);
       expect(sheet.totalCents).toBe(38_000);
+      // Vista sencilla: el contador cambia la cantidad de un servicio sin piezas; con piezas marcadas, no.
+      const qty = (await ctx.http().post(`${vs}/${lim.body.id}/quantity`).set(bearer(dt)).send({ quantity: 3 }).expect(200)).body as { quantity: number; subtotalCents: number };
+      expect([qty.quantity, qty.subtotalCents]).toEqual([3, 24_000]);
+      const withTeeth = (sheet.items as unknown as { id: string }[])[0]!.id;
+      expect((await ctx.http().post(`${vs}/${withTeeth}/quantity`).set(bearer(dt)).send({ quantity: 5 }).expect(409)).body.code).toBe('SERVICE_HAS_TEETH');
+      await ctx.http().post(`${vs}/${lim.body.id}/quantity`).set(bearer(dt)).send({ quantity: 0 }).expect(400);
+      await ctx.http().post(`${vs}/${lim.body.id}/quantity`).set(bearer(adminToken)).send({ quantity: 2 }).expect(403);
       // Se puede quitar mientras la consulta está abierta.
       await ctx.http().post(`${vs}/${lim.body.id}/remove`).set(bearer(dt)).expect(200);
 
@@ -953,6 +978,81 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     } finally {
       appCfg.maxRealOperations = savedCap;
     }
+  });
+
+  it('WhatsApp: vincular con QR, borradores (venta y cita), envío con +51 y sin reintento, y auditoría sin el texto', async () => {
+    scenario.wa = 'none';
+    scenario.waSend = 'ok';
+    const login = await enter();
+    const t = (await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200)).body.accessToken as string;
+    const label = 'tiendaglowsmile_apiworking_co';
+
+    // Sin vincular: estado «No vinculado» y no se envía.
+    expect((await ctx.http().get('/v1/apiworking/whatsapp/status').set(bearer(t)).expect(200)).body).toMatchObject({ phoneLabel: label, status: 'disconnected', qr: null });
+    const notLinked = await ctx.http().post('/v1/apiworking/whatsapp/send').set(bearer(t)).send({ phone: '987654321', text: 'Hola' });
+    expect(notLinked.status).toBe(409);
+    expect(notLinked.body.code).toBe('WHATSAPP_NOT_LINKED');
+
+    // Vincular: QR con la etiqueta correcta (también en el estado).
+    const link = (await ctx.http().post('/v1/apiworking/whatsapp/link').set(bearer(t)).expect(200)).body;
+    expect(link).toMatchObject({ status: 'qr_pending', qr: '2@AbCdEf==' });
+    expect(seen.filter((x) => x.path === '/api/Whatsapp/sessions').at(-1)!.body).toEqual({ phone_label: label });
+    expect(seen.filter((x) => x.path === '/api/Whatsapp/sessions/status').at(-1)!.query.get('phone_label')).toBe(label);
+    scenario.wa = 'connected';
+    expect((await ctx.http().get('/v1/apiworking/whatsapp/status').set(bearer(t)).expect(200)).body).toMatchObject({ status: 'connected', phoneNumber: '+51999888777' });
+
+    // Borrador de una venta: con el link https del PDF oficial.
+    const sale = await ctx.http().post('/v1/apiworking/sales').set(bearer(t)).send({ ...draft({ description: 'Para WhatsApp', lines: [{ name: 'Curación', quantity: 1, unitPriceCents: 10_000 }] }), idempotencyKey: randomUUID() });
+    if (sale.status === 201) {
+      const d = (await ctx.http().get(`/v1/apiworking/whatsapp/draft?saleId=${sale.body.id}`).set(bearer(t)).expect(200)).body;
+      expect(d).toMatchObject({ context: 'sale', refId: sale.body.id, hasLink: true });
+      expect(d.text).toContain('https://tiendaglowsmile.apiworking.co/ventas/facturacion/comprobante/');
+    }
+
+    // Borrador de una cita: fecha, hora, servicio, odontólogo y sede; celular del paciente.
+    const branch = await fx.branch(clinicId);
+    const dentist = (await fx.userWithRole('DENTIST', { clinicId, branchId: branch.id })).user;
+    const author = (await ctx.db.user.findFirstOrThrow()).id;
+    const patient = await ctx.db.patient.create({ data: { clinicId, firstName: 'Lucía', lastName: 'Cita', createdById: author } });
+    await ctx.db.patientContact.create({ data: { clinicId, patientId: patient.id, type: 'MOBILE', value: '987654321', valueKey: '987654321', isPrimary: true, createdById: author } as never });
+    const room = await ctx.db.room.create({ data: { clinicId, branchId: branch.id, name: 'Consultorio WA' } as never });
+    const svc = await ctx.db.agendaService.create({ data: { clinicId, name: `Control WA ${randomUUID().slice(0, 6)}`, durationMinutes: 30 } });
+    const startsAt = new Date(`${new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10)}T15:00:00.000Z`); // 10:00 en Lima, en la grilla de 5 min
+    const appt = await ctx.db.appointment.create({ data: { clinicId, branchId: branch.id, patientId: patient.id, dentistUserId: dentist.id, roomId: (room as { id: string }).id, serviceId: svc.id, startsAt, endsAt: new Date(startsAt.getTime() + 1_800_000), createdById: author } });
+    const da = (await ctx.http().get(`/v1/apiworking/whatsapp/draft?appointmentId=${appt.id}`).set(bearer(t)).expect(200)).body;
+    expect(da).toMatchObject({ context: 'appointment', phone: '987654321' });
+    expect(da.text).toContain(svc.name);
+    expect(da.text).toContain(branch.name);
+
+    // Envío: +51, texto tal cual, id del mensaje y auditoría SIN el texto.
+    const sent = (await ctx.http().post('/v1/apiworking/whatsapp/send').set(bearer(t)).send({ phone: '987 654 321', text: da.text, context: 'appointment', refId: appt.id }).expect(200)).body;
+    expect(sent).toMatchObject({ status: 'SENT', messageId: 'wamid.ABC123' });
+    const call = seen.filter((x) => x.path === '/api/Whatsapp/messages/send').at(-1)!;
+    expect(call.body).toEqual({ phone_label: label, recipient: '+51987654321', type: 'text', content: { text: da.text } });
+    const audit = await ctx.db.auditLog.findFirstOrThrow({ where: { action: 'WHATSAPP_SENT' }, orderBy: { createdAt: 'desc' } });
+    expect(audit.summary).toMatchObject({ recipient: '+51987654321', messageId: 'wamid.ABC123', length: da.text.length, context: 'appointment' });
+    expect(JSON.stringify(audit)).not.toContain('le recordamos');
+    expect((await ctx.http().get('/v1/apiworking/whatsapp/messages/wamid.ABC123').set(bearer(t)).expect(200)).body).toEqual({ messageId: 'wamid.ABC123', status: 'delivered' });
+
+    // Reglas: links no https, caracteres de control, celular inválido.
+    await ctx.http().post('/v1/apiworking/whatsapp/send').set(bearer(t)).send({ phone: '987654321', text: 'Vea http://localhost:5173/c/x' }).expect(400);
+    await ctx.http().post('/v1/apiworking/whatsapp/send').set(bearer(t)).send({ phone: '987654321', text: 'Hola\u0007' }).expect(400);
+    await ctx.http().post('/v1/apiworking/whatsapp/send').set(bearer(t)).send({ phone: '12', text: 'Hola' }).expect(400);
+    // Rechazo de Wasapaso (success:false) y firewall (403 HTML): motivo legible.
+    scenario.waSend = 'fail';
+    const fail = await ctx.http().post('/v1/apiworking/whatsapp/send').set(bearer(t)).send({ phone: '987654321', text: 'Hola' }).expect(422);
+    expect(fail.body.message).toBe('recipient is invalid');
+    scenario.waSend = 'html403';
+    const fw = await ctx.http().post('/v1/apiworking/whatsapp/send').set(bearer(t)).send({ phone: '987654321', text: 'Hola' }).expect(422);
+    expect(fw.body.message).toMatch(/https/);
+    // 5xx: no confirmado y SIN reintento.
+    scenario.waSend = 'boom';
+    const before = seen.filter((x) => x.path === '/api/Whatsapp/messages/send').length;
+    const unk = (await ctx.http().post('/v1/apiworking/whatsapp/send').set(bearer(t)).send({ phone: '987654321', text: 'Hola' }).expect(200)).body;
+    expect(unk.status).toBe('UNCONFIRMED');
+    expect(seen.filter((x) => x.path === '/api/Whatsapp/messages/send').length).toBe(before + 1);
+    scenario.waSend = 'ok';
+    scenario.wa = 'none';
   });
 
   it('busca los nombres por DNI para precargar al paciente: usa lo que ya hay y solo consulta ClienteDoc si falta', async () => {

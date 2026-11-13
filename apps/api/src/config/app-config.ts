@@ -56,6 +56,8 @@ export class AppConfig {
     authorizedSeries: string[];
     warehouseId: string | null;
     unitId: string | null;
+    /** WhatsApp por el centralizador (Wasapaso): encendido salvo APIWORKING_WHATSAPP=false. */
+    whatsapp: boolean;
     /** Tipos de operación de ingresos y egresos manuales de caja (código del tenant, flujo y nombre). */
     cashOperationTypes: { code: string; flow: 'I' | 'E'; name: string }[];
   };
@@ -138,6 +140,7 @@ export class AppConfig {
       warehouseId: env.APIWORKING_WAREHOUSE_ID ?? null,
       unitId: env.APIWORKING_UNIT_ID ?? null,
       cashOperationTypes: parseCashOperationTypes(env.APIWORKING_CASH_OPERATION_TYPES),
+      whatsapp: env.APIWORKING_WHATSAPP !== 'false',
     };
     this.publicBooking = { clinicId: env.PUBLIC_BOOKING_CLINIC_ID ?? null };
     this.corsOrigins = env.CORS_ORIGINS.split(',')

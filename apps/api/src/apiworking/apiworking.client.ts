@@ -31,6 +31,12 @@ export const ROUTES = {
   urlComprobante: { method: 'GET', path: '/api/Facturacion/urlComprobante', kind: 'read' },
   /** Ingreso (I) o egreso (E) manual en el movimiento de caja abierto. Respuesta no documentada: basta codResponse 1. */
   ingresoEgreso: { method: 'POST', path: '/api/CajaChica/ingreso-egreso', kind: 'write' },
+  /** WhatsApp (Wasapaso por el centralizador). La etiqueta del teléfono es el dominio del idSistema con «_». */
+  waSession: { method: 'POST', path: '/api/Whatsapp/sessions', kind: 'whatsapp' },
+  waStatus: { method: 'GET', path: '/api/Whatsapp/sessions/status', kind: 'whatsapp' },
+  /** Respuesta de Wasapaso tal cual, SIN el sobre { codResponse, data }. Nunca se reintenta. */
+  waSend: { method: 'POST', path: '/api/Whatsapp/messages/send', kind: 'whatsapp', raw: true },
+  waMessage: { method: 'GET', path: '/api/Whatsapp/messages', kind: 'whatsapp', raw: true, pathId: true },
 } as const;
 
 export type RouteName = keyof typeof ROUTES;
@@ -55,7 +61,14 @@ const QUERY_PARAMS: Record<RouteName, readonly string[]> = {
   cierreCaja: [],
   ingresoEgreso: [],
   urlComprobante: ['bd', 'idDocumento'],
+  waSession: [],
+  waStatus: ['phone_label'],
+  waSend: [],
+  waMessage: [],
 };
+
+/** Id de mensaje de Wasapaso aceptado en la URL (guía de WhatsApp). */
+const PATH_ID = /^[A-Za-z0-9_.:@-]{1,120}$/;
 
 export type ApiworkingErrorKind =
   | 'DISABLED' // interruptor apagado o integración sin configurar
@@ -85,6 +98,8 @@ export interface ApiworkingCall {
   body?: unknown;
   /** JWT externo de la sesión (todas las rutas salvo el login). */
   token?: string;
+  /** Segmento final de la ruta (solo rutas con `pathId`), validado con PATH_ID. */
+  pathId?: string;
 }
 
 /**
@@ -113,10 +128,15 @@ export class ApiworkingClient {
     if (!cfg.configured) throw new ApiworkingError('DISABLED', 'Apiworking no está configurado en esta instalación');
     if (def.kind === 'read' && !cfg.read) throw new ApiworkingError('DISABLED', 'Las lecturas reales de Apiworking están desactivadas');
     if (def.kind === 'write' && !cfg.write) throw new ApiworkingError('DISABLED', 'Las escrituras reales de Apiworking están desactivadas');
+    if (def.kind === 'whatsapp' && !cfg.whatsapp) throw new ApiworkingError('DISABLED', 'WhatsApp está desactivado en esta instalación');
     if (def.kind !== 'login' && !opts.token) throw new ApiworkingError('AUTH', 'Falta la sesión de Apiworking');
 
     if ('tenantInPath' in def && !cfg.expectedDatabase) throw new ApiworkingError('DISABLED', 'Falta el tenant esperado de esta instalación');
-    const path = 'tenantInPath' in def ? `${def.path}/${encodeURIComponent(cfg.expectedDatabase!)}` : def.path;
+    let path = 'tenantInPath' in def ? `${def.path}/${encodeURIComponent(cfg.expectedDatabase!)}` : def.path;
+    if ('pathId' in def) {
+      if (!opts.pathId || !PATH_ID.test(opts.pathId)) throw new ApiworkingError('INVALID', 'Identificador inválido');
+      path = `${path}/${encodeURIComponent(opts.pathId)}`;
+    }
     const url = new URL(cfg.baseUrl + path);
     for (const [k, v] of Object.entries(opts.query ?? {})) {
       if (v === undefined) continue;
@@ -144,7 +164,7 @@ export class ApiworkingClient {
         });
         // Solo ruta, estado y duración: jamás cuerpos, parámetros, cabeceras ni tokens.
         this.logger.log(`${def.method} ${def.path} -> ${res.status} (${Date.now() - started} ms)`);
-        return await this.interpret(res);
+        return await this.interpret(res, 'raw' in def);
       } catch (error) {
         const err = error instanceof ApiworkingError ? error : new ApiworkingError('UNKNOWN_RESULT', 'No se obtuvo una respuesta válida de Apiworking');
         if (!(error instanceof ApiworkingError)) this.logger.warn(`${def.method} ${def.path} -> sin respuesta (${Date.now() - started} ms)`);
@@ -155,8 +175,16 @@ export class ApiworkingClient {
     throw lastError!;
   }
 
-  private async interpret(res: Response): Promise<unknown> {
+  private async interpret(res: Response, raw = false): Promise<unknown> {
     const retryAfter = Number(res.headers.get('retry-after'));
+    // Respuesta «cruda» (Wasapaso): un 4xx con { success:false, error } trae un motivo legible; un 403 en HTML es el firewall.
+    if (raw && res.status >= 400 && res.status < 500 && res.status !== 401 && res.status !== 429) {
+      const text = await res.text().catch(() => '');
+      let reason = '';
+      try { const j = JSON.parse(text) as { error?: { message?: unknown }; message?: unknown; Message?: unknown }; reason = clip(j.error?.message) || clip(j.message) || clip(j.Message); } catch { /* HTML */ }
+      if (res.status === 403 && !reason) throw new ApiworkingError('FORBIDDEN', 'El proveedor bloqueó el envío (los links deben ser https de un dominio público)', 403);
+      throw new ApiworkingError(res.status === 403 ? 'FORBIDDEN' : 'INVALID', reason || 'El proveedor rechazó los datos enviados', res.status);
+    }
     switch (true) {
       case res.status === 401:
         throw new ApiworkingError('AUTH', 'Apiworking rechazó la sesión o la credencial', 401);
@@ -182,10 +210,17 @@ export class ApiworkingClient {
     } catch {
       throw new ApiworkingError('UNKNOWN_RESULT', 'Apiworking devolvió una respuesta que no es JSON válido', 200);
     }
-    if (typeof envelope !== 'object' || envelope === null || !('codResponse' in envelope)) {
+    if (raw) return envelope;
+    // El sobre llega como codResponse/message/data o CodResponse/Message/Data (WhatsApp): se aceptan los dos.
+    const env = (typeof envelope === 'object' && envelope !== null ? envelope : {}) as Record<string, unknown>;
+    const pick = (k: string) => (k in env ? env[k] : env[k.charAt(0).toUpperCase() + k.slice(1)]);
+    if (!('codResponse' in env) && !('CodResponse' in env)) {
       throw new ApiworkingError('BAD_RESPONSE', 'La respuesta de Apiworking no tiene el formato esperado', 200);
     }
-    const { codResponse, message, data } = envelope as { codResponse: unknown; message?: unknown; data?: unknown };
+    const codResponse = pick('codResponse');
+    const message = pick('message');
+    const data = pick('data');
+    if (codResponse === 2 || codResponse === '2') throw new ApiworkingError('INVALID', clip(message) || 'Apiworking rechazó los datos enviados', 400);
     // HTTP 200 no basta: solo codResponse 1 es éxito; cualquier otro valor tiene significado desconocido.
     if (codResponse !== 1 && codResponse !== '1') {
       throw new ApiworkingError('REJECTED', clip(message) || 'Apiworking rechazó la operación', 200);

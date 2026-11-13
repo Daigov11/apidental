@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Banknote, BookOpen, Boxes, Clock, History, CalendarDays, ChevronsLeft, ChevronsRight, FileText, Film, Home, Inbox, LogOut, Pill, Receipt, Repeat, UserCog, Users, Wallet } from 'lucide-react';
+import { Banknote, BookOpen, Boxes, Clock, History, MessageCircle, CalendarDays, ChevronsLeft, ChevronsRight, FileText, Film, Home, Inbox, LogOut, Pill, Receipt, Repeat, UserCog, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { BranchProvider } from '../lib/branch';
 import { usePendingRequests } from '../lib/bookingRequests';
@@ -27,7 +27,7 @@ const readCollapsed = (): boolean => { try { return localStorage.getItem(COLLAPS
 function Shell() {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const toggle = () => setCollapsed((c) => { const next = !c; try { localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0'); } catch { /* sin almacenamiento: no se recuerda */ } return next; });
-  const { me, can, logout, switchContext } = useAuth();
+  const { me, can, logout, switchContext, authMode } = useAuth();
   const { mode } = useIntegrations();
   const clinicName = me?.context?.clinic?.name ?? 'ApiDental';
   const branchName = me?.context?.branch?.name ?? 'Todas las sedes';
@@ -47,6 +47,7 @@ function Shell() {
     { to: '/historial-ventas', label: 'Historial de ventas', icon: <History size={20} aria-hidden="true" />, show: hasClinic && can('apiworking:read') },
     { to: '/horarios', label: 'Horarios', icon: <Clock size={20} aria-hidden="true" />, show: hasClinic && can('agenda:manage') },
     { to: '/catalogo', label: 'Catálogo', icon: <Boxes size={20} aria-hidden="true" />, show: hasClinic && (can('agenda:manage') || can('cashbox:manage')) },
+    { to: '/whatsapp', label: 'WhatsApp', icon: <MessageCircle size={20} aria-hidden="true" />, show: hasClinic && authMode === 'apiworking' && can('apiworking:configure') },
     { to: '/usuarios', label: 'Usuarios', icon: <UserCog size={20} aria-hidden="true" />, show: can('user:read') },
     { to: '/comprobantes', label: 'Comprobantes', icon: <FileText size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('billing:read') },
   ];

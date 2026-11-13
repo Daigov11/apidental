@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Download, FileSpreadsheet, Printer, RefreshCw, Search } from 'lucide-react';
+import { Download, FileSpreadsheet, MessageCircle, Printer, RefreshCw, Search } from 'lucide-react';
 import { get } from '../api/client';
 import type { AwSale } from '../api/types';
 import { downloadFile } from '../lib/download';
@@ -7,6 +7,8 @@ import { fmtDateTime } from '../lib/format';
 import { fmtMoney } from '../lib/money';
 import { useAsync } from '../lib/useAsync';
 import { openOfficialPdf, printSale } from '../lib/printSale';
+import { SendWhatsappDialog } from './Whatsapp';
+import { useAuth } from '../auth/AuthProvider';
 import { Button } from '../ui/Button';
 import { TextField } from '../ui/fields';
 import { Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
@@ -28,6 +30,8 @@ export function SalesHistoryPage() {
   const [page, setPage] = useState(0);
   const list = useAsync(() => get<{ items: Sale[]; total: number }>('/apiworking/sales', { limit: PAGE, offset: page * PAGE, from: applied.from || undefined, to: applied.to || undefined, search: applied.search || undefined }), [applied, page]);
   const [busy, setBusy] = useState<'xlsx' | 'pdf' | null>(null);
+  const [waSale, setWaSale] = useState<string | null>(null);
+  const { can } = useAuth();
   const invalid = Boolean(from && to && from > to);
 
   const apply = () => { if (!invalid) { setPage(0); setApplied({ from, to, search: text.trim() }); } };
@@ -87,6 +91,7 @@ export function SalesHistoryPage() {
                           <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} aria-label={`Imprimir ticket de ${s.externalNumber ?? s.description}`} onClick={() => printSale(s.id, 'ticket').catch((e: unknown) => toast.error(errorText(e)))}>Ticket</Button>
                           <Button size="sm" icon={<Printer size={16} aria-hidden="true" />} aria-label={`Imprimir A4 de ${s.externalNumber ?? s.description}`} onClick={() => printSale(s.id, 'a4').catch((e: unknown) => toast.error(errorText(e)))}>A4</Button>
                           {s.docStatus === 'SENT' && s.externalDocId && <Button size="sm" variant="tertiary" aria-label={`Comprobante oficial de ${s.externalNumber ?? s.description}`} onClick={() => openOfficialPdf(s.id).catch((e: unknown) => toast.error(errorText(e)))}>PDF oficial</Button>}
+                          {can('apiworking:sell') && <Button size="sm" icon={<MessageCircle size={16} aria-hidden="true" />} aria-label={`Enviar por WhatsApp ${s.externalNumber ?? s.description}`} onClick={() => setWaSale(s.id)}>WhatsApp</Button>}
                         </div>
                       )}
                     </td>
@@ -104,6 +109,7 @@ export function SalesHistoryPage() {
           )}
         </>
       )}
+      {waSale && <SendWhatsappDialog saleId={waSale} onClose={() => setWaSale(null)} />}
     </>
   );
 }
