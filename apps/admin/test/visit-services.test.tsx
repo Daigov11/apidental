@@ -140,3 +140,35 @@ describe('Servicios realizados en la vista sencilla (sin marcar dientes)', () =>
     await waitFor(() => expect(called('POST', '/patients/p-1/clinical/visits/v-1/services/vs-3/remove')).toHaveLength(1));
   });
 });
+
+describe('Otro servicio y receta desde la atención', () => {
+  it('«Otro servicio»: nombre, precio y cantidad de algo que no está en el catálogo', async () => {
+    const { called } = mockApi(routes({ 'POST /patients/p-1/clinical/visits/v-1/services': { status: 201, json: {} }, 'GET /patients/p-1/prescriptions': { json: [] } }));
+    renderApp('/pacientes/p-1/atencion/v-1');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Otro servicio' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Otro servicio' });
+    await user.type(within(dialog).getByLabelText(/Nombre del servicio/), 'Retiro de puntos');
+    await user.type(within(dialog).getByLabelText(/Precio/), '40');
+    await user.clear(within(dialog).getByLabelText(/Cantidad/));
+    await user.type(within(dialog).getByLabelText(/Cantidad/), '2');
+    expect(within(dialog).getByText('S/ 80.00')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Agregar' }));
+    await waitFor(() => expect(called('POST', '/patients/p-1/clinical/visits/v-1/services')).toHaveLength(1));
+    expect(called('POST', '/patients/p-1/clinical/visits/v-1/services')[0]?.body).toEqual({ name: 'Retiro de puntos', unitPriceCents: 4000, quantity: 2 });
+  });
+
+  it('la receta se emite desde la atención (ligada a la visita) y se listan las de esta visita', async () => {
+    const RX = { id: 'rx-1', number: 'RX-000007', patientId: 'p-1', visitId: 'v-1', prescriber: { id: 'u-1', name: 'Gina' }, diagnosis: null, notes: null, status: 'ACTIVE', lastEmailedAt: null, createdAt: '2026-11-13T15:30:00.000Z', items: [{ id: 'i1', position: 1, medication: 'Ibuprofeno 400 mg', dose: null, frequency: null, duration: null, instructions: null }] };
+    const OTHER = { ...RX, id: 'rx-2', number: 'RX-000003', visitId: 'v-9' };
+    mockApi(routes({ 'GET /patients/p-1/prescriptions': { json: [RX, OTHER] } }));
+    renderApp('/pacientes/p-1/atencion/v-1');
+    const user = userEvent.setup();
+    const card = (await screen.findByRole('heading', { name: 'Receta' })).closest('section')!;
+    expect(await within(card).findByText('RX-000007')).toBeInTheDocument();
+    expect(within(card).queryByText('RX-000003')).not.toBeInTheDocument();
+    expect(within(card).getByText(/el paciente decide si la compra/)).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'Emitir receta' }));
+    expect(await screen.findByRole('dialog', { name: 'Nueva receta' })).toBeInTheDocument();
+  });
+});

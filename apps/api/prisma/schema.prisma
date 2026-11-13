@@ -1644,7 +1644,8 @@ model VisitService {
   clinicId       String             @map("clinic_id") @db.Char(36)
   patientId      String             @map("patient_id") @db.Char(36)
   visitId        String             @map("visit_id") @db.Char(36)
-  productId      String             @map("product_id") @db.Char(36)
+  /// Servicio del catálogo; nulo = «otro servicio» escrito en la atención (nombre y precio propios).
+  productId      String?            @map("product_id") @db.Char(36)
   name           String             @db.VarChar(120)
   unitPriceCents Int                @map("unit_price_cents")
   /// Piezas tratadas (numeración FDI, p. ej. ["16","26"]); vacío = el servicio no es por pieza.
@@ -1659,7 +1660,7 @@ model VisitService {
   removedAt      DateTime?          @map("removed_at") @db.DateTime(3)
 
   visit   ClinicalVisit @relation(fields: [visitId], references: [id], onDelete: Restrict)
-  product Product       @relation(fields: [productId], references: [id], onDelete: Restrict)
+  product Product?      @relation(fields: [productId], references: [id], onDelete: Restrict)
 
   @@index([clinicId, patientId, status, saleId])
   @@index([visitId])

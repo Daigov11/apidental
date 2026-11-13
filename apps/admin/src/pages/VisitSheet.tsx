@@ -12,6 +12,7 @@ import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } fr
 import { ReasonDialog } from '../ui/overlays';
 import { OdontogramCanvas, useOdontogram } from './odontogram/useOdontogram';
 import { QuickServicesCard, VisitServicesCard } from './VisitServices';
+import { VisitPrescriptionsCard } from './VisitPrescriptions';
 import { AllergyDialog, CLOSE_BLOCKERS, ConfirmDialog, DiagnosisDialog, PasswordDialog, ProcedureDialog } from './VisitSheetParts';
 
 type Mode = 'simple' | 'advanced';
@@ -131,6 +132,7 @@ export function VisitSheetPage() {
           {simple ? (
             <>
               <QuickServicesCard patientId={id} visitId={visitId} editable={canWriteServices} />
+              <VisitPrescriptionsCard patientId={id} patientName={s.patient.fullName} visitId={visitId} editable={canWriteServices} />
               {findings.length > 0 && (
                 <p className="caption muted">Esta visita tiene {findings.length} {findings.length === 1 ? 'hallazgo registrado' : 'hallazgos registrados'}. <button type="button" className="link-btn" onClick={() => setMode('advanced')}>Verlos en la vista avanzada</button></p>
               )}
@@ -148,6 +150,7 @@ export function VisitSheetPage() {
               </section>
 
               <VisitServicesCard patientId={id} visitId={visitId} editable={canWriteServices} />
+              <VisitPrescriptionsCard patientId={id} patientName={s.patient.fullName} visitId={visitId} editable={canWriteServices} />
               <section className="card" aria-labelledby="hall-h">
                 <div className="card-head">
                   <h2 id="hall-h" className="h3">Hallazgos</h2>

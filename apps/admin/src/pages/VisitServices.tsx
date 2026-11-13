@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Minus, Plus, Search, Trash2 } from 'lucide-react';
+import { Minus, PencilLine, Plus, Search, Trash2 } from 'lucide-react';
 import { get, post } from '../api/client';
 import type { Product } from '../api/types';
-import { fmtMoney } from '../lib/money';
+import { fmtMoney, parseSoles } from '../lib/money';
 import { useAsync } from '../lib/useAsync';
 import { Button } from '../ui/Button';
 import { SelectField, TextField } from '../ui/fields';
 import { Alert, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
 import { Dialog } from '../ui/overlays';
 
-export interface VisitServiceItem { id: string; productId: string; name: string; unitPriceCents: number; teeth: string[]; quantity: number; subtotalCents: number; billed: boolean }
+export interface VisitServiceItem { id: string; productId: string | null; name: string; unitPriceCents: number; teeth: string[]; quantity: number; subtotalCents: number; billed: boolean }
 
 /** Arcadas en numeración FDI, como se ven de frente: superior derecha → izquierda, inferior derecha → izquierda. */
 const ADULT = [
@@ -107,13 +107,18 @@ function AddServiceDialog({ base, onClose, onDone }: { base: string; onClose: ()
   const [quantity, setQuantity] = useState('1');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const svc = services.data?.find((p) => p.id === productId);
+  const [otherName, setOtherName] = useState('');
+  const [otherPrice, setOtherPrice] = useState('');
+  const other = productId === 'other';
+  const otherCents = parseSoles(otherPrice);
+  const svc = other ? (otherName.trim().length >= 2 && otherCents ? { name: otherName.trim(), priceCents: otherCents } : undefined) : services.data?.find((p) => p.id === productId);
   const qty = teeth.length > 0 ? teeth.length : Number(quantity);
   const invalid = !svc || !Number.isInteger(qty) || qty < 1 || qty > 99;
   const submit = async () => {
     if (invalid || busy) return;
     setBusy(true); setError(null);
-    try { await post(base, { productId, ...(teeth.length ? { teeth } : { quantity: qty }) }); onDone(svc!.name); }
+    const what = other ? { name: svc!.name, unitPriceCents: svc!.priceCents } : { productId };
+    try { await post(base, { ...what, ...(teeth.length ? { teeth } : { quantity: qty }) }); onDone(svc!.name); }
     catch (e) { setError(errorText(e)); setBusy(false); }
   };
   return (
@@ -123,7 +128,14 @@ function AddServiceDialog({ base, onClose, onDone }: { base: string; onClose: ()
       <SelectField label="Servicio" value={productId} onChange={(e) => setProductId(e.target.value)}>
         <option value="">Elija el servicio</option>
         {services.data?.map((p) => <option key={p.id} value={p.id}>{p.name} · {fmtMoney(p.priceCents)}</option>)}
+        <option value="other">Otro servicio (escribir nombre y precio)</option>
       </SelectField>
+      {other && (
+        <div className="row-2">
+          <TextField label="Nombre del servicio" value={otherName} maxLength={120} onChange={(e) => setOtherName(e.target.value)} />
+          <TextField label="Precio (S/)" help="Por pieza o por vez. IGV incluido." inputMode="decimal" value={otherPrice} onChange={(e) => setOtherPrice(e.target.value)} />
+        </div>
+      )}
       <ToothPicker value={teeth} onChange={setTeeth} />
       {teeth.length === 0 && <TextField label="Cantidad" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ''))} style={{ width: '6rem' }} />}
       {svc && Number.isInteger(qty) && qty > 0 && <p><strong>{svc.name}</strong> × {qty} = <strong>{fmtMoney(svc.priceCents * qty)}</strong></p>}
@@ -142,6 +154,7 @@ export function QuickServicesCard({ patientId, visitId, editable }: { patientId:
   const catalog = useAsync(() => (editable ? get<Product[]>('/products', { kind: 'SERVICE' }) : Promise.resolve([] as Product[])), [editable]);
   const [busy, setBusy] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
+  const [otherOpen, setOtherOpen] = useState(false);
   const items = list.data?.items ?? [];
   const services = useMemo(() => (catalog.data ?? []).filter((p) => p.active !== false), [catalog.data]);
   const shown = useMemo(() => {
@@ -189,7 +202,7 @@ export function QuickServicesCard({ patientId, visitId, editable }: { patientId:
           </div>
           {catalog.loading && !catalog.data && <Loading rows={1} label="Cargando servicios" />}
           {catalog.error != null && <ErrorState error={catalog.error} onRetry={catalog.reload} />}
-          {catalog.data && services.length === 0 && <Alert tone="warning">No hay servicios en el catálogo. Pida al administrador que los cree en «Catálogo» (tipo Servicio, con su precio).</Alert>}
+          {catalog.data && services.length === 0 && <Alert tone="info">No hay servicios en el catálogo: use «Otro servicio» o pida al administrador que los cree en «Catálogo».</Alert>}
           {shown.length > 0 && (
             <ul className="quick-grid" role="list">
               {shown.map((p) => {
@@ -207,8 +220,10 @@ export function QuickServicesCard({ patientId, visitId, editable }: { patientId:
             </ul>
           )}
           {services.length > 0 && shown.length === 0 && <p className="muted">Ningún servicio coincide con «{filter}».</p>}
+          <Button size="sm" icon={<PencilLine size={16} aria-hidden="true" />} disabled={busy !== null} onClick={() => setOtherOpen(true)}>Otro servicio</Button>
         </div>
       )}
+      {otherOpen && <OtherServiceDialog base={base} onClose={() => setOtherOpen(false)} onDone={(name) => { setOtherOpen(false); list.reload(); toast.success(`«${name}» agregado.`); }} />}
 
       {list.loading && !list.data && <Loading rows={2} />}
       {list.error != null && <ErrorState error={list.error} onRetry={list.reload} />}
@@ -240,5 +255,35 @@ export function QuickServicesCard({ patientId, visitId, editable }: { patientId:
         </ul>
       )}
     </section>
+  );
+}
+
+/** «Otro servicio»: lo que no está en el catálogo, con su nombre y precio. Pasa a caja como los demás. */
+function OtherServiceDialog({ base, onClose, onDone }: { base: string; onClose: () => void; onDone: (name: string) => void }) {
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  const [quantity, setQuantity] = useState('1');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cents = parseSoles(price);
+  const qty = Number(quantity);
+  const invalid = name.trim().length < 2 || !cents || cents < 1 || !Number.isInteger(qty) || qty < 1 || qty > 99;
+  const submit = async () => {
+    if (invalid || busy) return;
+    setBusy(true); setError(null);
+    try { await post(base, { name: name.trim(), unitPriceCents: cents, quantity: qty }); onDone(name.trim()); }
+    catch (e) { setError(errorText(e)); setBusy(false); }
+  };
+  return (
+    <Dialog title="Otro servicio" onClose={onClose} footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={invalid} loading={busy} loadingText="Agregando…" onClick={() => void submit()}>Agregar</Button></>}>
+      <p className="muted">Para un servicio que no está en el catálogo. Pasa a caja con este nombre y precio.</p>
+      {error && <Alert tone="danger">{error}</Alert>}
+      <TextField label="Nombre del servicio" help="Por ejemplo «Ferulización» o «Retiro de puntos»." value={name} maxLength={120} onChange={(e) => setName(e.target.value)} />
+      <div className="row-2">
+        <TextField label="Precio (S/)" help="Por pieza o por vez. IGV incluido." inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
+        <TextField label="Cantidad" help="Piezas o veces." inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ''))} />
+      </div>
+      {!invalid && <p><strong>{name.trim()}</strong> × {qty} = <strong>{fmtMoney(cents! * qty)}</strong></p>}
+    </Dialog>
   );
 }

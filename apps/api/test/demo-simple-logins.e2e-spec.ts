@@ -20,17 +20,17 @@ describe('Demos: cuentas con correo corto y clave 123456', () => {
     });
 
   it('renombra las cuentas demo (conservan sus datos), crea admin@demo.pe y todas entran con 123456; es idempotente', async () => {
-    // Limpia corridas anteriores en la base de pruebas compartida.
-    await ctx.db.userAssignment.deleteMany({ where: { user: { email: { endsWith: '@demo.pe' } } } });
-    await ctx.db.user.deleteMany({ where: { email: { endsWith: '@demo.pe' } } });
-    await ctx.db.userAssignment.deleteMany({ where: { user: { email: { in: ['cajero.demo@apidental.test', 'odontologa.demo@apidental.test'] } } } });
-    await ctx.db.user.deleteMany({ where: { email: { in: ['cajero.demo@apidental.test', 'odontologa.demo@apidental.test'] } } });
-
-    const clinic = await fx.clinic();
-    const cashier = await fx.user({ email: 'cajero.demo@apidental.test' });
-    await fx.assign(cashier.id, 'CASHIER', { clinicId: clinic.id });
-    const dentist = await fx.user({ email: 'odontologa.demo@apidental.test' });
-    await fx.assign(dentist.id, 'DENTIST', { clinicId: clinic.id });
+    // La base de pruebas es compartida: si otra prueba ya creó las cuentas demo (con citas), se reutilizan; si no, se crean.
+    const findOrCreate = async (emails: string[]) => (await ctx.db.user.findFirst({ where: { email: { in: emails } } })) ?? (await fx.user({ email: emails[0] }));
+    const cashier = await findOrCreate(['cajero.demo@apidental.test', 'cajero@demo.pe']);
+    let clinicId = (await ctx.db.userAssignment.findFirst({ where: { userId: cashier.id, clinicId: { not: null } } }))?.clinicId ?? null;
+    if (!clinicId) {
+      clinicId = (await fx.clinic()).id;
+      await fx.assign(cashier.id, 'CASHIER', { clinicId });
+    }
+    const clinic = { id: clinicId };
+    const dentist = await findOrCreate(['odontologa.demo@apidental.test', 'odontologo@demo.pe']);
+    if (!(await ctx.db.userAssignment.findFirst({ where: { userId: dentist.id, clinicId, status: 'ACTIVE' } }))) await fx.assign(dentist.id, 'DENTIST', { clinicId });
 
     const out = run();
     expect(out).toContain('cajero@demo.pe');

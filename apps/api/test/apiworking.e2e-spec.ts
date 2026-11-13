@@ -1182,6 +1182,29 @@ describe('Apiworking real: login, clientes y ventas por registro-documento (serv
     await ctx.http().post(`/v1/users/${other.id}/apiworking-access`).set(bearer(t)).send({ username: 'cajero2', password: '12345' }).expect(400);
   });
 
+  it('«otro servicio» (fuera del catálogo): nombre y precio escritos en la atención, y caja lo cobra agrupado por nombre', async () => {
+    const branch = await fx.branch(clinicId);
+    const admin = (await fx.userWithRole('CLINIC_ADMIN', { clinicId })).user;
+    const adminToken = await loginInContext(ctx, admin.email, { clinicId });
+    const dentist = (await fx.userWithRole('DENTIST', { clinicId, branchId: branch.id })).user;
+    const dt = await loginInContext(ctx, dentist.email, { clinicId, branchId: branch.id });
+    const dni = String(30_000_000 + Math.floor(Math.random() * 9_000_000));
+    const { id: patientId } = await createPatient(ctx, adminToken, { firstName: 'Otto', lastName: 'Servicio', identifier: { type: 'DNI', number: dni } });
+    await assignCare(ctx, adminToken, patientId, dentist.id);
+    const cbase = `/v1/patients/${patientId}/clinical`;
+    const visit = (await ctx.http().post(`${cbase}/visits`).set(bearer(dt)).send({}).expect(201)).body as { id: string; version?: number };
+    const vs = `${cbase}/visits/${visit.id}/services`;
+    const added = (await ctx.http().post(vs).set(bearer(dt)).send({ name: '  Retiro   de puntos ', unitPriceCents: 4_000, quantity: 2 }).expect(201)).body;
+    expect(added).toMatchObject({ productId: null, name: 'Retiro de puntos', unitPriceCents: 4_000, quantity: 2, subtotalCents: 8_000 });
+    await ctx.http().post(vs).set(bearer(dt)).send({ name: 'Sin precio' }).expect(400);
+    await ctx.http().post(vs).set(bearer(dt)).send({}).expect(400);
+    await ctx.http().post(`${cbase}/visits/${visit.id}/close`).set(bearer(dt)).send({ expectedVersion: visit.version ?? 1 }).expect(200);
+    const login = await enter();
+    const sel = (await ctx.http().post('/v1/auth/select-context').set(bearer(login.accessToken)).send({ clinicId, branchId: null }).expect(200)).body.accessToken as string;
+    const d = (await ctx.http().get(`/v1/apiworking/billing-draft?document=${dni}`).set(bearer(sel)).expect(200)).body;
+    expect(d.account.items).toEqual([expect.objectContaining({ productId: null, name: 'Retiro de puntos', unitPriceCents: 4_000, quantity: 2, subtotalCents: 8_000 })]);
+  });
+
   it('busca los nombres por DNI para precargar al paciente: usa lo que ya hay y solo consulta ClienteDoc si falta', async () => {
     const appCfg = ctx.app.get(AppConfig).apiworking as { maxRealOperations: number };
     const savedCap = appCfg.maxRealOperations;

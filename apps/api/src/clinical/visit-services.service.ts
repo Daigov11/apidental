@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, IsUUID, Matches, Max, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import type { RequestMeta } from '../common/utils/request-meta.js';
@@ -13,7 +14,10 @@ import { assertVisitWriter, lockVisitShared, withVisitDenial } from './clinical-
 const FDI = /^([1-4][1-8]|[5-8][1-5])$/;
 
 export class AddVisitServiceDto {
-  @IsUUID() productId!: string;
+  /** Servicio del catálogo. Sin él, «otro servicio»: `name` y `unitPriceCents` escritos en la atención. */
+  @IsOptional() @IsUUID() productId?: string;
+  @IsOptional() @Transform(({ value }) => (typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : value)) @IsString() @MinLength(2) @MaxLength(120) name?: string;
+  @IsOptional() @IsInt() @Min(1) @Max(100_000_000) unitPriceCents?: number;
   /** Piezas tratadas (FDI). Vacío o ausente: el servicio no es por pieza y se usa `quantity`. */
   @IsOptional() @IsArray() @ArrayMaxSize(52) @IsString({ each: true }) @Matches(FDI, { each: true, message: 'Pieza dentaria inválida (numeración FDI)' }) teeth?: string[];
   @IsOptional() @IsInt() @Min(1) @Max(99) quantity?: number;
@@ -23,7 +27,7 @@ export class SetVisitServiceQuantityDto {
   @IsInt() @Min(1) @Max(99) quantity!: number;
 }
 
-type Row = { id: string; productId: string; name: string; unitPriceCents: number; teeth: unknown; quantity: number; status: string; saleId: string | null; createdAt: Date };
+type Row = { id: string; productId: string | null; name: string; unitPriceCents: number; teeth: unknown; quantity: number; status: string; saleId: string | null; createdAt: Date };
 
 export const presentVisitService = (r: Row) => ({
   id: r.id,
@@ -61,9 +65,18 @@ export class VisitServicesService {
 
   async add(actor: AuthPrincipal, patientId: string, visitId: string, dto: AddVisitServiceDto, meta: RequestMeta) {
     const d = await this.access.authorize(actor, patientId, 'write', ['services'], meta);
-    const product = await this.db.product.findFirst({ where: { id: dto.productId, clinicId: d.clinicId } });
-    if (!product || product.kind !== 'SERVICE') throw new NotFoundException('Servicio del catálogo no encontrado');
-    if (product.status !== 'ACTIVE') throw new ConflictException({ message: 'El servicio está inactivo en el catálogo', code: 'SERVICE_INACTIVE' });
+    // Del catálogo, u «otro servicio» que no está en el catálogo (nombre y precio escritos por el odontólogo).
+    let product: { id: string | null; name: string; priceCents: number };
+    if (dto.productId) {
+      if (dto.name !== undefined || dto.unitPriceCents !== undefined) throw new BadRequestException('Indique un servicio del catálogo u otro servicio con nombre y precio, no ambos');
+      const p = await this.db.product.findFirst({ where: { id: dto.productId, clinicId: d.clinicId } });
+      if (!p || p.kind !== 'SERVICE') throw new NotFoundException('Servicio del catálogo no encontrado');
+      if (p.status !== 'ACTIVE') throw new ConflictException({ message: 'El servicio está inactivo en el catálogo', code: 'SERVICE_INACTIVE' });
+      product = { id: p.id, name: p.name, priceCents: p.priceCents };
+    } else {
+      if (!dto.name || !dto.unitPriceCents) throw new BadRequestException('Para otro servicio indique el nombre y el precio');
+      product = { id: null, name: dto.name, priceCents: dto.unitPriceCents };
+    }
     const teeth = [...new Set(dto.teeth ?? [])].sort();
     const quantity = teeth.length > 0 ? teeth.length : (dto.quantity ?? 1);
     if (teeth.length > 0 && dto.quantity !== undefined && dto.quantity !== teeth.length) {
@@ -79,7 +92,7 @@ export class VisitServicesService {
           const created = await tx.visitService.create({
             data: { clinicId: d.clinicId, patientId, visitId, productId: product.id, name: product.name, unitPriceCents: product.priceCents, teeth, quantity, createdById: actor.user.id },
           });
-          await this.audit.record({ action: 'VISIT_SERVICE_ADDED', entity: 'VisitService', entityId: created.id, patientId, userId: actor.user.id, clinicId: d.clinicId, branchId: d.branchId, meta, summary: { visitId, productId: product.id, quantity, unitPriceCents: product.priceCents, teethCount: teeth.length } }, tx);
+          await this.audit.record({ action: 'VISIT_SERVICE_ADDED', entity: 'VisitService', entityId: created.id, patientId, userId: actor.user.id, clinicId: d.clinicId, branchId: d.branchId, meta, summary: { visitId, productId: product.id, custom: product.id === null, quantity, unitPriceCents: product.priceCents, teethCount: teeth.length } }, tx);
           return created;
         }),
       ),

@@ -113,9 +113,10 @@ export class ApiworkingContingencyService {
       include: { visit: { select: { appointmentId: true, closedAt: true } } },
       orderBy: { createdAt: 'asc' },
     });
-    const groups = new Map<string, { productId: string; name: string; unitPriceCents: number; quantity: number; teeth: string[]; serviceIds: string[] }>();
+    const groups = new Map<string, { productId: string | null; name: string; unitPriceCents: number; quantity: number; teeth: string[]; serviceIds: string[] }>();
     for (const r of rows) {
-      const key = `${r.productId}|${r.unitPriceCents}`;
+      // «Otro servicio» (sin catálogo) se agrupa por su nombre.
+      const key = `${r.productId ?? `otro:${r.name.toLowerCase()}`}|${r.unitPriceCents}`;
       const g = groups.get(key) ?? { productId: r.productId, name: r.name, unitPriceCents: r.unitPriceCents, quantity: 0, teeth: [], serviceIds: [] };
       g.quantity += r.quantity;
       if (Array.isArray(r.teeth)) g.teeth.push(...(r.teeth as string[]));
