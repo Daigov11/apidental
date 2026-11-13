@@ -35,6 +35,26 @@ describe('WhatsApp', () => {
     expect(await screen.findByText('+51999888777')).toBeInTheDocument();
   });
 
+  it('cambiar de número: guía para cerrar la sesión en el celular y, ya cerrada, muestra el QR del nuevo número', async () => {
+    let linkStatus = 'connected';
+    mockApi(base(ADMIN, {
+      'GET /apiworking/whatsapp/status': { json: { phoneLabel: 'tiendaglowsmile_apiworking_co', status: 'connected', statusLabel: 'Conectado', phoneNumber: '+51999888777', qr: null } },
+      'POST /apiworking/whatsapp/link': () => ({ json: { phoneLabel: 'tiendaglowsmile_apiworking_co', status: linkStatus, statusLabel: '', phoneNumber: linkStatus === 'connected' ? '+51999888777' : null, qr: linkStatus === 'connected' ? null : '2@Nuevo==' } }),
+    }));
+    renderApp('/whatsapp');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Cambiar de número' }));
+    expect(screen.getByText(/Dispositivos vinculados/)).toBeInTheDocument();
+    // Aún no cerró la sesión en el celular: lo explica y no muestra QR.
+    await user.click(screen.getByRole('button', { name: 'Vincular otro número' }));
+    expect(await screen.findByText(/El número anterior sigue vinculado/)).toBeInTheDocument();
+    expect(screen.queryByRole('img', { name: /Código QR/ })).not.toBeInTheDocument();
+    // Ya la cerró: aparece el QR para el nuevo número.
+    linkStatus = 'qr_pending';
+    await user.click(screen.getByRole('button', { name: 'Vincular otro número' }));
+    expect(await screen.findByRole('img', { name: 'Código QR para vincular WhatsApp' })).toBeInTheDocument();
+  });
+
   it('el menú muestra WhatsApp solo al administrador', async () => {
     mockApi(base(['apiworking:read', 'apiworking:sell', 'branch:read', 'clinic:read'], {}));
     renderApp('/');

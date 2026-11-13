@@ -22,6 +22,8 @@ export function WhatsappPage() {
   const st = useAsync(() => get<WaStatus>('/apiworking/whatsapp/status'), []);
   const [qr, setQr] = useState<string | null>(null);
   const [linking, setLinking] = useState(false);
+  /** Cambiar de número: Apiworking no tiene un endpoint para desvincular; la sesión se cierra desde el celular vinculado. */
+  const [changing, setChanging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
   const stop = () => { if (timer.current) clearInterval(timer.current); timer.current = null; };
@@ -31,7 +33,13 @@ export function WhatsappPage() {
     setLinking(true); setError(null); stop();
     try {
       const r = await post<WaStatus>('/apiworking/whatsapp/link');
-      if (r.status === 'connected') { setQr(null); toast.success('WhatsApp ya está vinculado.'); st.reload(); return; }
+      if (r.status === 'connected') {
+        setQr(null); st.reload();
+        if (changing) setError('El número anterior sigue vinculado. Cierre la sesión desde ese celular (paso 1) y vuelva a intentarlo.');
+        else toast.success('WhatsApp ya está vinculado.');
+        return;
+      }
+      setChanging(false);
       if (!r.qr) { setError('Apiworking no devolvió el código QR. Intente de nuevo.'); return; }
       setQr(await QRCode.toDataURL(r.qr, { margin: 1, width: 280 }));
       // Mientras escanean: estado cada 3 s, hasta que conecte (o 3 minutos).
@@ -59,6 +67,23 @@ export function WhatsappPage() {
         <section className="card" aria-labelledby="wa-h">
           <div className="card-head"><h2 id="wa-h" className="h3">Teléfono de la clínica</h2><Badge tone={TONE[s.status] ?? 'neutral'}>{s.statusLabel}</Badge></div>
           {s.phoneNumber && <p>Número vinculado: <strong className="tabular">{s.phoneNumber}</strong></p>}
+          {s.status === 'connected' && !qr && !changing && (
+            <Button size="sm" onClick={() => { setChanging(true); setError(null); }}>Cambiar de número</Button>
+          )}
+          {s.status === 'connected' && !qr && changing && (
+            <div className="card" style={{ marginTop: 'var(--space-4)' }}>
+              <h3 className="h3">Cambiar de número</h3>
+              <ol style={{ paddingLeft: '1.2em' }}>
+                <li>En el celular vinculado ({s.phoneNumber ?? 'el número actual'}), abra WhatsApp → <strong>Ajustes</strong> → <strong>Dispositivos vinculados</strong>, toque el dispositivo vinculado y elija <strong>Cerrar sesión</strong>.</li>
+                <li>Pulse «Vincular otro número» y escanee el código con el WhatsApp del nuevo número.</li>
+              </ol>
+              <p className="caption muted">Apiworking no permite desvincular el número desde el sistema: se hace desde el celular.</p>
+              <div className="chip-row">
+                <Button variant="primary" icon={<MessageCircle size={18} aria-hidden="true" />} loading={linking} loadingText="Comprobando…" onClick={() => void link()}>Vincular otro número</Button>
+                <Button variant="tertiary" onClick={() => { setChanging(false); setError(null); }}>Cancelar</Button>
+              </div>
+            </div>
+          )}
           {s.status === 'banned' && <Alert tone="danger">WhatsApp bloqueó este número. Vincule otro número.</Alert>}
           {s.status !== 'connected' && !qr && (
             <>
