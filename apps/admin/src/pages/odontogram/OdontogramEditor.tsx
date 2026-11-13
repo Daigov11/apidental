@@ -150,7 +150,7 @@ export function OdontogramEditor({ patientId, draft, spec, onFinished }: {
           <Badge tone={saveState === 'error' ? 'danger' : saveState === 'saved' ? 'success' : 'neutral'}>{statusText}</Badge>
         </p>
       </div>
-      <p className="caption muted">Toque una pieza para elegirla. Con un pincel activo, toque una superficie en la cruz del panel para marcarla; vuelva a tocar la misma para quitarla.</p>
+      <p className="caption muted">Elija una pieza y luego un hallazgo; toque la superficie en el panel para marcarla (otra vez, para quitarla).</p>
       {saveError && <Alert tone="danger" title="No se pudo guardar el borrador">{saveError} Sus cambios siguen en pantalla; vuelva a intentarlo o recargue la página.</Alert>}
 
       <div className="odonto-layout">

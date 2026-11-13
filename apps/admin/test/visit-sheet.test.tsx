@@ -3,7 +3,9 @@ import userEvent from '@testing-library/user-event';
 import { afterEach } from 'vitest';
 import { DENTIST_PERMS, mockApi, renderApp, sessionRoutes } from './helpers';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+/** La ficha arranca en la vista sencilla; estas pruebas miran la avanzada (odontograma y hallazgos). */
+const advanced = () => localStorage.setItem('apidental.ficha.vista', 'advanced');
 
 const sheet = (over: Record<string, unknown> = {}, actions: Record<string, unknown> = {}) => ({
   alerts: { advisory: true, items: [] },
@@ -24,6 +26,8 @@ const routes = (s: unknown, extra: Record<string, unknown> = {}) => ({
   'GET /patients/p-1': { json: { id: 'p-1', fullName: 'Ingrid Demo Pasaporte', identifiers: [{ type: 'PASSPORT', number: 'P1234567' }], age: 39, isMinor: false } },
   'GET /patients/p-1/clinical/odontogram': { json: { official: null, draft: null, versionsCount: 0, formatNotice: 'Formato clínico por validar.' } },
   'GET /clinical/odontogram/spec': { json: { toothStatuses: [], surfaces: [], surfaceStates: [], marks: [] } },
+  'GET /patients/p-1/clinical/visits/v-1/services': { json: { items: [], totalCents: 0 } },
+  'GET /products': { json: [] },
   ...extra,
 }) as Parameters<typeof mockApi>[0];
 
@@ -36,6 +40,7 @@ describe('Ficha de atención editable', () => {
       'POST /patients/p-1/clinical/visits/v-1/procedures': { status: 201, json: {} },
     }));
     const user = userEvent.setup();
+    advanced();
     renderApp('/pacientes/p-1/atencion/v-1');
     await user.click(await screen.findByRole('button', { name: 'Registrar evaluación' }));
     let dlg = await screen.findByRole('dialog', { name: 'Evaluación de alergias' });
@@ -101,7 +106,8 @@ describe('Ficha de atención editable', () => {
     expect(called('POST', '/patients/p-1/clinical/visits/v-1/close')[0]?.body).toEqual({ expectedVersion: 1 });
   });
 
-  it('es una sola vista: paciente, odontograma, hallazgos y nota de evolución; recepción de datos sin cobro para el odontólogo', async () => {
+  it('vista avanzada: paciente, odontograma, hallazgos y nota de evolución; sin cobros para el odontólogo', async () => {
+    advanced();
     mockApi(routes(sheet({
       diagnoses: [{ id: 'd-1', version: 1, description: 'Caries en pieza 16', certaintyLabel: 'Presuntivo', status: 'ACTIVE', statusLabel: 'Vigente' }],
       procedures: [{ id: 'pr-1', version: 1, name: 'Limpieza dental', notes: null, status: 'OPEN', statusLabel: 'Abierto', closeBlockedMessage: null, canClose: true }],
@@ -115,8 +121,22 @@ describe('Ficha de atención editable', () => {
     expect(within(hall).getByText('Caries en pieza 16')).toBeInTheDocument();
     expect(within(hall).getByRole('button', { name: 'Marcar realizado' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Nota de evolución' })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Odontograma completo/ })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Odontograma' })).toHaveAttribute('href', expect.stringContaining('/pacientes/p-1/odontograma'));
     expect(screen.queryByRole('heading', { name: 'Cobros del paciente' })).not.toBeInTheDocument();
+  });
+
+  it('arranca en la vista sencilla, sin notas internas, y recuerda el cambio a la avanzada', async () => {
+    mockApi(routes(sheet({ diagnoses: [{ id: 'd-1', version: 1, description: 'Caries en pieza 16', certaintyLabel: 'Presuntivo', status: 'ACTIVE', statusLabel: 'Vigente' }] })));
+    const user = userEvent.setup();
+    renderApp('/pacientes/p-1/atencion/v-1');
+    expect(await screen.findByRole('heading', { name: 'Servicios realizados' })).toBeInTheDocument();
+    expect(screen.getByRole('radio', { name: /Sencilla/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByRole('heading', { name: 'Odontograma' })).not.toBeInTheDocument();
+    expect(screen.getByText(/1 hallazgo registrado/)).toBeInTheDocument();
+    for (const t of [/Formato clínico por validar/, /declaraciones del profesional/, /se hace por la API/]) expect(screen.queryByText(t)).not.toBeInTheDocument();
+    await user.click(screen.getByRole('radio', { name: /Avanzada/ }));
+    expect(await screen.findByRole('heading', { name: 'Odontograma' })).toBeInTheDocument();
+    expect(localStorage.getItem('apidental.ficha.vista')).toBe('advanced');
   });
 
   it('sin permiso de edición (solo lectura) no aparece ningún control de registro', async () => {

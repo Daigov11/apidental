@@ -175,9 +175,10 @@ describe('Agenda', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: /10:00, Lucía Demo Adulta/ }));
     await user.click(await screen.findByRole('button', { name: 'Iniciar atención' }));
-    expect(await screen.findByRole('heading', { name: 'Ficha de atención' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Servicios realizados' })).toBeInTheDocument();
     expect(called('POST', '/appointments/ap-1/start-attention')).toHaveLength(1);
     expect(screen.getByText(/Importante: Alergia a un material ficticio/)).toBeInTheDocument();
-    expect(screen.getByText('Consentimiento clínico vigente')).toBeInTheDocument();
+    // Con el consentimiento vigente no se muestra aviso: solo se avisa lo que falta.
+    expect(screen.queryByText('Consentimiento clínico vigente')).not.toBeInTheDocument();
   });
 });

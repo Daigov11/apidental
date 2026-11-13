@@ -3,7 +3,8 @@ import userEvent from '@testing-library/user-event';
 import { afterEach } from 'vitest';
 import { DENTIST_PERMS, mockApi, renderApp, sessionRoutes } from './helpers';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); localStorage.clear(); });
+const advanced = () => localStorage.setItem('apidental.ficha.vista', 'advanced');
 
 const sheet = (status: 'OPEN' | 'CLOSED' = 'OPEN') => ({
   alerts: { advisory: true, items: [] },
@@ -29,7 +30,8 @@ const routes = (extra: Record<string, unknown> = {}, status: 'OPEN' | 'CLOSED' =
   ...extra,
 }) as Parameters<typeof mockApi>[0];
 
-describe('Servicios realizados en la atención', () => {
+describe('Servicios realizados en la atención (vista avanzada, con piezas)', () => {
+  beforeEach(advanced);
   it('muestra lo hecho con piezas, cantidad, subtotal y el total a pagar', async () => {
     mockApi(routes());
     renderApp('/pacientes/p-1/atencion/v-1');
@@ -83,5 +85,58 @@ describe('Servicios realizados en la atención', () => {
     await within(card).findByText('16, 26');
     expect(within(card).queryByRole('button', { name: 'Agregar servicio' })).not.toBeInTheDocument();
     expect(within(card).queryByRole('button', { name: /Quitar/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('Servicios realizados en la vista sencilla (sin marcar dientes)', () => {
+  it('un toque agrega el servicio; otro toque o «+» suma una pieza; con piezas marcadas no hay contador', async () => {
+    let items = [...ITEMS];
+    const { called } = mockApi(routes({
+      'GET /patients/p-1/clinical/visits/v-1/services': () => ({ json: { items, totalCents: items.reduce((t, i) => t + i.subtotalCents, 0) } }),
+      'POST /patients/p-1/clinical/visits/v-1/services': () => {
+        items = [...items, { id: 'vs-2', productId: 'pr-2', name: 'Endodoncia', unitPriceCents: 35000, teeth: [], quantity: 1, subtotalCents: 35000, billed: false, createdAt: '2026-11-13T15:20:00.000Z' }];
+        return { status: 201, json: items.at(-1) };
+      },
+      'POST /patients/p-1/clinical/visits/v-1/services/vs-2/quantity': (c: { body: unknown }) => {
+        const q = (c.body as { quantity: number }).quantity;
+        items = items.map((i) => (i.id === 'vs-2' ? { ...i, quantity: q, subtotalCents: 35000 * q } : i));
+        return { json: items.at(-1) };
+      },
+    }));
+    renderApp('/pacientes/p-1/atencion/v-1');
+    const user = userEvent.setup();
+    const card = (await screen.findByRole('heading', { name: 'Servicios realizados' })).closest('section')!;
+    // La curación tiene piezas marcadas (desde la vista avanzada): se ve su cantidad, sin contador.
+    expect(await within(card).findByText(/piezas 16, 26/)).toBeInTheDocument();
+    expect(within(card).queryByRole('group', { name: 'Cantidad de Curación' })).not.toBeInTheDocument();
+
+    await user.click(await within(card).findByRole('button', { name: /Endodoncia/ }));
+    await waitFor(() => expect(called('POST', '/patients/p-1/clinical/visits/v-1/services')).toHaveLength(1));
+    expect(called('POST', '/patients/p-1/clinical/visits/v-1/services')[0]?.body).toEqual({ productId: 'pr-2', quantity: 1 });
+
+    const stepper = await within(card).findByRole('group', { name: 'Cantidad de Endodoncia' });
+    await user.click(within(stepper).getByRole('button', { name: 'Una más de Endodoncia' }));
+    await waitFor(() => expect(called('POST', '/patients/p-1/clinical/visits/v-1/services/vs-2/quantity')).toHaveLength(1));
+    expect(called('POST', '/patients/p-1/clinical/visits/v-1/services/vs-2/quantity')[0]?.body).toEqual({ quantity: 2 });
+    expect(await within(card).findByText('S/ 700.00')).toBeInTheDocument();
+    expect(within(card).getByText('Total a cobrar')).toBeInTheDocument();
+    expect(within(card).getAllByText('S/ 900.00').length).toBeGreaterThan(0);
+
+    // Tocar de nuevo el mismo servicio también suma.
+    await user.click(within(card).getByRole('button', { name: 'Endodoncia, S/ 350.00, 2 en la cuenta' }));
+    await waitFor(() => expect(called('POST', '/patients/p-1/clinical/visits/v-1/services/vs-2/quantity')).toHaveLength(2));
+    expect(called('POST', '/patients/p-1/clinical/visits/v-1/services/vs-2/quantity')[1]?.body).toEqual({ quantity: 3 });
+  });
+
+  it('con una sola pieza, «−» quita el servicio', async () => {
+    const one = [{ ...ITEMS[0]!, id: 'vs-3', teeth: [], quantity: 1, subtotalCents: 10000 }];
+    const { called } = mockApi(routes({
+      'GET /patients/p-1/clinical/visits/v-1/services': { json: { items: one, totalCents: 10000 } },
+      'POST /patients/p-1/clinical/visits/v-1/services/vs-3/remove': { json: { ok: true } },
+    }));
+    renderApp('/pacientes/p-1/atencion/v-1');
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole('button', { name: 'Quitar Curación' }));
+    await waitFor(() => expect(called('POST', '/patients/p-1/clinical/visits/v-1/services/vs-3/remove')).toHaveLength(1));
   });
 });

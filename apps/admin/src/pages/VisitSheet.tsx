@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { AlertTriangle, ClipboardList, Info, OctagonAlert, Plus, Smile } from 'lucide-react';
+import { AlertTriangle, ClipboardList, History, Info, ListChecks, OctagonAlert, Plus, Smile } from 'lucide-react';
 import { api, ApiError, get } from '../api/client';
 import type { Charge, PatientDetail, Sheet } from '../api/types';
 import { useAuth } from '../auth/AuthProvider';
@@ -11,8 +11,22 @@ import { TextAreaField } from '../ui/fields';
 import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
 import { ReasonDialog } from '../ui/overlays';
 import { OdontogramCanvas, useOdontogram } from './odontogram/useOdontogram';
-import { VisitServicesCard } from './VisitServices';
+import { QuickServicesCard, VisitServicesCard } from './VisitServices';
 import { AllergyDialog, CLOSE_BLOCKERS, ConfirmDialog, DiagnosisDialog, PasswordDialog, ProcedureDialog } from './VisitSheetParts';
+
+type Mode = 'simple' | 'advanced';
+const MODE_KEY = 'apidental.ficha.vista';
+/** La vista elegida se recuerda en este navegador; si no se puede leer, arranca en la sencilla. */
+function useFichaMode(): [Mode, (m: Mode) => void] {
+  const [mode, setModeState] = useState<Mode>(() => {
+    try { return localStorage.getItem(MODE_KEY) === 'advanced' ? 'advanced' : 'simple'; } catch { return 'simple'; }
+  });
+  const setMode = (m: Mode) => {
+    setModeState(m);
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* sin almacenamiento: solo para esta sesión */ }
+  };
+  return [mode, setMode];
+}
 
 const SEV = { CRITICAL: { tone: 'danger', Icon: OctagonAlert, label: 'Importante' }, WARNING: { tone: 'warning', Icon: AlertTriangle, label: 'Atención' }, INFO: { tone: 'info', Icon: Info, label: 'Información' } } as const;
 
@@ -31,6 +45,7 @@ export function VisitSheetPage() {
   const od = useOdontogram(id);
   // Datos de identificación para la tarjeta del paciente; si el perfil no puede leerlos, la tarjeta se arma sin documento.
   const person = useAsync(() => get<PatientDetail>(`/patients/${id}`).catch(() => null), [id]);
+  const [mode, setMode] = useFichaMode();
   if (sheet.loading && !sheet.data) return <Loading rows={5} label="Cargando la ficha de atención" />;
   if (sheet.error != null) return <ErrorState error={sheet.error} onRetry={sheet.reload} />;
   const s = sheet.data;
@@ -61,131 +76,147 @@ export function VisitSheetPage() {
     ...s.procedures.map((p) => ({ key: `p-${p.id}`, kind: 'Procedimiento' as const, p })),
   ];
 
+  const simple = mode === 'simple';
+  const canWriteServices = editable && can('clinical:write');
+
   return (
-    <>
-      <p><Link to={`/pacientes/${id}`}>‹ {s.patient.fullName}</Link></p>
-      <div className="page-head">
-        <h1>Ficha de atención</h1>
-        <Badge tone={open ? 'info' : 'success'}>{s.visit.statusLabel}</Badge>
+    <div className="ficha-page">
+      <section className="card ficha-bar" aria-labelledby="pt-h">
+        <div className="ficha-avatar" aria-hidden="true">{initials}</div>
+        <div className="ficha-who">
+          <p className="caption"><Link to={`/pacientes/${id}`}>‹ Volver al paciente</Link></p>
+          <h1 id="pt-h" className="h2">{s.patient.fullName}</h1>
+          <p className="ficha-meta muted">
+            <span>{s.patient.age ?? '—'} años{s.patient.isMinor ? ' · menor de edad' : ''}</span>
+            {doc && <span>{doc.type} {doc.number}</span>}
+            <span>Visita {s.visit.number} · {fmtDateTime(s.visit.startedAt)}</span>
+            {me?.context?.branch?.name && <span>{me.context.branch.name}</span>}
+          </p>
+        </div>
+        <div className="ficha-bar-end">
+          <Badge tone={open ? 'info' : 'success'}>{s.visit.statusLabel}</Badge>
+          <nav className="ficha-links" aria-label="Más información del paciente">
+            <Link to={`/pacientes/${id}`}><ClipboardList size={16} aria-hidden="true" /> Ficha</Link>
+            <Link to={`/pacientes/${id}/odontograma`}><Smile size={16} aria-hidden="true" /> Odontograma</Link>
+            <Link to={`/pacientes/${id}#atencion-clinica`}><History size={16} aria-hidden="true" /> Historial</Link>
+          </nav>
+        </div>
+      </section>
+
+      <section className="ficha-alerts" aria-labelledby="alerts-h">
+        <h2 id="alerts-h" className="sr-only">Alertas</h2>
+        {s.alerts.items.map((a) => {
+          const sev = SEV[a.severity];
+          return <Alert key={a.id} tone={sev.tone} title={`${sev.label}: ${a.label}`} />;
+        })}
+        <Alert
+          tone={s.allergyAssessment.status === 'ALLERGIES_RECORDED' ? 'warning' : s.allergyAssessment.status === 'NO_KNOWN_ALLERGIES' ? 'success' : 'info'}
+          title={s.allergyAssessment.label}
+          action={editable ? <Button size="sm" onClick={() => setDlg({ k: 'allergy' })}>{s.allergyAssessment.status === 'NOT_ASKED' ? 'Registrar evaluación' : 'Actualizar'}</Button> : undefined}
+        />
+        {s.consent.state !== 'GRANTED' && <Alert tone="warning" title={s.consent.label} />}
+      </section>
+
+      <div className="ficha-mode" role="radiogroup" aria-label="Vista de la ficha">
+        <button type="button" role="radio" aria-checked={simple} className={simple ? 'is-on' : ''} onClick={() => setMode('simple')}>
+          <ListChecks size={18} aria-hidden="true" /> <span><strong>Sencilla</strong><small>Servicios y piezas</small></span>
+        </button>
+        <button type="button" role="radio" aria-checked={!simple} className={!simple ? 'is-on' : ''} onClick={() => setMode('advanced')}>
+          <Smile size={18} aria-hidden="true" /> <span><strong>Avanzada</strong><small>Odontograma y hallazgos</small></span>
+        </button>
       </div>
 
       <div className="ficha">
-        <aside className="ficha-side" aria-label="Paciente">
-          <section className="card ficha-person" aria-labelledby="pt-h">
-            <div className="ficha-avatar" aria-hidden="true">{initials}</div>
-            <h2 id="pt-h" className="h3">{s.patient.fullName}</h2>
-            <p className="muted">{s.patient.age ?? '—'} años{s.patient.isMinor ? ' · menor de edad' : ''}</p>
-            <dl className="ficha-facts">
-              <div><dt>Documento</dt><dd>{doc ? `${doc.type} ${doc.number}` : '—'}</dd></div>
-              <div><dt>Sede</dt><dd>{me?.context?.branch?.name ?? '—'}</dd></div>
-              <div><dt>Visita</dt><dd>{s.visit.number} · {fmtDateTime(s.visit.startedAt)}</dd></div>
-            </dl>
-          </section>
-          <nav className="ficha-nav" aria-label="Más información del paciente">
-            <Link to={`/pacientes/${id}`}><ClipboardList size={18} aria-hidden="true" /> Ficha del paciente</Link>
-            <Link to={`/pacientes/${id}/odontograma`}><Smile size={18} aria-hidden="true" /> Odontograma completo</Link>
-            <Link to={`/pacientes/${id}#atencion-clinica`}><ClipboardList size={18} aria-hidden="true" /> Historial de visitas</Link>
-          </nav>
-        </aside>
-
         <div className="ficha-main">
-          <section className="ficha-alerts" aria-labelledby="alerts-h">
-            <h2 id="alerts-h" className="sr-only">Alertas</h2>
-            {s.alerts.items.map((a) => {
-              const sev = SEV[a.severity];
-              return <Alert key={a.id} tone={sev.tone} title={`${sev.label}: ${a.label}`} />;
-            })}
-            <Alert
-              tone={s.allergyAssessment.status === 'ALLERGIES_RECORDED' ? 'warning' : 'info'}
-              title={s.allergyAssessment.label}
-              action={editable ? <Button size="sm" onClick={() => setDlg({ k: 'allergy' })}>{s.allergyAssessment.status === 'NOT_ASKED' ? 'Registrar evaluación' : 'Actualizar'}</Button> : undefined}
-            />
-            <Alert tone={s.consent.state === 'GRANTED' ? 'success' : 'warning'} title={s.consent.label}>
-              {s.consent.state !== 'GRANTED' && !A.readOnly && <span className="caption">Hoy el consentimiento clínico no se registra desde el panel: pida a recepción o administración que lo registre (se hace por la API).</span>}
-            </Alert>
-          </section>
+          {simple ? (
+            <>
+              <QuickServicesCard patientId={id} visitId={visitId} editable={canWriteServices} />
+              {findings.length > 0 && (
+                <p className="caption muted">Esta visita tiene {findings.length} {findings.length === 1 ? 'hallazgo registrado' : 'hallazgos registrados'}. <button type="button" className="link-btn" onClick={() => setMode('advanced')}>Verlos en la vista avanzada</button></p>
+              )}
+            </>
+          ) : (
+            <>
+              <section className="card" aria-labelledby="od-h">
+                <div className="card-head">
+                  <h2 id="od-h" className="h3">Odontograma</h2>
+                  {od.official && <span className="caption muted">Versión {od.official.version} · {od.official.stateLabel}</span>}
+                </div>
+                {od.view.loading && !od.view.data ? <Loading rows={2} label="Cargando el odontograma" /> : od.view.error != null ? <ErrorState error={od.view.error} onRetry={od.view.reload} /> : (
+                  <OdontogramCanvas patientId={id} od={od} canWrite={canWriteServices} embedded />
+                )}
+              </section>
 
-          <section className="card" aria-labelledby="od-h">
-            <div className="card-head">
-              <h2 id="od-h" className="h3">Odontograma</h2>
-              {od.official && <span className="caption muted">Versión {od.official.version} · {od.official.stateLabel}</span>}
-            </div>
-            {od.view.loading && !od.view.data ? <Loading rows={2} label="Cargando el odontograma" /> : od.view.error != null ? <ErrorState error={od.view.error} onRetry={od.view.reload} /> : (
-              <OdontogramCanvas patientId={id} od={od} canWrite={editable && can('clinical:write')} embedded />
-            )}
-            <p className="caption muted" style={{ marginTop: 'var(--space-3)' }}>{s.odontogram.formatNotice}</p>
-          </section>
-
-          <VisitServicesCard patientId={id} visitId={visitId!} editable={editable && can('clinical:write')} />
-
-          <section className="card" aria-labelledby="hall-h">
-            <div className="card-head">
-              <h2 id="hall-h" className="h3">Hallazgos</h2>
-              <span className="row-actions">
-                {A.canAddDiagnosis && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setDlg({ k: 'dx' })}>Agregar diagnóstico</Button>}
-                {A.canAddProcedure && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setDlg({ k: 'proc' })}>Agregar procedimiento</Button>}
-              </span>
-            </div>
-            {findings.length === 0 ? <EmptyState title="Sin diagnósticos ni procedimientos en esta visita" /> : (
-              <div className="table-wrap table-cards">
-                <table>
-                  <caption className="sr-only">Diagnósticos y procedimientos de la visita</caption>
-                  <thead><tr><th scope="col">Tipo</th><th scope="col">Detalle</th><th scope="col">Estado</th><th scope="col">Acciones</th></tr></thead>
-                  <tbody>
-                    {findings.map((f) => 'd' in f ? (
-                      <tr key={f.key}>
-                        <td data-label="Tipo">{f.kind}</td>
-                        <td data-label="Detalle">{f.d.description}</td>
-                        <td data-label="Estado">{f.d.certaintyLabel} · {f.d.statusLabel}</td>
-                        <td data-label="Acciones">
-                          {A.canAddDiagnosis ? (
-                            <span className="row-actions">
-                              <Button size="sm" onClick={() => setDlg({ k: 'dx', d: f.d })}>Corregir</Button>
-                              {f.d.status === 'INACTIVE' ? <Button size="sm" onClick={() => setDlg({ k: 'dx-on', d: f.d })}>Reactivar</Button> : <Button size="sm" onClick={() => setDlg({ k: 'dx-off', d: f.d })}>Retirar</Button>}
-                            </span>
-                          ) : '—'}
-                        </td>
-                      </tr>
-                    ) : (
-                      <tr key={f.key}>
-                        <td data-label="Tipo">{f.kind}</td>
-                        <td data-label="Detalle">
-                          <strong>{f.p.name}</strong>
-                          {f.p.notes && <><br /><span className="caption">{f.p.notes}</span></>}
-                          {f.p.closeBlockedMessage && <><br /><span className="caption" style={{ color: 'var(--state-warning-fg)' }}>{f.p.closeBlockedMessage}</span></>}
-                        </td>
-                        <td data-label="Estado">{f.p.statusLabel}</td>
-                        <td data-label="Acciones">
-                          {A.canAddProcedure && f.p.status === 'OPEN' ? (
-                            <span className="row-actions">
-                              <Button size="sm" variant="primary" disabled={!f.p.canClose} onClick={() => void commit(() => api('POST', `${base}/procedures/${f.p.id}/close`, { body: { expectedVersion: f.p.version ?? 1 } }), 'Procedimiento cerrado.').catch((e) => toast.error(errorText(e)))}>Marcar realizado</Button>
-                              <Button size="sm" onClick={() => setDlg({ k: 'proc-cancel', p: f.p })}>Cancelar</Button>
-                            </span>
-                          ) : '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
+              <VisitServicesCard patientId={id} visitId={visitId} editable={canWriteServices} />
+              <section className="card" aria-labelledby="hall-h">
+                <div className="card-head">
+                  <h2 id="hall-h" className="h3">Hallazgos</h2>
+                  <span className="row-actions">
+                    {A.canAddDiagnosis && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setDlg({ k: 'dx' })}>Agregar diagnóstico</Button>}
+                    {A.canAddProcedure && <Button size="sm" icon={<Plus size={16} aria-hidden="true" />} onClick={() => setDlg({ k: 'proc' })}>Agregar procedimiento</Button>}
+                  </span>
+                </div>
+                {findings.length === 0 ? <EmptyState title="Sin diagnósticos ni procedimientos en esta visita" /> : (
+                  <div className="table-wrap table-cards">
+                    <table>
+                      <caption className="sr-only">Diagnósticos y procedimientos de la visita</caption>
+                      <thead><tr><th scope="col">Tipo</th><th scope="col">Detalle</th><th scope="col">Estado</th><th scope="col">Acciones</th></tr></thead>
+                      <tbody>
+                        {findings.map((f) => 'd' in f ? (
+                          <tr key={f.key}>
+                            <td data-label="Tipo">{f.kind}</td>
+                            <td data-label="Detalle">{f.d.description}</td>
+                            <td data-label="Estado">{f.d.certaintyLabel} · {f.d.statusLabel}</td>
+                            <td data-label="Acciones">
+                              {A.canAddDiagnosis ? (
+                                <span className="row-actions">
+                                  <Button size="sm" onClick={() => setDlg({ k: 'dx', d: f.d })}>Corregir</Button>
+                                  {f.d.status === 'INACTIVE' ? <Button size="sm" onClick={() => setDlg({ k: 'dx-on', d: f.d })}>Reactivar</Button> : <Button size="sm" onClick={() => setDlg({ k: 'dx-off', d: f.d })}>Retirar</Button>}
+                                </span>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        ) : (
+                          <tr key={f.key}>
+                            <td data-label="Tipo">{f.kind}</td>
+                            <td data-label="Detalle">
+                              <strong>{f.p.name}</strong>
+                              {f.p.notes && <><br /><span className="caption">{f.p.notes}</span></>}
+                              {f.p.closeBlockedMessage && <><br /><span className="caption" style={{ color: 'var(--state-warning-fg)' }}>{f.p.closeBlockedMessage}</span></>}
+                            </td>
+                            <td data-label="Estado">{f.p.statusLabel}</td>
+                            <td data-label="Acciones">
+                              {A.canAddProcedure && f.p.status === 'OPEN' ? (
+                                <span className="row-actions">
+                                  <Button size="sm" variant="primary" disabled={!f.p.canClose} onClick={() => void commit(() => api('POST', `${base}/procedures/${f.p.id}/close`, { body: { expectedVersion: f.p.version ?? 1 } }), 'Procedimiento cerrado.').catch((e) => toast.error(errorText(e)))}>Marcar realizado</Button>
+                                  <Button size="sm" onClick={() => setDlg({ k: 'proc-cancel', p: f.p })}>Cancelar</Button>
+                                </span>
+                              ) : '—'}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </>
+          )}
         </div>
 
-        <aside className="ficha-aside" aria-label="Cobro y evolución">
-          {can('charge:read') && <BillingSummary patientId={id} />}
-          <EvolutionCard key={s.evolution?.etag ?? 'none'} s={s} onSave={(body, followUp) => commit(() => api('PUT', `${base}/visits/${visitId}/evolution`, { body: { body, ...(followUp ? { followUp } : {}), ...(s.evolution?.etag && s.evolution.state === 'DRAFT' ? { expectedEtag: s.evolution.etag } : {}) } }), 'Borrador guardado.')} onAction={(k) => setDlg({ k })} />
+        <aside className="ficha-aside" aria-label="Evolución y cierre">
           {editable && (
-            <section className="card" aria-labelledby="cv-h">
-              <h2 id="cv-h" className="h3" style={{ marginBottom: 'var(--space-4)' }}>Terminar la atención</h2>
+            <section className="card ficha-finish" aria-labelledby="cv-h">
+              <h2 id="cv-h" className="h3">Terminar la consulta</h2>
               {blockers.length > 0 && <Alert tone="warning" title="Aún no puede terminar la consulta">{blockers.map((b) => <p key={b}>{b}</p>)}</Alert>}
-              <p className="caption muted">Los servicios realizados quedan como cuenta pendiente del paciente: en caja se cobran buscándolo por su DNI.</p>
-              <Button variant="primary" disabled={!A.canCloseVisit} onClick={() => setDlg({ k: 'visit-close' })}>Terminar consulta</Button>
+              <p className="caption muted">Los servicios realizados pasan a caja para el cobro.</p>
+              <Button variant="primary" size="lg" disabled={!A.canCloseVisit} onClick={() => setDlg({ k: 'visit-close' })}>Terminar consulta</Button>
             </section>
           )}
+          <EvolutionCard key={s.evolution?.etag ?? 'none'} s={s} onSave={(body, followUp) => commit(() => api('PUT', `${base}/visits/${visitId}/evolution`, { body: { body, ...(followUp ? { followUp } : {}), ...(s.evolution?.etag && s.evolution.state === 'DRAFT' ? { expectedEtag: s.evolution.etag } : {}) } }), 'Borrador guardado.')} onAction={(k) => setDlg({ k })} />
+          {can('charge:read') && <BillingSummary patientId={id} />}
         </aside>
       </div>
-      <p className="caption muted" style={{ marginTop: 'var(--space-5)' }}>{s.notice}</p>
 
       {dlg?.k === 'allergy' && <AllergyDialog patientId={id} assessment={s.allergyAssessment} commit={commit} onClose={close} />}
       {dlg?.k === 'dx' && <DiagnosisDialog patientId={id} visitId={visitId} current={dlg.d} commit={commit} onClose={close} />}
@@ -232,7 +263,7 @@ export function VisitSheetPage() {
           onConfirm={() => commit(() => api('POST', `${base}/visits/${visitId}/close`, { body: { expectedVersion: s.visit.version ?? 1 } }), 'Consulta terminada: la cuenta pasó a caja.')}
         />
       )}
-    </>
+    </div>
   );
 }
 

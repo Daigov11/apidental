@@ -19,6 +19,10 @@ export class AddVisitServiceDto {
   @IsOptional() @IsInt() @Min(1) @Max(99) quantity?: number;
 }
 
+export class SetVisitServiceQuantityDto {
+  @IsInt() @Min(1) @Max(99) quantity!: number;
+}
+
 type Row = { id: string; productId: string; name: string; unitPriceCents: number; teeth: unknown; quantity: number; status: string; saleId: string | null; createdAt: Date };
 
 export const presentVisitService = (r: Row) => ({
@@ -77,6 +81,32 @@ export class VisitServicesService {
           });
           await this.audit.record({ action: 'VISIT_SERVICE_ADDED', entity: 'VisitService', entityId: created.id, patientId, userId: actor.user.id, clinicId: d.clinicId, branchId: d.branchId, meta, summary: { visitId, productId: product.id, quantity, unitPriceCents: product.priceCents, teethCount: teeth.length } }, tx);
           return created;
+        }),
+      ),
+    );
+    return presentVisitService(row);
+  }
+
+  /** Vista sencilla: cambia cuántas piezas (o veces) se hizo un servicio sin piezas marcadas. Con piezas, la cantidad la dan las piezas. */
+  async setQuantity(actor: AuthPrincipal, patientId: string, visitId: string, serviceId: string, dto: SetVisitServiceQuantityDto, meta: RequestMeta) {
+    const d = await this.access.authorize(actor, patientId, 'write', ['services'], meta);
+    const row = await withVisitDenial(this.access, actor, patientId, meta, () =>
+      withTxRetry(() =>
+        this.db.$transaction(async (tx) => {
+          await this.access.assertStillAuthorized(tx, actor, d, meta);
+          const visit = await lockVisitShared(tx, visitId, d.clinicId, patientId);
+          assertVisitWriter(visit, actor, d);
+          if (visit.status !== 'OPEN') throw new ConflictException({ message: 'La consulta ya terminó: no se cambian servicios', code: 'VISIT_NOT_OPEN' });
+          const cur = await tx.visitService.findFirst({ where: { id: serviceId, visitId, clinicId: d.clinicId } });
+          if (!cur || cur.status !== 'ACTIVE') throw new NotFoundException('Servicio no encontrado');
+          if (cur.saleId) throw new ConflictException({ message: 'Ese servicio ya se cobró: no se puede cambiar', code: 'SERVICE_BILLED' });
+          if (Array.isArray(cur.teeth) && cur.teeth.length > 0) {
+            throw new ConflictException({ message: 'Este servicio tiene piezas marcadas: la cantidad es el número de piezas', code: 'SERVICE_HAS_TEETH' });
+          }
+          if (cur.quantity === dto.quantity) return cur;
+          const updated = await tx.visitService.update({ where: { id: serviceId }, data: { quantity: dto.quantity } });
+          await this.audit.record({ action: 'VISIT_SERVICE_QUANTITY_CHANGED', entity: 'VisitService', entityId: serviceId, patientId, userId: actor.user.id, clinicId: d.clinicId, branchId: d.branchId, meta, summary: { visitId, from: cur.quantity, to: dto.quantity } }, tx);
+          return updated;
         }),
       ),
     );

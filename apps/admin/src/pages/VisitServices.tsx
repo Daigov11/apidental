@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Minus, Plus, Search, Trash2 } from 'lucide-react';
 import { get, post } from '../api/client';
 import type { Product } from '../api/types';
 import { fmtMoney } from '../lib/money';
@@ -128,5 +128,117 @@ function AddServiceDialog({ base, onClose, onDone }: { base: string; onClose: ()
       {teeth.length === 0 && <TextField label="Cantidad" inputMode="numeric" value={quantity} onChange={(e) => setQuantity(e.target.value.replace(/\D/g, ''))} style={{ width: '6rem' }} />}
       {svc && Number.isInteger(qty) && qty > 0 && <p><strong>{svc.name}</strong> × {qty} = <strong>{fmtMoney(svc.priceCents * qty)}</strong></p>}
     </Dialog>
+  );
+}
+
+/**
+ * Vista sencilla de «Servicios realizados»: sin marcar dientes. Un toque en un servicio lo agrega; con − y + se cuenta en cuántas
+ * piezas (o cuántas veces) se hizo. Un servicio que se cobra una sola vez (p. ej. una limpieza) se deja en 1. Es lo que cobra caja.
+ */
+export function QuickServicesCard({ patientId, visitId, editable }: { patientId: string; visitId: string; editable: boolean }) {
+  const toast = useToast();
+  const base = `/patients/${patientId}/clinical/visits/${visitId}/services`;
+  const list = useAsync(() => get<{ items: VisitServiceItem[]; totalCents: number }>(base), [base]);
+  const catalog = useAsync(() => (editable ? get<Product[]>('/products', { kind: 'SERVICE' }) : Promise.resolve([] as Product[])), [editable]);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [filter, setFilter] = useState('');
+  const items = list.data?.items ?? [];
+  const services = useMemo(() => (catalog.data ?? []).filter((p) => p.active !== false), [catalog.data]);
+  const shown = useMemo(() => {
+    const q = filter.trim().toLocaleLowerCase('es');
+    return q ? services.filter((p) => p.name.toLocaleLowerCase('es').includes(q)) : services;
+  }, [services, filter]);
+  /** Línea «por cantidad» (sin piezas marcadas) de un servicio: es la que mueve el contador. */
+  const lineOf = (productId: string) => items.find((i) => i.productId === productId && i.teeth.length === 0 && !i.billed);
+
+  const run = async (key: string, fn: () => Promise<unknown>) => {
+    if (busy) return;
+    setBusy(key);
+    try { await fn(); } catch (e) { toast.error(errorText(e)); } finally { setBusy(null); list.reload(); }
+  };
+  const tap = (p: Product) => {
+    const line = lineOf(p.id);
+    if (line) return void run(p.id, () => post(`${base}/${line.id}/quantity`, { quantity: Math.min(99, line.quantity + 1) }));
+    void run(p.id, () => post(base, { productId: p.id, quantity: 1 }));
+  };
+  const step = (s: VisitServiceItem, delta: number) => {
+    const next = s.quantity + delta;
+    if (next < 1) return void run(s.id, () => post(`${base}/${s.id}/remove`));
+    if (next > 99) return;
+    void run(s.id, () => post(`${base}/${s.id}/quantity`, { quantity: next }));
+  };
+
+  return (
+    <section className="card quick-services" aria-labelledby="qs-h">
+      <div className="card-head">
+        <h2 id="qs-h" className="h3">Servicios realizados</h2>
+        {list.data && <span className="quick-total" aria-live="polite">Total <strong>{fmtMoney(list.data.totalCents)}</strong></span>}
+      </div>
+
+      {editable && (
+        <div className="quick-pick">
+          <div className="quick-pick-head">
+            <p className="muted">Toque lo que le hizo al paciente. Si lo hizo en varias piezas, súmelas con <strong>+</strong>.</p>
+            {services.length > 8 && (
+              <label className="quick-search">
+                <Search size={16} aria-hidden="true" />
+                <span className="sr-only">Buscar servicio</span>
+                <input type="search" placeholder="Buscar servicio" value={filter} onChange={(e) => setFilter(e.target.value)} />
+              </label>
+            )}
+          </div>
+          {catalog.loading && !catalog.data && <Loading rows={1} label="Cargando servicios" />}
+          {catalog.error != null && <ErrorState error={catalog.error} onRetry={catalog.reload} />}
+          {catalog.data && services.length === 0 && <Alert tone="warning">No hay servicios en el catálogo. Pida al administrador que los cree en «Catálogo» (tipo Servicio, con su precio).</Alert>}
+          {shown.length > 0 && (
+            <ul className="quick-grid" role="list">
+              {shown.map((p) => {
+                const line = lineOf(p.id);
+                return (
+                  <li key={p.id}>
+                    <button type="button" className={`quick-tile${line ? ' is-on' : ''}`} aria-pressed={!!line} aria-label={`${p.name}, ${fmtMoney(p.priceCents)}${line ? `, ${line.quantity} en la cuenta` : ''}`} disabled={busy !== null} onClick={() => tap(p)}>
+                      <span className="quick-name">{p.name}</span>
+                      <span className="quick-price">{fmtMoney(p.priceCents)}</span>
+                      {line && <span className="quick-count" aria-hidden="true">× {line.quantity}</span>}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {services.length > 0 && shown.length === 0 && <p className="muted">Ningún servicio coincide con «{filter}».</p>}
+        </div>
+      )}
+
+      {list.loading && !list.data && <Loading rows={2} />}
+      {list.error != null && <ErrorState error={list.error} onRetry={list.reload} />}
+      {list.data && items.length === 0 && !editable && <EmptyState title="Sin servicios registrados en esta visita" />}
+      {items.length > 0 && (
+        <ul className="quick-lines" role="list" aria-label="Servicios de esta visita">
+          {items.map((s) => {
+            const counter = editable && !s.billed && s.teeth.length === 0;
+            return (
+              <li key={s.id} className="quick-line">
+                <div className="quick-line-name">
+                  <strong>{s.name}</strong>
+                  <span className="caption muted">{fmtMoney(s.unitPriceCents)} c/u{s.teeth.length > 0 ? ` · piezas ${s.teeth.join(', ')}` : ''}{s.billed ? ' · cobrado' : ''}</span>
+                </div>
+                {counter ? (
+                  <div className="stepper" role="group" aria-label={`Cantidad de ${s.name}`}>
+                    <button type="button" aria-label={s.quantity === 1 ? `Quitar ${s.name}` : `Una menos de ${s.name}`} disabled={busy !== null} onClick={() => step(s, -1)}>{s.quantity === 1 ? <Trash2 size={16} aria-hidden="true" /> : <Minus size={16} aria-hidden="true" />}</button>
+                    <output aria-live="polite">{s.quantity}</output>
+                    <button type="button" aria-label={`Una más de ${s.name}`} disabled={busy !== null || s.quantity >= 99} onClick={() => step(s, 1)}><Plus size={16} aria-hidden="true" /></button>
+                  </div>
+                ) : (
+                  <span className="quick-qty tabular">× {s.quantity}</span>
+                )}
+                <span className="quick-sub tabular">{fmtMoney(s.subtotalCents)}</span>
+              </li>
+            );
+          })}
+          <li className="quick-line quick-line-total"><span>Total a cobrar</span><strong className="tabular">{fmtMoney(list.data!.totalCents)}</strong></li>
+        </ul>
+      )}
+    </section>
   );
 }
