@@ -14,6 +14,8 @@ import { ClinicalVisitsService } from './clinical-visits.service.js';
 import { ProcedureDefinitionsService } from './procedure-definitions.service.js';
 import { OdontogramController } from './odontogram/odontogram.controller.js';
 import { OdontogramService } from './odontogram/odontogram.service.js';
+import { VisitOdontogramController } from './odontogram/visit-odontogram.controller.js';
+import { VisitOdontogramService } from './odontogram/visit-odontogram.service.js';
 import { ClinicalAlertsService } from './clinical-alerts.service.js';
 import { ClinicalHistoryController } from './clinical-history.controller.js';
 import { ClinicalHistoryService } from './clinical-history.service.js';
@@ -26,6 +28,7 @@ import { ClinicalController } from './clinical.controller.js';
     ClinicalHistoryController,
     ClinicalCareController,
     OdontogramController,
+    VisitOdontogramController,
   ],
   providers: [
     VisitServicesService,
@@ -42,6 +45,7 @@ import { ClinicalController } from './clinical.controller.js';
     ClinicalNotesService,
     ClinicalSheetService,
     OdontogramService,
+    VisitOdontogramService,
   ],
   exports: [ClinicalAccessService, CareRelationshipsService, ClinicalAllergyAssessmentService],
 })

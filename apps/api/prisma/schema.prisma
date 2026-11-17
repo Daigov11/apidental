@@ -347,6 +347,7 @@ model Patient {
   procedures         ClinicalProcedure[]
   notes              ClinicalNote[]
   odontograms        ClinicalOdontogram[]
+  visitOdontograms   ClinicalVisitOdontogram[]
   appointments       Appointment[]
   clinicalAlerts     ClinicalAlert[]
   prescriptions      Prescription[]
@@ -759,6 +760,7 @@ enum ReauthPurpose {
   AUTHORIZE_DIRECTOR_PROVISIONING
   CORRECT_ODONTOGRAM
   MARK_ODONTOGRAM_ERROR
+  CORRECT_VISIT_ODONTOGRAM
 }
 
 enum PasswordRecoveryStatus {
@@ -1330,6 +1332,7 @@ model ClinicalVisit {
   procedures    ClinicalProcedure[]
   clinicalNotes ClinicalNote[]
   services      VisitService[]
+  odontograms   ClinicalVisitOdontogram[]
   appointment   Appointment?
 
   @@unique([patientId, visitNumber])
@@ -1529,6 +1532,66 @@ model ClinicalOdontogram {
   @@unique([patientId, version])
   @@index([clinicId, patientId])
   @@map("clinical_odontograms")
+}
+
+// ---------------------------------------------------------------------------
+// Incremento 6.1: odontograma POR VISITA en dos fases, como en la ficha en papel de la clínica:
+// DIAGNOSIS ("odontograma de diagnóstico": cómo llega el paciente) y POST_TREATMENT ("odontograma post tratamiento":
+// cómo sale). Cada fase es una cadena de versiones propia. Al cerrar la visita, la última fase guardada pasa a ser la
+// versión vigente del odontograma del paciente (cadena `clinical_odontograms`).
+// ---------------------------------------------------------------------------
+
+enum VisitOdontogramPhase {
+  DIAGNOSIS
+  POST_TREATMENT
+}
+
+enum VisitOdontogramStatus {
+  DRAFT
+  CLOSED
+  DISCARDED
+}
+
+enum VisitOdontogramChangeKind {
+  CREATED
+  CLOSED
+  CORRECTED
+  DISCARDED
+}
+
+model ClinicalVisitOdontogram {
+  id            String                    @id @default(uuid()) @db.Char(36)
+  clinicId      String                    @map("clinic_id") @db.Char(36)
+  patientId     String                    @map("patient_id") @db.Char(36)
+  visitId       String                    @map("visit_id") @db.Char(36)
+  phase         VisitOdontogramPhase
+  version       Int
+  supersedesId  String?                   @map("supersedes_id") @db.Char(36)
+  /// = "visit_id|phase" en la versión vigente de la fase; NULL en las reemplazadas (una sola vigente por fase y visita).
+  currentKey    String?                   @unique @map("current_key") @db.VarChar(60)
+  status        VisitOdontogramStatus
+  dentition     OdontogramDentition
+  /// Misma estructura que el odontograma del paciente (validada contra la especificación). Jamás a la auditoría.
+  data          Json
+  /// Ediciones del borrador en el sitio.
+  revision      Int                       @default(0)
+  changeKind    VisitOdontogramChangeKind @map("change_kind")
+  /// Obligatorio al corregir o descartar.
+  changeReason  String?                   @map("change_reason") @db.VarChar(300)
+  /// SHA-256 del contenido al guardar: evidencia de integridad, NO una firma.
+  contentHash   String?                   @map("content_hash") @db.Char(64)
+  closedAt      DateTime?                 @map("closed_at") @db.DateTime(3)
+  reauthProofId String?                   @map("reauth_proof_id") @db.Char(36)
+  createdById   String                    @map("created_by_id") @db.Char(36)
+  createdAt     DateTime                  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt     DateTime                  @default(now()) @updatedAt @map("updated_at") @db.DateTime(3)
+
+  patient Patient       @relation(fields: [patientId, clinicId], references: [id, clinicId], onDelete: Restrict)
+  visit   ClinicalVisit @relation(fields: [visitId, clinicId, patientId], references: [id, clinicId, patientId], onDelete: Restrict)
+
+  @@unique([visitId, phase, version])
+  @@index([clinicId, patientId])
+  @@map("clinical_visit_odontograms")
 }
 
 // ---------------------------------------------------------------------------

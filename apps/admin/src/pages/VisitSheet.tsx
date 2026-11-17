@@ -10,7 +10,7 @@ import { Button } from '../ui/Button';
 import { TextAreaField } from '../ui/fields';
 import { Alert, Badge, EmptyState, ErrorState, Loading, errorText, useToast } from '../ui/feedback';
 import { ReasonDialog } from '../ui/overlays';
-import { OdontogramCanvas, useOdontogram } from './odontogram/useOdontogram';
+import { VisitOdontogram } from './odontogram/VisitOdontogram';
 import { QuickServicesCard, VisitServicesCard } from './VisitServices';
 import { VisitPrescriptionsCard } from './VisitPrescriptions';
 import { AllergyDialog, CLOSE_BLOCKERS, ConfirmDialog, DiagnosisDialog, PasswordDialog, ProcedureDialog } from './VisitSheetParts';
@@ -43,7 +43,6 @@ export function VisitSheetPage() {
   const sheet = useAsync(() => get<Sheet>(`/patients/${id}/clinical/visits/${visitId}/sheet`), [id, visitId]);
   const [dlg, setDlg] = useState<Dlg | null>(null);
   const { me, can } = useAuth();
-  const od = useOdontogram(id);
   // Datos de identificación para la tarjeta del paciente; si el perfil no puede leerlos, la tarjeta se arma sin documento.
   const person = useAsync(() => get<PatientDetail>(`/patients/${id}`).catch(() => null), [id]);
   const [mode, setMode] = useFichaMode();
@@ -139,15 +138,7 @@ export function VisitSheetPage() {
             </>
           ) : (
             <>
-              <section className="card" aria-labelledby="od-h">
-                <div className="card-head">
-                  <h2 id="od-h" className="h3">Odontograma</h2>
-                  {od.official && <span className="caption muted">Versión {od.official.version} · {od.official.stateLabel}</span>}
-                </div>
-                {od.view.loading && !od.view.data ? <Loading rows={2} label="Cargando el odontograma" /> : od.view.error != null ? <ErrorState error={od.view.error} onRetry={od.view.reload} /> : (
-                  <OdontogramCanvas patientId={id} od={od} canWrite={canWriteServices} embedded />
-                )}
-              </section>
+              <VisitOdontogram patientId={id} visitId={visitId} editable={canWriteServices} onChanged={sheet.reload} />
 
               <VisitServicesCard patientId={id} visitId={visitId} editable={canWriteServices} />
               <VisitPrescriptionsCard patientId={id} patientName={s.patient.fullName} visitId={visitId} editable={canWriteServices} />
@@ -262,8 +253,8 @@ export function VisitSheetPage() {
       {dlg?.k === 'visit-close' && (
         <ConfirmDialog
           title="Terminar consulta" confirmLabel="Terminar consulta" onClose={close}
-          explain="La consulta termina: ya no se agregan servicios, diagnósticos, procedimientos ni evolución, y los servicios realizados pasan a caja como cuenta pendiente del paciente. ¿Terminó la atención?"
-          onConfirm={() => commit(() => api('POST', `${base}/visits/${visitId}/close`, { body: { expectedVersion: s.visit.version ?? 1 } }), 'Consulta terminada: la cuenta pasó a caja.')}
+          explain={`La consulta termina: ya no se agregan servicios, diagnósticos, procedimientos ni evolución, y los servicios realizados pasan a caja como cuenta pendiente del paciente.${s.odontogram.phases?.POST_TREATMENT || s.odontogram.phases?.DIAGNOSIS ? ` El odontograma ${s.odontogram.phases?.POST_TREATMENT ? 'post tratamiento' : 'de diagnóstico'} pasará a ser el odontograma vigente del paciente.` : ''} ¿Terminó la atención?`}
+          onConfirm={() => commit(() => api('POST', `${base}/visits/${visitId}/close`, { body: { expectedVersion: s.visit.version ?? 1 } }), s.odontogram.phases?.POST_TREATMENT || s.odontogram.phases?.DIAGNOSIS ? 'Consulta terminada: la cuenta pasó a caja y el odontograma de la visita quedó como el vigente del paciente.' : 'Consulta terminada: la cuenta pasó a caja.')}
         />
       )}
     </div>

@@ -457,3 +457,27 @@ export function describeFindings(
     return { tooth, text: parts.join(' · ') };
   });
 }
+
+/**
+ * Piezas que cambiaron entre dos odontogramas (p. ej. diagnóstico → post tratamiento), con el texto de cada lado.
+ * Una pieza sin registro se describe como "Sin registro".
+ */
+export function diffOdontogram(
+  before: OdontogramData,
+  after: OdontogramData,
+): { tooth: string; before: string; after: string }[] {
+  const text = (d: OdontogramData) =>
+    new Map(describeFindings(d).map((f) => [f.tooth, f.text]));
+  const a = text(before);
+  const b = text(after);
+  const teeth = [...new Set([...a.keys(), ...b.keys()])].sort(
+    (x, y) => Number(x) - Number(y),
+  );
+  return teeth
+    .filter((t) => a.get(t) !== b.get(t))
+    .map((t) => ({
+      tooth: t,
+      before: a.get(t) ?? 'Sin registro',
+      after: b.get(t) ?? 'Sin registro',
+    }));
+}

@@ -31,11 +31,16 @@ function compact(teeth: Record<string, ToothEntry>): Record<string, ToothEntry> 
  * Editor del borrador: se marca con un pincel (caries, restauración…) sobre la superficie, o se elige la pieza y se
  * completa en el panel. Se guarda solo (PUT …/draft con expectedEtag); «Guardar versión» es el único paso final.
  */
-export function OdontogramEditor({ patientId, draft, spec, onFinished }: {
-  patientId: string; draft: OdontogramVersion; spec: OdontogramSpecLite; onFinished: (msg: string) => void;
+export function OdontogramEditor({ patientId, draft, spec, onFinished, base: baseProp, correction }: {
+  patientId: string; draft: Pick<OdontogramVersion, 'version' | 'dentition' | 'data' | 'etag' | 'kind'>; spec: OdontogramSpecLite; onFinished: (msg: string) => void;
+  /** Rutas del borrador (`…/draft`, `…/close`, `…/discard`); por omisión, el odontograma general del paciente. */
+  base?: string;
+  /** Modo corrección de una versión guardada: no hay borrador ni guardado automático; se envía todo junto con motivo y contraseña. */
+  correction?: { onSubmit: (data: OdontogramDoc, dentition: Dentition, reason: string, password: string) => Promise<void>; onCancel: () => void };
 }) {
   const toast = useToast();
-  const base = `/patients/${patientId}/clinical/odontogram`;
+  const base = baseProp ?? `/patients/${patientId}/clinical/odontogram`;
+  const [reason, setReason] = useState('');
   const [doc, setDoc] = useState<OdontogramDoc>(() => ({ ...emptyDoc(), ...(draft.data ?? {}) } as OdontogramDoc));
   const [dentition, setDentition] = useState<Dentition>(draft.dentition as Dentition);
   const [selected, setSelected] = useState<string | null>(null);
@@ -59,10 +64,10 @@ export function OdontogramEditor({ patientId, draft, spec, onFinished }: {
     const { doc: d, dentition: dn } = latest.current;
     const run = (async () => {
       try {
-        const res = await api<{ draft: OdontogramVersion }>('PUT', `${base}/draft`, {
+        const res = await api<{ draft?: OdontogramVersion; odontogram?: OdontogramVersion }>('PUT', `${base}/draft`, {
           body: { data: { ...d, teeth: compact(d.teeth) }, dentition: dn, expectedEtag: etag.current },
         });
-        etag.current = res.draft.etag ?? etag.current;
+        etag.current = (res.draft ?? res.odontogram)?.etag ?? etag.current;
         setSaveError(null);
         setSaveState(dirty.current ? 'dirty' : 'saved');
       } catch (e) {
@@ -85,7 +90,7 @@ export function OdontogramEditor({ patientId, draft, spec, onFinished }: {
   };
 
   useEffect(() => {
-    if (saveState !== 'dirty') return;
+    if (correction || saveState !== 'dirty') return;
     const t = setTimeout(() => { void flush().catch(() => undefined); }, 1200);
     return () => clearTimeout(t);
   }, [saveState, doc, dentition, flush]);
@@ -112,6 +117,10 @@ export function OdontogramEditor({ patientId, draft, spec, onFinished }: {
   const saveVersion = async () => {
     setClosing(true);
     try {
+      if (correction) {
+        await correction.onSubmit({ ...doc, teeth: compact(doc.teeth) }, dentition, reason.trim(), password);
+        return;
+      }
       await flush();
       await post(`${base}/close`, { expectedEtag: etag.current, ...(needsReauth ? { password } : {}) });
       onFinished('Versión guardada. Quedó registrada y ya no se puede modificar.');
@@ -147,7 +156,7 @@ export function OdontogramEditor({ patientId, draft, spec, onFinished }: {
           </button>
         </div>
         <p className="caption muted" aria-live="polite" style={{ marginLeft: 'auto' }}>
-          <Badge tone={saveState === 'error' ? 'danger' : saveState === 'saved' ? 'success' : 'neutral'}>{statusText}</Badge>
+          {correction ? <Badge tone="warning">Corrección</Badge> : <Badge tone={saveState === 'error' ? 'danger' : saveState === 'saved' ? 'success' : 'neutral'}>{statusText}</Badge>}
         </p>
       </div>
       <p className="caption muted">Elija una pieza y luego un hallazgo; toque la superficie en el panel para marcarla (otra vez, para quitarla).</p>
@@ -218,20 +227,29 @@ export function OdontogramEditor({ patientId, draft, spec, onFinished }: {
 
       <div className="card" style={{ marginTop: 'var(--space-6)' }}>
         <TextAreaField label="Notas generales" optional maxLength={spec.limits?.generalNotes ?? 1000} value={doc.notes ?? ''} onChange={(e) => change({ ...doc, notes: e.target.value })} />
-        {needsReauth && (
+        {correction && (
+          <TextField label="Motivo de la corrección" value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} help="Ejemplo: se registró la pieza equivocada." />
+        )}
+        {(needsReauth || correction) && (
           <TextField
             label="Confirme con su contraseña" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)}
             help="Esta confirmación no es una firma digital, legal ni clínica. Se pide porque es una corrección o rectificación."
           />
         )}
         <div className="toolbar" style={{ justifyContent: 'space-between' }}>
-          <span className="muted">{marksCount} pieza(s) con hallazgos · versión {draft.version} en borrador</span>
+          <span className="muted">{marksCount} pieza(s) con hallazgos · {correction ? `corrigiendo la versión ${draft.version}` : `versión ${draft.version} en borrador`}</span>
           <span style={{ display: 'flex', gap: 'var(--space-4)', flexWrap: 'wrap' }}>
-            <Button variant="danger" icon={<Trash2 size={18} aria-hidden="true" />} onClick={() => setDiscard(true)} disabled={closing}>Descartar borrador</Button>
-            <Button variant="primary" icon={<Save size={18} aria-hidden="true" />} loading={closing} loadingText="Guardando versión…" disabled={needsReauth && !password} onClick={() => void saveVersion()}>Guardar versión</Button>
+            {correction
+              ? <Button onClick={correction.onCancel} disabled={closing}>Cancelar</Button>
+              : <Button variant="danger" icon={<Trash2 size={18} aria-hidden="true" />} onClick={() => setDiscard(true)} disabled={closing}>Descartar borrador</Button>}
+            <Button
+              variant="primary" icon={<Save size={18} aria-hidden="true" />} loading={closing} loadingText="Guardando…"
+              disabled={(needsReauth || !!correction) && !password || (!!correction && reason.trim().length < 3)}
+              onClick={() => void saveVersion()}
+            >{correction ? 'Guardar corrección' : 'Guardar versión'}</Button>
           </span>
         </div>
-        <p className="caption muted" style={{ marginTop: 'var(--space-3)' }}><Check size={14} aria-hidden="true" /> Al guardar la versión queda inmutable; para cambiar algo se abre otra versión.</p>
+        <p className="caption muted" style={{ marginTop: 'var(--space-3)' }}><Check size={14} aria-hidden="true" /> {correction ? 'La versión anterior se conserva; la corrección queda registrada con su motivo.' : 'Al guardar la versión queda inmutable; para cambiar algo se abre otra versión.'}</p>
       </div>
 
       {discard && (

@@ -110,6 +110,34 @@ export class ClinicalSheetService {
         .filter((o) => o.status === 'CLOSED' && !erroredIds.has(o.id))
         .at(-1) ?? null;
     const currentOdonto = odonto.at(-1) ?? null;
+    // Fases del odontograma de la visita (resumen sin el detalle: el panel lo abre aparte, con su propia auditoría).
+    const visitOdonto = await this.db.clinicalVisitOdontogram.findMany({
+      where: { visitId, clinicId: d.clinicId, currentKey: { not: null } },
+      select: {
+        phase: true,
+        status: true,
+        version: true,
+        changeKind: true,
+        closedAt: true,
+      },
+    });
+    const phaseOf = (ph: 'DIAGNOSIS' | 'POST_TREATMENT') => {
+      const r = visitOdonto.find((o) => o.phase === ph);
+      return r && r.status !== 'DISCARDED'
+        ? {
+            state:
+              r.status === 'CLOSED' && r.changeKind === 'CORRECTED'
+                ? 'CORRECTED'
+                : r.status,
+            version: r.version,
+            savedAt: r.closedAt,
+          }
+        : null;
+    };
+    const odontoPhases = {
+      DIAGNOSIS: phaseOf('DIAGNOSIS'),
+      POST_TREATMENT: phaseOf('POST_TREATMENT'),
+    };
     const defs = await this.db.procedureDefinition.findMany({
       where: {
         clinicId: d.clinicId,
@@ -132,6 +160,9 @@ export class ClinicalSheetService {
     const closeVisitBlockedBy = [
       ...(openProcedures > 0 ? ['OPEN_PROCEDURES'] : []),
       ...(draft ? ['OPEN_NOTE'] : []),
+      ...(Object.values(odontoPhases).some((p) => p?.state === 'DRAFT')
+        ? ['OPEN_ODONTOGRAM']
+        : []),
     ];
 
     return {
@@ -216,6 +247,8 @@ export class ClinicalSheetService {
           currentOdonto?.status === 'DRAFT' &&
           currentOdonto.createdById === actor.user.id,
         formatNotice: 'Formato clínico por validar.',
+        /** Diagnóstico (cómo llega) y post tratamiento (cómo sale) de ESTA visita. */
+        phases: odontoPhases,
       },
       evolution: note
         ? presentNote(note as NoteRow, visit.dentistUserId === actor.user.id)

@@ -221,6 +221,12 @@ dl.facts dd { margin: 0; font-weight: 600; }
 .tabs { display: flex; gap: var(--space-5); border-bottom: 1px solid var(--border-default); margin-bottom: var(--space-6); }
 .tabs a { padding: var(--space-4) 0; text-decoration: none; color: var(--text-muted); font-weight: 600; border-bottom: 3px solid transparent; }
 .tabs a[aria-current='page'] { color: var(--state-brand-fg); border-bottom-color: var(--action-primary); }
+.tabs button { display: inline-flex; align-items: center; gap: var(--space-3); padding: var(--space-4) 0; background: none; border: 0; border-bottom: 3px solid transparent; color: var(--text-muted); font: inherit; font-weight: 600; cursor: pointer; }
+.tabs button[aria-selected='true'] { color: var(--state-brand-fg); border-bottom-color: var(--action-primary); }
+.odonto-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: var(--space-5); }
+.odonto-compare .odonto-figure { margin: 0; }
+.odonto-changes { list-style: none; padding: 0; margin: 0; display: grid; gap: var(--space-3); }
+.odonto-changes li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-md); }
 .odonto-figure { background: #fff; border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: var(--space-5); overflow-x: auto; }
 .odonto-figure img { display: block; max-width: none; height: auto; }
 .legend { display: flex; flex-wrap: wrap; gap: var(--space-4) var(--space-6); list-style: none; padding: 0; margin: var(--space-4) 0 0; font-size: var(--text-caption-size); }
