@@ -51,7 +51,11 @@ export interface Sheet {
   visit: { id: string; number: number; status: string; statusLabel: string; reason: string | null; startedAt: string; closedAt: string | null; version?: number };
   diagnoses: { id: string; version?: number; description: string; code?: string | null; certainty?: string; certaintyLabel: string; status?: string; statusLabel: string }[];
   procedures: { id: string; version?: number; name: string; notes: string | null; status?: string; statusLabel: string; closeBlockedMessage: string | null; canClose?: boolean }[];
-  odontogram: { savedVersion: { version: number; savedAt: string; stateLabel: string } | null; hasDraft: boolean; formatNotice: string };
+  odontogram: {
+    savedVersion: { version: number; savedAt: string; stateLabel: string } | null; hasDraft: boolean; formatNotice: string;
+    /** Diagnóstico (cómo llega) y post tratamiento (cómo sale) de esta visita; sin el detalle. */
+    phases?: Record<VisitOdontogramPhase, { state: string; version: number; savedAt: string | null } | null>;
+  };
   evolution: { state: string; stateLabel: string; body: string | null; followUp: string | null; contentHidden: boolean; etag?: string } | null;
   actions: SheetActions;
   notice: string;
@@ -76,6 +80,16 @@ export interface OdontogramSpecLite {
   limits?: { toothNote?: number; surfaceNote?: number; generalNotes?: number };
 }
 export type Dentition = 'PERMANENT' | 'PRIMARY' | 'MIXED';
+export type VisitOdontogramPhase = 'DIAGNOSIS' | 'POST_TREATMENT';
+export interface VisitOdontogramVersion extends Omit<OdontogramVersion, 'kindLabel' | 'formatNotice'> {
+  phase: VisitOdontogramPhase; phaseLabel: string; etag: string;
+  closure: { savedAt: string | null; integrityHash: string | null } | null;
+}
+export interface VisitOdontogramView {
+  phases: Record<VisitOdontogramPhase, VisitOdontogramVersion | null>;
+  actions: { canStartDiagnosis: boolean; canStartPost: boolean; canCorrect: boolean };
+  formatNotice: string;
+}
 export interface OdontogramDoc { schema: string; schemaVersion: number; teeth: Record<string, ToothEntry>; notes?: string }
 
 // ------------------------------------------------------------------ 4.1 simulación (cobros, comprobantes, fidelización)

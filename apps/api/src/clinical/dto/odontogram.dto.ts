@@ -90,3 +90,36 @@ export class ExportOdontogramQuery {
   @Max(100000)
   version?: number;
 }
+
+// ------------------------------------------------- odontograma de la visita (6.1)
+
+export enum VisitOdontogramPhaseDto {
+  DIAGNOSIS = 'DIAGNOSIS',
+  POST_TREATMENT = 'POST_TREATMENT',
+}
+
+/** Abre el borrador de una fase. Diagnóstico parte del odontograma vigente del paciente; post tratamiento, del diagnóstico. */
+export class StartVisitOdontogramDto {
+  @IsOptional() @IsEnum(DentitionDto) dentition?: DentitionDto;
+}
+
+/** Guardar la fase (inmutable). No exige reautenticación, como el primer guardado del odontograma. */
+export class CloseVisitOdontogramDto {
+  @IsString()
+  @Matches(ETAG, { message: 'expectedEtag no es válido' })
+  expectedEtag!: string;
+}
+
+/** Corrige una fase ya guardada con contenido nuevo: motivo y reautenticación (no es una firma). */
+export class CorrectVisitOdontogramDto extends ReauthInput {
+  @IsString()
+  @Matches(ETAG, { message: 'expectedEtag no es válido' })
+  expectedEtag!: string;
+  @IsObject() data!: Record<string, unknown>;
+  @IsOptional() @IsEnum(DentitionDto) dentition?: DentitionDto;
+  @Transform(trim)
+  @IsString()
+  @MinLength(3, { message: REASON_MSG })
+  @MaxLength(300)
+  reason!: string;
+}

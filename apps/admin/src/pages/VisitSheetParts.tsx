@@ -13,6 +13,7 @@ interface DialogProps { patientId: string; commit: Submit; onClose: () => void }
 export const CLOSE_BLOCKERS: Record<string, string> = {
   OPEN_PROCEDURES: 'Hay procedimientos abiertos: ciérrelos o cancélelos antes de cerrar la visita.',
   OPEN_NOTE: 'La evolución está en borrador: ciérrela o descártela antes de cerrar la visita.',
+  OPEN_ODONTOGRAM: 'El odontograma de la visita está en borrador: guárdelo o descártelo antes de cerrar la visita.',
 };
 
 const SOURCES = [['PATIENT', 'El paciente'], ['GUARDIAN', 'Su representante'], ['DOCUMENT', 'Un documento'], ['PROFESSIONAL', 'Mi valoración'], ['OTHER', 'Otro']] as const;

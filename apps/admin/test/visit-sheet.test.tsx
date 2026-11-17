@@ -18,11 +18,22 @@ const sheet = (over: Record<string, unknown> = {}, actions: Record<string, unkno
   notice: 'Los registros de esta ficha son declaraciones del profesional.',
   ...over,
 });
+const phase = (ph: 'DIAGNOSIS' | 'POST_TREATMENT', teeth: Record<string, unknown>, state = 'CLOSED') => ({
+  phase: ph, phaseLabel: ph, version: 2, revision: 0, etag: '2.0', state, stateLabel: state === 'DRAFT' ? 'Borrador' : 'Guardado', kind: 'CLOSED',
+  dentition: 'PERMANENT', dentitionLabel: 'Permanente', data: { schema: 'apidental.odontogram', schemaVersion: 1, teeth }, contentHidden: false,
+  closure: state === 'DRAFT' ? null : { savedAt: '2026-10-15T23:10:00.000Z', integrityHash: 'x' }, lastChange: { reason: null, at: '2026-10-15T23:10:00.000Z' },
+});
+const visitOdo = (phases: Record<string, unknown> = {}, actions: Record<string, unknown> = {}) => ({
+  phases: { DIAGNOSIS: null, POST_TREATMENT: null, ...phases },
+  actions: { canStartDiagnosis: true, canStartPost: false, canCorrect: true, ...actions },
+  formatNotice: 'Formato clínico por validar.',
+});
 const routes = (s: unknown, extra: Record<string, unknown> = {}) => ({
   ...sessionRoutes([...DENTIST_PERMS, 'procedure:read'], ['DENTIST']),
   'GET /patients/p-1/clinical/visits/v-1/sheet': { json: s },
   'GET /patients/p-1': { json: { id: 'p-1', fullName: 'Ingrid Demo Pasaporte', identifiers: [{ type: 'PASSPORT', number: 'P1234567' }], age: 39, isMinor: false } },
   'GET /patients/p-1/clinical/odontogram': { json: { official: null, draft: null, versionsCount: 0, formatNotice: 'Formato clínico por validar.' } },
+  'GET /patients/p-1/clinical/visits/v-1/odontogram': { json: visitOdo() },
   'GET /clinical/odontogram/spec': { json: { toothStatuses: [], surfaces: [], surfaceStates: [], marks: [] } },
   ...extra,
 }) as Parameters<typeof mockApi>[0];
@@ -110,7 +121,10 @@ describe('Ficha de atención editable', () => {
     expect(await screen.findByRole('heading', { name: 'Ingrid Demo Pasaporte' })).toBeInTheDocument();
     expect(await screen.findByText('PASSPORT P1234567')).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Odontograma' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Iniciar odontograma' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Iniciar odontograma de diagnóstico' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Diagnóstico/ })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: /Post tratamiento/ })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Comparar/ })).toBeInTheDocument();
     const hall = screen.getByRole('region', { name: 'Hallazgos' });
     expect(within(hall).getByText('Caries en pieza 16')).toBeInTheDocument();
     expect(within(hall).getByRole('button', { name: 'Marcar realizado' })).toBeInTheDocument();
@@ -125,6 +139,54 @@ describe('Ficha de atención editable', () => {
     })));
     renderApp('/pacientes/p-1/atencion/v-1');
     expect(await screen.findByText('Texto')).toBeInTheDocument();
-    for (const name of [/Agregar/, 'Iniciar odontograma', 'Registrar evaluación', 'Guardar borrador', 'Cerrar la visita', 'Corregir evolución']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+    for (const name of [/Agregar/, /Iniciar odontograma/, 'Registrar evaluación', 'Guardar borrador', 'Cerrar la visita', 'Corregir evolución']) expect(screen.queryByRole('button', { name })).not.toBeInTheDocument();
+  });
+});
+
+describe('Odontograma de la visita: diagnóstico y post tratamiento', () => {
+  const C16 = { '16': { surfaces: { O: { state: 'CARIES' } } } };
+  const R16 = { '16': { surfaces: { O: { state: 'RESTORATION' } } } };
+  const spec = {
+    toothStatuses: [{ code: 'PRESENT', label: 'Presente' }], surfaces: [{ code: 'O', label: 'Oclusal' }],
+    surfaceStates: [{ code: 'CARIES', label: 'Caries' }, { code: 'RESTORATION', label: 'Restauración' }], marks: [],
+  };
+
+  it('el responsable inicia el odontograma de diagnóstico desde la ficha', async () => {
+    const { called } = mockApi(routes(sheet(), { 'POST /patients/p-1/clinical/visits/v-1/odontogram/DIAGNOSIS/draft': { status: 201, json: {} } }));
+    const user = userEvent.setup();
+    renderApp('/pacientes/p-1/atencion/v-1');
+    await user.click(await screen.findByRole('button', { name: 'Iniciar odontograma de diagnóstico' }));
+    await waitFor(() => expect(called('POST', '/patients/p-1/clinical/visits/v-1/odontogram/DIAGNOSIS/draft')).toHaveLength(1));
+  });
+
+  it('con el diagnóstico guardado abre el post tratamiento; Comparar lista las piezas que cambiaron', async () => {
+    mockApi(routes(sheet(), {
+      'GET /patients/p-1/clinical/visits/v-1/odontogram': { json: visitOdo({ DIAGNOSIS: phase('DIAGNOSIS', C16), POST_TREATMENT: phase('POST_TREATMENT', R16) }, { canStartDiagnosis: false }) },
+      'GET /clinical/odontogram/spec': { json: spec },
+    }));
+    const user = userEvent.setup();
+    renderApp('/pacientes/p-1/atencion/v-1');
+    expect(await screen.findByRole('button', { name: 'Descargar PDF' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: /Post tratamiento/ })).toHaveAttribute('aria-selected', 'true');
+    await user.click(screen.getByRole('tab', { name: /Comparar/ }));
+    expect(await screen.findByText('Piezas que cambiaron (1)')).toBeInTheDocument();
+    expect(screen.getByText('Pieza 16')).toBeInTheDocument();
+    expect(screen.getByText(/oclusal caries/)).toBeInTheDocument();
+    expect(screen.getByText(/oclusal restauración/)).toBeInTheDocument();
+  });
+
+  it('sin diagnóstico guardado, el post tratamiento explica que parte de él', async () => {
+    mockApi(routes(sheet()));
+    const user = userEvent.setup();
+    renderApp('/pacientes/p-1/atencion/v-1');
+    await user.click(await screen.findByRole('tab', { name: /Post tratamiento/ }));
+    expect(await screen.findByText(/Guarde primero el odontograma de diagnóstico/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Iniciar odontograma post tratamiento' })).not.toBeInTheDocument();
+  });
+
+  it('un odontograma en borrador impide cerrar la visita y se explica por qué', async () => {
+    mockApi(routes(sheet({}, { canCloseVisit: false, closeVisitBlockedBy: ['OPEN_ODONTOGRAM'] })));
+    renderApp('/pacientes/p-1/atencion/v-1');
+    expect(await screen.findByText(/El odontograma de la visita está en borrador/)).toBeInTheDocument();
   });
 });

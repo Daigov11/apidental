@@ -24,6 +24,11 @@ import {
   type ClinicalAccessDecision,
 } from './clinical-access.service.js';
 import { ClinicalAllergyAssessmentService } from './clinical-allergy-assessment.service.js';
+import { OdontogramService } from './odontogram/odontogram.service.js';
+import {
+  VISIT_PHASES,
+  VisitOdontogramService,
+} from './odontogram/visit-odontogram.service.js';
 import {
   assertVisitWriter,
   lockVisitExclusive,
@@ -84,6 +89,8 @@ export class ClinicalVisitsService {
     private readonly audit: AuditService,
     private readonly access: ClinicalAccessService,
     private readonly assessment: ClinicalAllergyAssessmentService,
+    private readonly odontogram: OdontogramService,
+    private readonly visitOdontograms: VisitOdontogramService,
   ) {}
 
   async open(
@@ -292,6 +299,9 @@ export class ClinicalVisitsService {
       [`visit:${to.toLowerCase()}`],
       meta,
     );
+    const result: { promoted: { version: number } | null } = {
+      promoted: null,
+    };
     const row = await withVisitDenial(this.access, actor, patientId, meta, () =>
       withTxRetry(() =>
         this.db.$transaction(
@@ -331,6 +341,43 @@ export class ClinicalVisitsService {
                   count: drafts,
                 });
               }
+              // Odontograma de la visita: ninguna fase en borrador; la última guardada pasa a ser la vigente del paciente.
+              const odo = await this.visitOdontograms.heads(tx, visitId);
+              const openPhases = VISIT_PHASES.filter(
+                (p) => odo[p]?.status === 'DRAFT',
+              );
+              if (openPhases.length > 0)
+                throw new ConflictException({
+                  message:
+                    'Guarde o descarte el odontograma en borrador antes de cerrar la visita',
+                  code: 'OPEN_ODONTOGRAM',
+                  phases: openPhases,
+                });
+              const src =
+                odo.POST_TREATMENT?.status === 'CLOSED'
+                  ? odo.POST_TREATMENT
+                  : odo.DIAGNOSIS?.status === 'CLOSED'
+                    ? odo.DIAGNOSIS
+                    : null;
+              if (src) {
+                const { visitNumber } =
+                  await tx.clinicalVisit.findUniqueOrThrow({
+                    where: { id: visitId },
+                    select: { visitNumber: true },
+                  });
+                result.promoted = await this.odontogram.promoteFromVisit(
+                  tx,
+                  actor,
+                  d,
+                  meta,
+                  {
+                    visitId,
+                    visitNumber,
+                    dentition: src.dentition,
+                    data: src.data,
+                  },
+                );
+              }
             } else {
               const live = await tx.clinicalProcedure.count({
                 where: {
@@ -361,6 +408,18 @@ export class ClinicalVisitsService {
                   count: notes,
                 });
               }
+              const odo = await this.visitOdontograms.heads(tx, visitId);
+              const liveOdo = VISIT_PHASES.filter(
+                (p) =>
+                  odo[p]?.status === 'DRAFT' || odo[p]?.status === 'CLOSED',
+              );
+              if (liveOdo.length > 0)
+                throw new ConflictException({
+                  message:
+                    'La visita tiene un odontograma registrado; descarte el borrador o, si ya está guardado, cierre la visita en lugar de cancelarla',
+                  code: 'HAS_ODONTOGRAM',
+                  phases: liveOdo,
+                });
             }
             const updated = await tx.clinicalVisit.update({
               where: { id: visitId },
@@ -389,7 +448,10 @@ export class ClinicalVisitsService {
         ),
       ),
     );
-    return present(row as Row);
+    return {
+      ...present(row as Row),
+      ...(to === 'CLOSED' ? { odontogramPromoted: result.promoted } : {}),
+    };
   }
 
   /** Referencias y número de versión: ni motivos ni contenido clínico. */

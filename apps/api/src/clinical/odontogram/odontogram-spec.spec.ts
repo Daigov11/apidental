@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  diffOdontogram,
   emptyOdontogram,
   normalizeOdontogram,
   odontogramHash,
@@ -157,5 +158,33 @@ describe('odontograma: estructura FDI', () => {
     expect(
       renderOdontogramSvg(emptyOdontogram(), 'MIXED').match(/id="tooth-\d\d"/g),
     ).toHaveLength(52);
+  });
+});
+
+describe('diffOdontogram', () => {
+  const d = (teeth: Record<string, unknown>) =>
+    normalizeOdontogram(
+      { schema: 'apidental.odontogram', schemaVersion: 1, teeth },
+      'PERMANENT',
+    );
+  it('lista solo las piezas que cambiaron, en orden FDI, con el texto de antes y después', () => {
+    const before = d({
+      '16': { surfaces: { O: { state: 'CARIES' } } },
+      '11': { status: 'ABSENT' },
+    });
+    const after = d({
+      '16': { surfaces: { O: { state: 'RESTORATION' } } },
+      '11': { status: 'ABSENT' },
+      '36': { marks: ['CROWN'] },
+    });
+    const changes = diffOdontogram(before, after);
+    expect(changes.map((c) => c.tooth)).toEqual(['16', '36']);
+    expect(changes[0]!.before).toContain('Caries');
+    expect(changes[0]!.after).not.toContain('Caries');
+    expect(changes[1]!.before).toBe('Sin registro');
+  });
+  it('sin cambios devuelve una lista vacía', () => {
+    const x = d({ '16': { surfaces: { O: { state: 'CARIES' } } } });
+    expect(diffOdontogram(x, x)).toEqual([]);
   });
 });

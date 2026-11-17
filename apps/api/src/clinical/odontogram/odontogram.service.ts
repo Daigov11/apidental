@@ -776,6 +776,119 @@ export class OdontogramService {
     };
   }
 
+  // ------------------------------------------------------- desde una visita
+
+  /**
+   * Al cerrar una visita, el odontograma guardado de la visita (post tratamiento o, si no lo hay, el de diagnóstico)
+   * pasa a ser la versión vigente del paciente: se agrega un borrador y su versión guardada a la cadena del paciente,
+   * dentro de la transacción del cierre (que ya validó al odontólogo responsable). Si el contenido es igual a la versión
+   * vigente no se agrega nada. Un borrador abierto en el odontograma general impide el cierre (no se pisa trabajo ajeno).
+   */
+  async promoteFromVisit(
+    tx: DbTx,
+    actor: AuthPrincipal,
+    d: ClinicalAccessDecision,
+    meta: RequestMeta,
+    src: {
+      visitId: string;
+      visitNumber: number;
+      dentition: Dentition;
+      data: unknown;
+    },
+  ): Promise<{ version: number } | null> {
+    const patientId = d.patientId;
+    await this.patientLock.lockPatient(tx, patientId);
+    const cur = await this.lockCurrent(tx, patientId, d.clinicId);
+    if (cur?.status === 'DRAFT')
+      throw new ConflictException({
+        message:
+          'Hay un borrador abierto en el odontograma general del paciente; guárdelo o descártelo antes de cerrar la visita',
+        code: 'PATIENT_ODONTOGRAM_DRAFT',
+      });
+    const all = await tx.clinicalOdontogram.findMany({
+      where: { patientId, clinicId: d.clinicId },
+      select: { id: true, status: true, supersedesId: true },
+    });
+    const official = officialOf(all);
+    const base = official
+      ? ((await tx.clinicalOdontogram.findUniqueOrThrow({
+          where: { id: official.id },
+        })) as Row)
+      : null;
+    const data = normalizeOdontogram(src.data, src.dentition);
+    if (
+      base &&
+      base.dentition === src.dentition &&
+      JSON.stringify(normalizeOdontogram(base.data, base.dentition)) ===
+        JSON.stringify(data)
+    )
+      return null;
+    const kind: Kind = cur ? 'UPDATED' : 'CREATED';
+    if (cur)
+      await tx.clinicalOdontogram.update({
+        where: { id: cur.id },
+        data: { currentKey: null },
+      });
+    const draftVersion = (cur?.version ?? 0) + 1;
+    const draft = await tx.clinicalOdontogram.create({
+      data: {
+        clinicId: d.clinicId,
+        patientId,
+        version: draftVersion,
+        supersedesId: cur?.id ?? null,
+        currentKey: patientId,
+        status: 'DRAFT',
+        dentition: src.dentition,
+        data: data as unknown as Prisma.InputJsonValue,
+        changeKind: kind,
+        createdById: actor.user.id,
+      },
+    });
+    await tx.clinicalOdontogram.update({
+      where: { id: draft.id },
+      data: { currentKey: null },
+    });
+    const version = draftVersion + 1;
+    const closed = await tx.clinicalOdontogram.create({
+      data: {
+        clinicId: d.clinicId,
+        patientId,
+        version,
+        supersedesId: draft.id,
+        currentKey: patientId,
+        status: 'CLOSED',
+        dentition: src.dentition,
+        data: data as unknown as Prisma.InputJsonValue,
+        changeKind: kind,
+        contentHash: odontogramHash({
+          patientId,
+          version,
+          dentition: src.dentition,
+          data,
+        }),
+        closedAt: new Date(),
+        createdById: actor.user.id,
+      },
+    });
+    await this.record(
+      tx,
+      actor,
+      d,
+      meta,
+      'CLOSED',
+      closed as Row,
+      kind,
+      ['data'],
+      false,
+      {
+        source: 'visit',
+        visitId: src.visitId,
+        visitNumber: src.visitNumber,
+      },
+    );
+    return { version };
+  }
+
   // ------------------------------------------------------------------ internos
 
   /** Cadena resumida (sin el contenido) ordenada por versión. */
@@ -925,6 +1038,7 @@ export class OdontogramService {
     kind: Kind,
     fields: string[],
     reauthenticated = false,
+    extra: Record<string, string | number> = {},
   ) {
     return this.audit.record(
       {
@@ -942,6 +1056,7 @@ export class OdontogramService {
           changeKind: kind,
           fields,
           via: d.via,
+          ...extra,
           ...(reauthenticated
             ? { reauthenticated: true, isSignature: false }
             : {}),
