@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, NotFoundException, Param, ParseUUIDPipe, Post, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { Throttle } from '@nestjs/throttler';
 import type { AuthPrincipal } from '../auth/auth.types.js';
 import { CurrentPrincipal } from '../common/decorators/current-principal.decorator.js';
@@ -8,6 +9,7 @@ import { Meta, type RequestMeta } from '../common/utils/request-meta.js';
 import { AcceptBookingRequestDto, CreateBookingRequestDto, ListBookingRequestsQuery, PublicAvailabilityQuery, RejectBookingRequestDto } from './booking.dto.js';
 import { BookingRequestsService } from './booking-requests.service.js';
 import { PublicBookingService } from './public-booking.service.js';
+import { sendLogo } from '../site/site-settings.js';
 
 const uuid = () => new ParseUUIDPipe();
 
@@ -18,6 +20,14 @@ export class PublicBookingController {
 
   @Public() @Get('info')
   info() { return this.pub.info(); }
+
+  /** Logo propio de la clínica para la página pública (404 si no tiene). */
+  @Public() @Get('logo')
+  async logo(@Res({ passthrough: true }) res: Response) {
+    const logo = await this.pub.logo();
+    if (!logo) throw new NotFoundException();
+    return sendLogo(res, logo);
+  }
 
   @Public() @Get('availability') @Throttle({ default: { limit: 40, ttl: 60_000 } })
   availability(@Query() q: PublicAvailabilityQuery) { return this.pub.availabilityOf(q); }

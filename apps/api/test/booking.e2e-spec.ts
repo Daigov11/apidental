@@ -64,7 +64,10 @@ describe('Web pública: solicitudes de cita (5)', () => {
       { id: w.service.id, name: 'Limpieza', durationMinutes: 30, priceText: 'S/ 80.00' },
       { id: w.free.id, name: 'Evaluación', durationMinutes: 30, priceText: null },
     ]));
-    expect(JSON.stringify(res.body)).not.toMatch(/dentist|patient|email|passwordHash/i);
+    // `site` solo lleva datos públicos de la clínica (su correo de contacto, si lo publica): se revisa aparte.
+    const { site, ...rest } = res.body;
+    expect(JSON.stringify(rest)).not.toMatch(/dentist|patient|email|passwordHash/i);
+    expect(Object.keys(site).sort()).toEqual(['contactEmail', 'faqs', 'heroEyebrow', 'heroLead', 'heroTitle', 'logoUrl', 'phone', 'primaryColor', 'privacyText', 'sections', 'steps', 'whatsapp']);
   });
 
   it('disponibilidad: horas por día (sin odontólogos), con margen mínimo; las ocupadas desaparecen', async () => {
@@ -176,6 +179,80 @@ describe('Web pública: solicitudes de cita (5)', () => {
     expect((await ctx.db.auditLog.findMany({ where: { action: 'BOOKING_REQUEST_REJECTED', entityId: req.id } })).length).toBe(1);
     // no se puede atender una solicitud de otra sede si el actor está limitado a una
     expect((await w.post(w.receptionNorte.token, `/booking-requests/${req.id}/reject`, { reason: 'Intento ajeno' })).status).toBe(404);
+  });
+
+  describe('Página web personalizable', () => {
+    const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082', 'hex');
+
+    it('sin personalizar: info trae la sección site vacía y todas las secciones visibles', async () => {
+      const res = await pub('/info').expect(200);
+      expect(res.body.site).toMatchObject({ primaryColor: null, logoUrl: null, heroTitle: '', whatsapp: null, steps: [], faqs: [] });
+      expect(res.body.site.sections).toEqual({ services: true, howItWorks: true, branches: true, faq: true });
+    });
+
+    it('solo el administrador de la clínica la edita', async () => {
+      await w.get(w.reception.token, '/site-settings').expect(403);
+      await ctx.http().put('/v1/site-settings').set(bearer(w.reception.token)).send({ heroTitle: 'x' }).expect(403);
+      await w.get(w.admin.token, '/site-settings').expect(200);
+    });
+
+    it('guarda textos, color, contacto, pasos, preguntas y secciones; la página pública los recibe', async () => {
+      const put = (b: unknown) => ctx.http().put('/v1/site-settings').set(bearer(w.admin.token)).send(b as object);
+      const saved = (await put({
+        displayName: 'Dental Manos de Ángel',
+        primaryColor: '#c0392b',
+        heroTitle: 'Agende su cita',
+        heroLead: 'Atención con cariño.',
+        phone: '(01) 555 1234',
+        whatsapp: '930 607 986',
+        steps: [{ title: 'Elija', text: 'Servicio y hora' }, { title: 'Confirmamos', text: 'Le llamamos' }],
+        faqs: [{ question: '¿Atienden sábados?', answer: 'Sí, de 9 a 13.' }],
+        sections: { services: true, howItWorks: true, branches: false, faq: true },
+      }).expect(200)).body;
+      expect(saved).toMatchObject({ displayName: 'Dental Manos de Ángel', primaryColor: '#c0392b', heroTitle: 'Agende su cita', whatsapp: '930 607 986' });
+
+      const info = (await pub('/info').expect(200)).body;
+      expect(info.clinic.name).toBe('Dental Manos de Ángel');
+      expect(info.site).toMatchObject({ primaryColor: '#c0392b', heroTitle: 'Agende su cita', phone: '(01) 555 1234', whatsapp: '51930607986' });
+      expect(info.site.steps).toHaveLength(2);
+      expect(info.site.faqs).toEqual([{ question: '¿Atienden sábados?', answer: 'Sí, de 9 a 13.' }]);
+      expect(info.site.sections.branches).toBe(false);
+
+      // Un cambio parcial conserva lo demás; vacío vuelve al texto de siempre
+      await put({ heroTitle: '' }).expect(200);
+      const again = (await pub('/info').expect(200)).body;
+      expect(again.site.heroTitle).toBe('');
+      expect(again.site.heroLead).toBe('Atención con cariño.');
+      expect(again.site.faqs).toHaveLength(1);
+
+      const audit = await ctx.db.auditLog.findFirst({ where: { clinicId, action: 'SITE_SETTINGS_UPDATED' }, orderBy: { createdAt: 'desc' } });
+      expect(audit).not.toBeNull();
+    });
+
+    it('valida color, WhatsApp, correo y límites', async () => {
+      const put = (b: unknown) => ctx.http().put('/v1/site-settings').set(bearer(w.admin.token)).send(b as object);
+      await put({ primaryColor: 'red' }).expect(400);
+      await put({ whatsapp: '12ab' }).expect(400);
+      await put({ contactEmail: 'no-es-correo' }).expect(400);
+      await put({ faqs: Array.from({ length: 13 }, () => ({ question: 'a', answer: 'b' })) }).expect(400);
+      await put({ steps: [{ title: '', text: 'x' }] }).expect(400);
+      await put({ heroTitle: 'x'.repeat(121) }).expect(400);
+    });
+
+    it('logo: sube PNG, se sirve sin sesión, rechaza lo que no es imagen y se puede quitar', async () => {
+      const up = (buf: Buffer, name: string, type: string) => ctx.http().post('/v1/site-settings/logo').set(bearer(w.admin.token)).attach('file', buf, { filename: name, contentType: type });
+      await up(Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"></svg>'), 'logo.svg', 'image/svg+xml').expect(400);
+      await up(Buffer.from('no soy imagen'), 'logo.png', 'image/png').expect(400);
+      await pub('/logo').expect(404);
+      const r = (await up(PNG, 'logo.png', 'image/png').expect(200)).body;
+      expect(r.logoUrl).toMatch(/^\/v1\/public\/booking\/logo\?v=\d+$/);
+      const img = await pub('/logo').expect(200);
+      expect(img.headers['content-type']).toBe('image/png');
+      expect(img.headers['x-content-type-options']).toBe('nosniff');
+      expect((await pub('/info').expect(200)).body.site.logoUrl).toBe(r.logoUrl);
+      await ctx.http().delete('/v1/site-settings/logo').set(bearer(w.admin.token)).expect(200);
+      await pub('/logo').expect(404);
+    });
   });
 });
 

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { Banknote, BookOpen, Boxes, Clock, History, MessageCircle, CalendarDays, ChevronsLeft, ChevronsRight, FileText, Film, Home, Inbox, LogOut, Pill, Receipt, Repeat, UserCog, Users, Wallet } from 'lucide-react';
+import { Banknote, BookOpen, Boxes, Clock, History, MessageCircle, CalendarDays, ChevronsLeft, ChevronsRight, FileText, Film, Globe, Home, Inbox, LogOut, Pill, Receipt, Repeat, UserCog, Users, Wallet } from 'lucide-react';
 import { useAuth } from '../auth/AuthProvider';
 import { BranchProvider } from '../lib/branch';
 import { usePendingRequests } from '../lib/bookingRequests';
@@ -48,6 +48,7 @@ function Shell() {
     { to: '/horarios', label: 'Horarios', icon: <Clock size={20} aria-hidden="true" />, show: hasClinic && can('agenda:manage') },
     { to: '/catalogo', label: 'Catálogo', icon: <Boxes size={20} aria-hidden="true" />, show: hasClinic && (can('agenda:manage') || can('cashbox:manage')) },
     { to: '/whatsapp', label: 'WhatsApp', icon: <MessageCircle size={20} aria-hidden="true" />, show: hasClinic && authMode === 'apiworking' && can('apiworking:configure') },
+    { to: '/pagina-web', label: 'Página web', icon: <Globe size={20} aria-hidden="true" />, show: hasClinic && can('site:manage') },
     { to: '/usuarios', label: 'Usuarios', icon: <UserCog size={20} aria-hidden="true" />, show: can('user:read') },
     { to: '/comprobantes', label: 'Comprobantes', icon: <FileText size={20} aria-hidden="true" />, show: hasClinic && mode === 'mock' && can('billing:read') },
   ];

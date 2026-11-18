@@ -191,3 +191,19 @@ details p { padding: 0 0 1rem; color: var(--muted); }
 .foot-brand p, .foot-links { font-size: .9rem; opacity: .85; }
 
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .skeleton { animation: none; } }
+
+/* Personalización de la clínica: contacto y botón flotante de WhatsApp. */
+.contact-line, .foot-contact { display: flex; flex-wrap: wrap; gap: .5rem 1.25rem; margin: 1rem 0 0; }
+.contact-line a, .foot-contact a { color: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.foot-contact { margin: 0; }
+.brand img { object-fit: contain; }
+.brand img.custom { border-radius: 6px; width: auto; height: 40px; max-width: 160px; }
+[hidden] { display: none !important; }
+.wa-float {
+  position: fixed; right: 16px; bottom: 16px; z-index: 50; width: 56px; height: 56px; border-radius: 50%;
+  display: grid; place-items: center; background: #25d366; color: #fff; box-shadow: var(--shadow);
+}
+.wa-float:hover { background: #1ebe5b; }
+.wa-float:focus-visible { outline: 3px solid var(--fg); outline-offset: 3px; }
+.wa-float[hidden] { display: none; }
+@media print { .wa-float { display: none; } }

@@ -72,6 +72,7 @@ export const PERMISSIONS = {
   'apiworking:sell': 'Registrar ventas en Apiworking, verificarlas y conciliar resultados desconocidos',
   'apiworking:void': 'Anular ventas registradas en Apiworking (con motivo)',
   'apiworking:cash': 'Abrir la caja de Apiworking (escritura real, con vista previa, aprobación y tope)',
+  'site:manage': 'Editar la página web pública de la clínica (textos, logo, color y secciones)',
   'apiworking:configure': 'Ver todas las cajas, tipos de documento y series de Apiworking para decidir cuáles autorizar (solo lectura)',
   'care:assign': 'Asignar y revocar la relación asistencial paciente–odontólogo (acto administrativo, no clínico)',
 } as const;
@@ -218,6 +219,7 @@ export const ROLE_DEFINITIONS: readonly RoleDefinition[] = [
       'apiworking:void',
       'apiworking:cash',
       'apiworking:configure',
+      'site:manage',
       ...PATIENT_FULL_ACCESS,
     ],
   },

@@ -105,6 +105,82 @@
     });
   }
 
+  // ------------------------------------------------------------------ personalización de la clínica
+  var HEX = /^#[0-9a-fA-F]{6}$/;
+  function shade(hex, pct) { // pct < 0 oscurece, > 0 aclara
+    var n = parseInt(hex.slice(1), 16), out = '#';
+    [16, 8, 0].forEach(function (sh) {
+      var c = (n >> sh) & 255;
+      c = pct < 0 ? Math.round(c * (1 + pct)) : Math.round(c + (255 - c) * pct);
+      out += ('0' + c.toString(16)).slice(-2);
+    });
+    return out;
+  }
+  function luminance(hex) {
+    var n = parseInt(hex.slice(1), 16);
+    return [16, 8, 0].map(function (sh) { var c = ((n >> sh) & 255) / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); })
+      .reduce(function (a, c, i) { return a + c * [0.2126, 0.7152, 0.0722][i]; }, 0);
+  }
+  function applyColor(hex) {
+    if (!hex || !HEX.test(hex)) return;
+    // Texto sobre el color: blanco si contrasta, si no casi negro. En modo oscuro se usa una versión más clara.
+    var on = luminance(hex) > 0.35 ? '#141e26' : '#ffffff';
+    var light = shade(hex, 0.45);
+    var css = ':root{--brand:' + hex + ';--brand-strong:' + shade(hex, -0.18) + ';--brand-tint:' + shade(hex, 0.88) + ';--hero:' + shade(hex, 0.88) + ';--on-brand:' + on + '}' +
+      '@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--brand:' + light + ';--brand-strong:' + shade(hex, 0.65) + ';--brand-tint:' + shade(hex, -0.7) + ';--hero:' + shade(hex, -0.7) + ';--on-brand:#06242a}}';
+    var st = document.createElement('style');
+    st.id = 'clinic-color';
+    st.textContent = css;
+    document.head.appendChild(st);
+    var tc = document.querySelector('meta[name="theme-color"]');
+    if (tc) tc.setAttribute('content', hex);
+  }
+  function setText(id, value) { if (value) $(id).textContent = value; }
+  function contactLinks(box, site) {
+    box.textContent = '';
+    if (site.phone) box.appendChild(el('a', { href: 'tel:' + site.phone.replace(/[^\d+]/g, ''), text: 'Llámenos: ' + site.phone }));
+    if (site.whatsapp) box.appendChild(el('a', { href: 'https://wa.me/' + site.whatsapp, target: '_blank', rel: 'noopener', text: 'WhatsApp' }));
+    if (site.contactEmail) box.appendChild(el('a', { href: 'mailto:' + site.contactEmail, text: site.contactEmail }));
+    box.hidden = !box.childNodes.length;
+  }
+  function applySite(site) {
+    if (!site) return;
+    applyColor(site.primaryColor);
+    if (site.logoUrl && /^\/v1\/public\/booking\/logo(\?v=\d+)?$/.test(site.logoUrl)) {
+      var logo = $('brand-logo');
+      logo.src = site.logoUrl;
+      logo.className = 'custom';
+      logo.onerror = function () { logo.onerror = null; logo.className = ''; logo.src = 'assets/favicon.png'; };
+    }
+    setText('hero-eyebrow', site.heroEyebrow);
+    setText('hero-title', site.heroTitle);
+    setText('hero-lead', site.heroLead);
+    setText('privacy-text', site.privacyText);
+    contactLinks($('contact-line'), site);
+    contactLinks($('foot-contact'), site);
+    if (site.whatsapp) { var wa = $('wa-float'); wa.href = 'https://wa.me/' + site.whatsapp; wa.hidden = false; }
+
+    if (site.steps && site.steps.length) {
+      var ol = $('steps');
+      ol.textContent = '';
+      site.steps.forEach(function (st, i) {
+        ol.appendChild(el('li', {}, [el('span', { class: 'num', 'aria-hidden': 'true', text: String(i + 1) }), el('h3', { text: st.title }), el('p', { text: st.text })]));
+      });
+    }
+    if (site.faqs && site.faqs.length) {
+      var faq = $('faq');
+      faq.textContent = '';
+      site.faqs.forEach(function (f) { faq.appendChild(el('details', {}, [el('summary', { text: f.question }), el('p', { text: f.answer })])); });
+    }
+    var sections = site.sections || {};
+    var ids = { services: 'servicios', howItWorks: 'como-funciona', branches: 'sedes', faq: 'preguntas' };
+    Object.keys(ids).forEach(function (k) {
+      if (sections[k] !== false) return;
+      $(ids[k]).hidden = true;
+      Array.prototype.forEach.call(document.querySelectorAll('[data-section="' + k + '"]'), function (a) { a.hidden = true; });
+    });
+  }
+
   // ------------------------------------------------------------------ carga de la clínica
   function renderInfo(info) {
     state.info = info;
@@ -113,6 +189,7 @@
     document.title = name + ' — Solicite su cita';
     var og = document.querySelector('meta[property="og:title"]');
     if (og) og.setAttribute('content', document.title);
+    applySite(info.site);
 
     var list = $('services');
     list.textContent = '';
@@ -134,7 +211,7 @@
       li.appendChild(el('p', { text: b.address || 'Consulte la dirección al confirmar su cita.' }));
       branches.appendChild(li);
     });
-    if (!info.branches.length) $('sedes').hidden = true;
+    if (!info.branches.length) { $('sedes').hidden = true; document.querySelector('[data-section="branches"]').hidden = true; }
 
     var bsel = $('branch');
     bsel.textContent = '';

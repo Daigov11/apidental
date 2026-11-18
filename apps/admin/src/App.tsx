@@ -17,6 +17,7 @@ import { RequestsPage } from './pages/Requests';
 import { UsersPage } from './pages/Users';
 import { CatalogPage } from './pages/Catalog';
 import { SchedulesPage } from './pages/Schedules';
+import { SiteSettingsPage } from './pages/SiteSettings';
 import { SalesHistoryPage } from './pages/SalesHistory';
 import { WhatsappPage } from './pages/Whatsapp';
 import { VentasPage } from './pages/Ventas';
@@ -49,6 +50,7 @@ export function App() {
         <Route path="horarios" element={<SchedulesPage />} />
         <Route path="historial-ventas" element={<SalesHistoryPage />} />
         <Route path="whatsapp" element={<WhatsappPage />} />
+        <Route path="pagina-web" element={<SiteSettingsPage />} />
         <Route path="pacientes" element={<PatientsPage />} />
         <Route path="pacientes/:id" element={<PatientDetailPage />} />
         <Route path="pacientes/:id/atencion/:visitId" element={<VisitSheetPage />} />

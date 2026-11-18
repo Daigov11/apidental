@@ -9,6 +9,7 @@ import { isUniqueViolation } from '../patients/patient-access.js';
 import type { PrismaDb } from '../prisma/client.js';
 import { PRISMA } from '../prisma/prisma.module.js';
 import type { CreateBookingRequestDto, PublicAvailabilityQuery } from './booking.dto.js';
+import { SiteSettingsService, whatsappNumber } from '../site/site-settings.js';
 
 /** Margen mínimo: no se pide un horario que empieza en menos de 2 horas. */
 const MIN_LEAD_MS = 2 * 3_600_000;
@@ -37,6 +38,7 @@ export class PublicBookingService {
     private readonly config: AppConfig,
     private readonly availability: AgendaAvailabilityService,
     private readonly audit: AuditService,
+    private readonly site: SiteSettingsService,
   ) {}
 
   private clinicId(): string {
@@ -47,17 +49,35 @@ export class PublicBookingService {
 
   async info() {
     const clinicId = this.clinicId();
-    const clinic = await this.db.clinic.findUnique({ where: { id: clinicId }, select: { name: true, brandDisplayName: true } });
-    if (!clinic) throw new NotFoundException();
+    const site = await this.site.publicOf(clinicId);
     const [branches, services] = await Promise.all([
       this.db.branch.findMany({ where: { clinicId, status: 'ACTIVE' }, select: { id: true, name: true, address: true }, orderBy: { name: 'asc' } }),
       this.db.agendaService.findMany({ where: { clinicId, status: 'ACTIVE' }, select: { id: true, name: true, durationMinutes: true, priceCents: true }, orderBy: { name: 'asc' } }),
     ]);
     return {
-      clinic: { name: clinic.brandDisplayName || clinic.name },
+      clinic: { name: site.displayName || site.clinicName },
+      // Personalización de la página (vacío = texto por defecto del HTML). Solo datos públicos de la clínica.
+      site: {
+        primaryColor: site.primaryColor || null,
+        logoUrl: site.logoUrl,
+        heroEyebrow: site.heroEyebrow,
+        heroTitle: site.heroTitle,
+        heroLead: site.heroLead,
+        phone: site.phone,
+        whatsapp: whatsappNumber(site.whatsapp),
+        contactEmail: site.contactEmail,
+        steps: site.steps,
+        faqs: site.faqs,
+        privacyText: site.privacyText,
+        sections: site.sections,
+      },
       branches,
       services: services.map((s) => ({ id: s.id, name: s.name, durationMinutes: s.durationMinutes, priceText: s.priceCents != null ? money(s.priceCents) : null })),
     };
+  }
+
+  logo() {
+    return this.site.logoOf(this.clinicId());
   }
 
   private async offered(clinicId: string, branchId: string, serviceId: string, from: string, to: string) {

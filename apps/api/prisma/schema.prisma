@@ -51,6 +51,12 @@ model Clinic {
   brandLogoUrl        String?      @map("brand_logo_url") @db.VarChar(500)
   brandPrimaryColor   String?      @map("brand_primary_color") @db.VarChar(9)
   brandSecondaryColor String?      @map("brand_secondary_color") @db.VarChar(9)
+  /// Textos y secciones de la página pública para agendar (JSON validado por site-settings.ts). Nulo = textos por defecto.
+  siteSettings        Json?        @map("site_settings")
+  /// Logo de la página pública (PNG, JPEG o WebP; máx. 512 KB). Se sirve en /v1/public/booking/logo.
+  siteLogo            Bytes?       @map("site_logo") @db.MediumBlob
+  siteLogoType        String?      @map("site_logo_type") @db.VarChar(40)
+  siteLogoUpdatedAt   DateTime?    @map("site_logo_updated_at") @db.DateTime(3)
   status              ClinicStatus @default(ACTIVE)
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
